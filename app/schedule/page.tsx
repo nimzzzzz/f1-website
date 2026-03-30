@@ -19,8 +19,8 @@ const CIRCUIT_PHOTOS: Record<string, string> = {
   Suzuka: 'https://upload.wikimedia.org/wikipedia/commons/9/9a/Suzuka_International_Racing_Course%2C_July_10%2C_2018_SkySat_%28cropped%29.jpg',
   // China
   Shanghai: 'https://upload.wikimedia.org/wikipedia/commons/d/d6/Shanghai_International_Circuit%2C_April_7%2C_2018_SkySat_%28rotated%29.jpg',
-  // Miami — aerial of Hard Rock Stadium venue
-  Miami: 'https://upload.wikimedia.org/wikipedia/commons/9/97/Sun_Life_Stadium_aerial_2012.jpg',
+  // Miami — aerial of Miami International Autodrome
+  Miami: '/miami-circuit.avif',
   // Emilia Romagna
   Imola: 'https://upload.wikimedia.org/wikipedia/commons/f/fc/Autodromo_aerea_poster.jpg',
   // Monaco

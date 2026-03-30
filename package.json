@@ -9,11 +9,13 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@phosphor-icons/react": "^2.1.7",
+    "@types/three": "^0.183.1",
+    "framer-motion": "^11.3.8",
     "next": "^14.2.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "framer-motion": "^11.3.8",
-    "@phosphor-icons/react": "^2.1.7"
+    "three": "^0.183.2"
   },
   "devDependencies": {
     "@types/node": "^20",

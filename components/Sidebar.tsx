@@ -15,10 +15,11 @@ import {
   Wrench,
   CloudSun,
   Flag,
-  Radio,
   Gauge,
   List,
   X,
+  IdentificationCard,
+  VideoCamera,
 } from '@phosphor-icons/react'
 
 const NAV_LINKS = [
@@ -33,8 +34,9 @@ const NAV_LINKS = [
   { href: '/pit-stops', label: 'Pit Stops', icon: Wrench },
   { href: '/weather', label: 'Weather', icon: CloudSun },
   { href: '/race-control', label: 'Race Control', icon: Flag },
-  { href: '/team-radio', label: 'Team Radio', icon: Radio },
   { href: '/stints', label: 'Tyres & Stints', icon: Gauge },
+  { href: '/sports-cards', label: "F1 Sports Cards", icon: IdentificationCard },
+  { href: '/highlights', label: 'Highlights', icon: VideoCamera },
 ]
 
 export default function Sidebar() {

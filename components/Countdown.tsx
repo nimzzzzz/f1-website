@@ -6,8 +6,7 @@ import { motion } from 'framer-motion'
 import type { Meeting, Session } from '@/lib/openf1'
 import { getRaceMeetings, getCurrentMeeting, getNextMeeting, isMeetingCompleted } from '@/lib/openf1'
 
-const HERO_IMAGE =
-  'https://upload.wikimedia.org/wikipedia/commons/b/bc/2024-08-24_Motorsport%2C_Formel_1%2C_Gro%C3%9Fer_Preis_der_Niederlande_2024_STP_3272_by_Stepro.jpg'
+const HERO_IMAGE = '/miami-circuit.avif'
 
 interface Props {
   meetings: Meeting[]

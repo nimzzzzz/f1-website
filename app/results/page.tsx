@@ -104,7 +104,7 @@ const [loading, setLoading] = useState(true)
     )
   }
 
-  const ResultTable = ({ rows, showPits }: { rows: (DriverResult | QualifyingResult)[], showPits: boolean }) => (
+  const ResultTable = ({ rows, showPits }: { rows: DriverResult[], showPits: boolean }) => (
     <div className="border border-zinc-800/50 bg-zinc-900/40 rounded-xl overflow-hidden">
       <table className="w-full">
         <thead>

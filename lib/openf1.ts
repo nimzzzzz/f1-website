@@ -180,6 +180,10 @@ export async function getMeetings(): Promise<Meeting[]> {
   return apiFetch<Meeting>('/meetings', { year: 2026 }, { next: { revalidate: 60 } })
 }
 
+export async function getMeetingsByYear(year: number): Promise<Meeting[]> {
+  return apiFetch<Meeting>('/meetings', { year }, { next: { revalidate: 3600 } })
+}
+
 export async function getSessions(meetingKey?: number): Promise<Session[]> {
   const params: Record<string, string | number> = { year: 2026 }
   if (meetingKey !== undefined) params.meeting_key = meetingKey
@@ -188,6 +192,10 @@ export async function getSessions(meetingKey?: number): Promise<Session[]> {
 
 export async function getAllSessions(): Promise<Session[]> {
   return apiFetch<Session>('/sessions', { year: 2026 }, { next: { revalidate: 60 } })
+}
+
+export async function getSessionsByYear(year: number): Promise<Session[]> {
+  return apiFetch<Session>('/sessions', { year }, { next: { revalidate: 3600 } })
 }
 
 export async function getDrivers(sessionKey: number): Promise<Driver[]> {

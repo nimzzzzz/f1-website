@@ -2,10 +2,44 @@
 
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
-import type { Meeting, Session } from '@/lib/openf1'
+import type { Meeting, Session, Position } from '@/lib/openf1'
 import { getCachedMeetings, getCachedSessions } from '@/lib/client-cache'
 import Countdown from '@/components/Countdown'
-import { getRaceMeetings, isMeetingCompleted, getCurrentMeeting, getNextMeeting } from '@/lib/openf1'
+import { getRaceMeetings, isMeetingCompleted, getCurrentMeeting, getNextMeeting, RACE_POINTS, SPRINT_POINTS } from '@/lib/openf1'
+import { ShaderAnimation } from '@/components/ui/shader-animation'
+import { getCachedDrivers, getCachedPositions } from '@/lib/client-cache'
+import { DRIVER_PHOTOS } from '@/lib/driver-data'
+
+function getLatestPositions(positions: Position[]): Map<number, number> {
+  const sorted = [...positions].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  )
+  const map = new Map<number, number>()
+  for (const p of sorted) {
+    if (!map.has(p.driver_number)) map.set(p.driver_number, p.position)
+  }
+  return map
+}
+
+async function fetchAllPositions(sessionKeys: number[]): Promise<Map<number, Position[]>> {
+  const results = await Promise.all(
+    sessionKeys.map(async (key) => ({ key, data: await getCachedPositions(key) }))
+  )
+  const map = new Map<number, Position[]>()
+  const empties: number[] = []
+  for (const { key, data } of results) {
+    if (data.length > 0) map.set(key, data)
+    else empties.push(key)
+  }
+  for (const key of empties) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await new Promise((r) => setTimeout(r, 600))
+      const data = await getCachedPositions(key)
+      if (data.length > 0) { map.set(key, data); break }
+    }
+  }
+  return map
+}
 
 const CIRCUIT_PHOTOS: Record<string, string> = {
   Sakhir: 'https://upload.wikimedia.org/wikipedia/commons/b/bc/Bahrain_International_Circuit%2C_November_2%2C_2017_SkySat_%28cropped%29.jpg',
@@ -14,7 +48,7 @@ const CIRCUIT_PHOTOS: Record<string, string> = {
   'Albert Park': 'https://upload.wikimedia.org/wikipedia/commons/8/8e/Melbourne_Grand_Prix_Circuit%2C_March_22%2C_2018_SkySat_%28cropped%29.jpg',
   Suzuka: 'https://upload.wikimedia.org/wikipedia/commons/9/9a/Suzuka_International_Racing_Course%2C_July_10%2C_2018_SkySat_%28cropped%29.jpg',
   Shanghai: 'https://upload.wikimedia.org/wikipedia/commons/d/d6/Shanghai_International_Circuit%2C_April_7%2C_2018_SkySat_%28rotated%29.jpg',
-  Miami: 'https://upload.wikimedia.org/wikipedia/commons/9/97/Sun_Life_Stadium_aerial_2012.jpg',
+  Miami: '/miami-circuit.avif',
   Imola: 'https://upload.wikimedia.org/wikipedia/commons/f/fc/Autodromo_aerea_poster.jpg',
   Monaco: 'https://upload.wikimedia.org/wikipedia/commons/c/c7/Circuit_de_Monaco%2C_April_1%2C_2018_SkySat_%28cropped%29.jpg',
   Montreal: 'https://upload.wikimedia.org/wikipedia/commons/6/65/Circuit_Gilles-Villeneuve%2C_May_29%2C_2018_SkySat_%28cropped%29.jpg',
@@ -57,6 +91,17 @@ function getCircuitPhoto(meeting: Meeting): string | null {
   )
 }
 
+interface LeaderStats {
+  name: string
+  acronym: string
+  teamName: string
+  teamColour: string
+  headshot: string | null
+  points: number
+  wins: number
+  poles: number
+}
+
 const SESSION_SHORT: Record<string, string> = {
   'Practice 1': 'P1',
   'Practice 2': 'P2',
@@ -71,10 +116,97 @@ export default function HomePage() {
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
+  const [leader, setLeader] = useState<LeaderStats | null>(null)
 
   useEffect(() => {
     Promise.all([getCachedMeetings(), getCachedSessions()])
-      .then(([m, s]) => { setMeetings(m); setSessions(s) })
+      .then(([m, s]) => { setMeetings(m); setSessions(s); return s })
+      .then(async (s) => {
+        const now = new Date()
+
+        const completedRaceSessions = s.filter(
+          x => x.session_type === 'Race' && x.session_name === 'Race' && new Date(x.date_end) < now
+        )
+        const completedSprintSessions = s.filter(
+          x => x.session_type === 'Race' && x.session_name === 'Sprint' && new Date(x.date_end) < now
+        )
+        const completedQualSessions = s.filter(
+          x => x.session_name === 'Qualifying' && new Date(x.date_end) < now
+        )
+        if (completedRaceSessions.length === 0) return
+
+        // Most recent completed race session for driver info
+        const driverRefKey = [...completedRaceSessions].sort(
+          (a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime()
+        )[0].session_key
+
+        const allPointsSessions = [...completedRaceSessions, ...completedSprintSessions]
+        const allSessionKeys = [
+          ...allPointsSessions.map(x => x.session_key),
+          ...completedQualSessions.map(x => x.session_key),
+        ]
+
+        const [drivers, positionsMap] = await Promise.all([
+          getCachedDrivers(driverRefKey),
+          fetchAllPositions(allSessionKeys),
+        ])
+
+        const driverMap = new Map(drivers.map(d => [d.driver_number, d]))
+        const standings = new Map<number, { points: number; wins: number; poles: number }>()
+
+        const processSessions = (sessions: Session[], pointsTable: number[]) => {
+          for (const session of sessions) {
+            const positions = positionsMap.get(session.session_key)
+            if (!positions || positions.length === 0) continue
+            const latestPos = getLatestPositions(positions)
+            latestPos.forEach((pos, driverNum) => {
+              const pts = pos >= 1 && pos <= pointsTable.length ? pointsTable[pos - 1] : 0
+              const cur = standings.get(driverNum) ?? { points: 0, wins: 0, poles: 0 }
+              cur.points += pts
+              if (pos === 1) cur.wins++
+              standings.set(driverNum, cur)
+            })
+          }
+        }
+
+        processSessions(completedRaceSessions, RACE_POINTS)
+        processSessions(completedSprintSessions, SPRINT_POINTS)
+
+        // Compute poles from qualifying
+        for (const session of completedQualSessions) {
+          const positions = positionsMap.get(session.session_key)
+          if (!positions || positions.length === 0) continue
+          const latestPos = getLatestPositions(positions)
+          latestPos.forEach((pos, driverNum) => {
+            if (pos === 1) {
+              const cur = standings.get(driverNum) ?? { points: 0, wins: 0, poles: 0 }
+              cur.poles++
+              standings.set(driverNum, cur)
+            }
+          })
+        }
+
+        // Find leader
+        let leaderId = -1, maxPts = -1
+        for (const [id, { points }] of standings) {
+          if (points > maxPts) { maxPts = points; leaderId = id }
+        }
+        if (leaderId === -1) return
+
+        const info = driverMap.get(leaderId)
+        const s2 = standings.get(leaderId)!
+        const acronym = info?.name_acronym ?? '---'
+        setLeader({
+          name: info?.full_name ?? `Driver #${leaderId}`,
+          acronym,
+          teamName: info?.team_name ?? '',
+          teamColour: info?.team_colour ?? '6B7280',
+          headshot: DRIVER_PHOTOS[acronym] ?? info?.headshot_url ?? null,
+          points: s2.points,
+          wins: s2.wins,
+          poles: s2.poles,
+        })
+      })
       .finally(() => setLoading(false))
   }, [])
 
@@ -112,183 +244,119 @@ export default function HomePage() {
       {/* ─── Hero countdown ─── */}
       <Countdown meetings={activeMeetings} sessions={sessions} />
 
-      {/* ─── Race Weekend — cinematic full-bleed ─── */}
-      {targetMeeting && (
-        <section className="relative overflow-hidden bg-black">
-          {/* Full-bleed circuit aerial */}
-          {circuitPhoto && (
-            <div className="absolute inset-0">
-              <Image
-                src={circuitPhoto}
-                alt={targetMeeting.circuit_short_name}
-                fill
-                className="object-cover scale-105"
-                unoptimized
-                priority
-              />
-              {/* Layered overlays for drama */}
-              <div className="absolute inset-0 bg-black/70" />
-              <div className="absolute inset-0 bg-gradient-to-r from-black via-black/60 to-transparent" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/30" />
-              {/* Red light leak from left edge */}
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-600" />
-              <div
-                className="absolute left-0 top-0 bottom-0 w-64 opacity-10"
-                style={{ background: 'radial-gradient(ellipse at left, #dc2626, transparent)' }}
-              />
-            </div>
-          )}
-          {!circuitPhoto && (
-            <div className="absolute inset-0 bg-zinc-950">
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-600" />
-            </div>
-          )}
-
-          {/* Giant ghosted round number */}
-          {roundNumber !== null && (
+      {/* ─── Championship Leader ─── */}
+      {leader && (() => {
+        const teamColor = `#${leader.teamColour}`
+        const nameParts = leader.name.split(' ')
+        const lastName = nameParts[nameParts.length - 1].toUpperCase()
+        const firstName = nameParts.slice(0, -1).join(' ').toUpperCase()
+        return (
+          <section className="relative overflow-hidden bg-zinc-950">
+            {/* Team-colour left accent + ambient glow */}
+            <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ backgroundColor: teamColor }} />
             <div
-              className="absolute right-0 top-1/2 -translate-y-1/2 font-black text-white select-none pointer-events-none tabular-nums leading-none"
-              style={{ fontSize: 'clamp(14rem, 28vw, 36rem)', opacity: 0.04, transform: 'translateY(-50%) translateX(8%)' }}
-            >
-              {String(roundNumber).padStart(2, '0')}
-            </div>
-          )}
+              className="absolute left-0 top-0 bottom-0 w-[600px] pointer-events-none"
+              style={{ background: `radial-gradient(ellipse at left center, ${teamColor}10, transparent 70%)` }}
+            />
+            {/* Right-side headshot glow */}
+            <div
+              className="absolute right-0 top-0 bottom-0 w-[500px] pointer-events-none"
+              style={{ background: `radial-gradient(ellipse at right center, ${teamColor}08, transparent 60%)` }}
+            />
 
-          <div className="relative z-10 max-w-[1400px] mx-auto px-6 md:px-12 py-20 md:py-28">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center">
+            <div className="relative z-10 max-w-[1400px] mx-auto px-6 md:px-12 py-4 md:py-5">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-center">
 
-              {/* Left — editorial info */}
-              <div>
-                {/* Label */}
-                <div className="flex items-center gap-3 mb-8">
-                  <div className="w-8 h-px bg-red-500" />
-                  <span className="text-[11px] font-black text-red-500 tracking-[0.4em] uppercase">
-                    {isLiveWeekend ? (
-                      <span className="flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" />
-                        Live Weekend
-                      </span>
-                    ) : `Round ${roundNumber} of ${raceMeetings.length}`}
-                  </span>
-                </div>
+                {/* Left — identity + stats */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-6 h-px" style={{ backgroundColor: teamColor }} />
+                    <span className="text-[10px] font-black tracking-[0.4em] uppercase" style={{ color: teamColor }}>
+                      Championship Leader · 2026
+                    </span>
+                  </div>
 
-                {/* Giant location name */}
-                <div className="mb-6">
-                  <h2
-                    className="font-black text-white tracking-tighter leading-[0.82]"
-                    style={{ fontSize: 'clamp(3.5rem, 8vw, 9rem)' }}
-                  >
-                    {locationPart}
-                  </h2>
-                  {gpPart && (
-                    <p
-                      className="font-black text-white/25 tracking-tight leading-none mt-2"
-                      style={{ fontSize: 'clamp(1.8rem, 4vw, 4.5rem)' }}
+                  <div className="mb-3">
+                    <h2
+                      className="font-black text-white tracking-tighter leading-[0.85]"
+                      style={{ fontSize: 'clamp(1.5rem, 2.5vw, 2.5rem)' }}
                     >
-                      {gpPart}
-                    </p>
-                  )}
+                      {lastName}
+                    </h2>
+                    {firstName && (
+                      <p
+                        className="font-black tracking-tight leading-none mt-0.5"
+                        style={{ fontSize: 'clamp(0.8rem, 1.3vw, 1.3rem)', color: 'rgba(255,255,255,0.18)' }}
+                      >
+                        {firstName}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: teamColor }} />
+                    <span className="text-zinc-400 text-xs font-medium">{leader.teamName}</span>
+                  </div>
+
+                  {/* Stats */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { label: 'Points', value: leader.points },
+                      { label: 'Wins', value: leader.wins },
+                      { label: 'Poles', value: leader.poles },
+                    ].map(({ label, value }) => (
+                      <div
+                        key={label}
+                        className="relative rounded-lg border border-zinc-800/50 bg-zinc-900/40 p-3 overflow-hidden"
+                      >
+                        <div
+                          className="absolute top-0 left-0 right-0 h-px"
+                          style={{ background: `linear-gradient(to right, ${teamColor}60, transparent)` }}
+                        />
+                        <p className="text-[9px] font-black text-zinc-600 tracking-[0.25em] uppercase mb-1">{label}</p>
+                        <p
+                          className="font-black tabular-nums leading-none"
+                          style={{ fontSize: 'clamp(1rem, 1.5vw, 1.4rem)', color: teamColor }}
+                        >
+                          {value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Circuit + country */}
-                <div className="flex items-center gap-3 mb-8">
-                  {targetMeeting.country_flag && (
-                    <div className="relative w-8 h-5 rounded overflow-hidden border border-white/10 flex-shrink-0">
-                      <Image src={targetMeeting.country_flag} alt="" fill className="object-cover" unoptimized />
+                {/* Right — driver headshot */}
+                <div className="flex items-end justify-center lg:justify-end">
+                  {leader.headshot ? (
+                    <div className="relative">
+                      {/* Glow behind image */}
+                      <div
+                        className="absolute -inset-8 rounded-full blur-3xl opacity-20 pointer-events-none"
+                        style={{ backgroundColor: teamColor }}
+                      />
+                      <Image
+                        src={leader.headshot}
+                        alt={leader.name}
+                        width={384}
+                        height={480}
+                        className="relative object-contain drop-shadow-2xl"
+                        style={{ filter: 'drop-shadow(0 20px 60px rgba(0,0,0,0.8))', width: 'clamp(7rem, 9vw, 11rem)', height: 'auto' }}
+                        unoptimized
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-64 h-64 rounded-full bg-zinc-900 border border-zinc-800/40 flex items-center justify-center">
+                      <span className="text-6xl font-black text-zinc-700">{leader.acronym}</span>
                     </div>
                   )}
-                  <p className="text-zinc-400 text-base">
-                    {targetMeeting.circuit_short_name}
-                    <span className="text-zinc-700 mx-2">·</span>
-                    {targetMeeting.country_name}
-                  </p>
-                </div>
-
-                {/* Dates */}
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-zinc-800 bg-zinc-900/50 backdrop-blur-sm">
-                  <span className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
-                  <span className="text-xs text-zinc-400">
-                    {new Date(targetMeeting.date_start).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
-                    {' — '}
-                    {new Date(targetMeeting.date_end).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                  </span>
-                </div>
-              </div>
-
-              {/* Right — session timetable */}
-              <div>
-                <p className="text-[10px] font-black text-zinc-600 tracking-[0.35em] uppercase mb-4">
-                  Session Schedule
-                </p>
-                <div className="space-y-1.5">
-                  {meetingSessions.map((session) => {
-                    const now = new Date()
-                    const start = new Date(session.date_start)
-                    const end = new Date(session.date_end)
-                    const live = start <= now && now < end
-                    const done = end < now
-                    const short = SESSION_SHORT[session.session_name] ?? session.session_name
-                    const isRace = session.session_name === 'Race'
-
-                    return (
-                      <div
-                        key={session.session_key}
-                        className={[
-                          'relative flex items-center gap-4 px-5 py-3.5 rounded-xl border backdrop-blur-sm overflow-hidden',
-                          live
-                            ? 'border-red-500/50 bg-red-950/30'
-                            : done
-                            ? 'border-zinc-800/20 bg-black/30'
-                            : isRace
-                            ? 'border-zinc-700/50 bg-zinc-900/60'
-                            : 'border-zinc-800/40 bg-zinc-900/40',
-                        ].join(' ')}
-                      >
-                        {/* Left accent */}
-                        {live && <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-red-500 rounded-l-xl" />}
-                        {isRace && !live && !done && <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-zinc-600 rounded-l-xl" />}
-
-                        {/* Compound tag */}
-                        <span className={[
-                          'text-[10px] font-black tracking-widest w-12 flex-shrink-0 text-center py-1 rounded',
-                          live ? 'text-red-400 bg-red-950/50' : done ? 'text-zinc-800 bg-zinc-900/30' : isRace ? 'text-zinc-300 bg-zinc-800/50' : 'text-zinc-600 bg-zinc-900/50',
-                        ].join(' ')}>
-                          {short}
-                        </span>
-
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-semibold truncate ${live ? 'text-red-300' : done ? 'text-zinc-700' : 'text-zinc-200'}`}>
-                            {session.session_name}
-                          </p>
-                          <p className={`text-[10px] mt-0.5 ${done ? 'text-zinc-800' : 'text-zinc-600'}`}>
-                            {start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                          </p>
-                        </div>
-
-                        <div className="text-right flex-shrink-0">
-                          <p className={`text-xs tabular-nums ${done ? 'text-zinc-800' : 'text-zinc-400'}`}>
-                            {start.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}
-                          </p>
-                          {live && (
-                            <div className="flex items-center justify-end gap-1 mt-0.5">
-                              <span className="w-1 h-1 rounded-full bg-red-500 animate-pulse" />
-                              <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">Live</span>
-                            </div>
-                          )}
-                          {done && <p className="text-[10px] text-zinc-800 uppercase tracking-wider mt-0.5">Done</p>}
-                        </div>
-                      </div>
-                    )
-                  })}
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Bottom fade into next section */}
-          <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-zinc-950 to-transparent" />
-        </section>
-      )}
+            <div className="absolute bottom-0 left-0 right-0 h-px bg-zinc-800/40" />
+          </section>
+        )
+      })()}
 
       {/* ─── Season Calendar ─── */}
       {raceMeetings.length > 0 && (
@@ -427,6 +495,18 @@ export default function HomePage() {
               })}
             </div>
           </div>
+
+          {/* Shader animation banner */}
+          <div className="relative -mx-6 md:-mx-12">
+            <ShaderAnimation />
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <p className="text-[11px] font-black text-red-500 tracking-[0.4em] uppercase mb-3">2026 Formula 1</p>
+              <h3 className="text-4xl md:text-6xl font-black tracking-tighter text-white text-center">
+                World Championship
+              </h3>
+            </div>
+          </div>
+
         </section>
       )}
     </>

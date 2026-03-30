@@ -29,7 +29,10 @@ function makeCache<T>(fetcher: (key: number) => Promise<T[]>, ttl: number) {
     if (pending) return pending
 
     const promise = fetcher(key).then((data) => {
-      cache.set(key, { data, expiresAt: Date.now() + ttl })
+      // Only cache non-empty results — empty arrays are likely transient API failures
+      if (data.length > 0) {
+        cache.set(key, { data, expiresAt: Date.now() + ttl })
+      }
       inflight.delete(key)
       return data
     }).catch((err) => {

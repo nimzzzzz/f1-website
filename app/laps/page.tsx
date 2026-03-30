@@ -7,6 +7,8 @@ import { formatDuration } from '@/lib/openf1'
 import { getCachedLaps, getCachedDrivers } from '@/lib/client-cache'
 import SessionPicker from '@/components/SessionPicker'
 import EmptyState from '@/components/EmptyState'
+import ShaderBackground from '@/components/ui/animated-shader-hero'
+
 
 interface FastestLap {
   lap: Lap
@@ -86,7 +88,14 @@ export default function LapsPage() {
   }
 
   return (
-    <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
+    <div className="relative min-h-screen">
+      {/* Animated shader background */}
+      <ShaderBackground opacity={0.85} />
+      {/* Dark overlay so content stays readable */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/50 to-black/80 pointer-events-none" />
+
+    <div className="relative z-10 py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
+
       {/* Header */}
       <div className="mb-8">
         <p className="text-[11px] font-bold text-red-500 tracking-[0.3em] uppercase mb-3">
@@ -332,6 +341,7 @@ export default function LapsPage() {
           )}
         </>
       )}
+    </div>
     </div>
   )
 }
