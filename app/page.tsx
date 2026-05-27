@@ -85,89 +85,117 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
   const [leader, setLeader] = useState<LeaderStats | null>(null)
 
+  // Phase 1: fetch meetings + sessions, then show the page immediately
   useEffect(() => {
     Promise.all([getCachedMeetings(), getCachedSessions()])
-      .then(([m, s]) => { setMeetings(m); setSessions(s); return s })
-      .then(async (s) => {
-        const now = new Date()
-        const notCancelled = (x: Session) => !CANCELLED_COUNTRIES.has(x.country_name)
+      .then(([m, s]) => { setMeetings(m); setSessions(s); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [])
 
-        const completedRaceSessions = s.filter(
-          x => x.session_type === 'Race' && x.session_name === 'Race' && new Date(x.date_end) < now && notCancelled(x)
-        )
-        const completedSprintSessions = s.filter(
-          x => x.session_type === 'Race' && x.session_name === 'Sprint' && new Date(x.date_end) < now && notCancelled(x)
-        )
-        const completedQualSessions = s.filter(
-          x => x.session_name === 'Qualifying' && new Date(x.date_end) < now && notCancelled(x)
-        )
-        if (completedRaceSessions.length === 0) return
+  // Phase 2: compute championship leader in the background (doesn't block render)
+  useEffect(() => {
+    if (sessions.length === 0) return
+    const now = new Date()
+    const notCancelled = (x: Session) => !CANCELLED_COUNTRIES.has(x.country_name)
 
-        const driverRefKey = [...completedRaceSessions].sort(
-          (a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime()
-        )[0].session_key
+    const completedRaceSessions = sessions.filter(
+      x => x.session_type === 'Race' && x.session_name === 'Race' && new Date(x.date_end) < now && notCancelled(x)
+    )
+    const completedSprintSessions = sessions.filter(
+      x => x.session_type === 'Race' && x.session_name === 'Sprint' && new Date(x.date_end) < now && notCancelled(x)
+    )
+    const completedQualSessions = sessions.filter(
+      x => x.session_name === 'Qualifying' && new Date(x.date_end) < now && notCancelled(x)
+    )
+    if (completedRaceSessions.length === 0) return
 
-        const allPointsSessions = [...completedRaceSessions, ...completedSprintSessions]
-        const allSessionKeys = [
-          ...allPointsSessions.map(x => x.session_key),
-          ...completedQualSessions.map(x => x.session_key),
-        ]
+    const driverRefKey = [...completedRaceSessions].sort(
+      (a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime()
+    )[0].session_key
 
-        const [drivers, resultsMap] = await Promise.all([
-          getCachedDrivers(driverRefKey),
-          fetchAllSessionResults(allSessionKeys, getCachedSessionResult),
-        ])
+    const allPointsSessions = [...completedRaceSessions, ...completedSprintSessions]
+    const allSessionKeys = [
+      ...allPointsSessions.map(x => x.session_key),
+      ...completedQualSessions.map(x => x.session_key),
+    ]
 
-        const driverMap = new Map(drivers.map(d => [d.driver_number, d]))
-        const standings = new Map<number, { points: number; wins: number; poles: number }>()
+    Promise.all([
+      getCachedDrivers(driverRefKey),
+      fetchAllSessionResults(allSessionKeys, getCachedSessionResult),
+    ]).then(([drivers, resultsMap]) => {
+      const driverMap = new Map(drivers.map(d => [d.driver_number, d]))
+      const standings = new Map<number, { points: number; wins: number; poles: number }>()
 
-        for (const session of allPointsSessions) {
-          const results = resultsMap.get(session.session_key)
-          if (!results) continue
-          for (const r of results) {
+      for (const session of allPointsSessions) {
+        const results = resultsMap.get(session.session_key)
+        if (!results) continue
+        for (const r of results) {
+          const cur = standings.get(r.driver_number) ?? { points: 0, wins: 0, poles: 0 }
+          cur.points += r.points ?? 0
+          if (r.position === 1) cur.wins++
+          standings.set(r.driver_number, cur)
+        }
+      }
+
+      for (const session of completedQualSessions) {
+        const results = resultsMap.get(session.session_key)
+        if (!results) continue
+        for (const r of results) {
+          if (r.position === 1) {
             const cur = standings.get(r.driver_number) ?? { points: 0, wins: 0, poles: 0 }
-            cur.points += r.points ?? 0
-            if (r.position === 1) cur.wins++
+            cur.poles++
             standings.set(r.driver_number, cur)
           }
         }
+      }
 
-        for (const session of completedQualSessions) {
-          const results = resultsMap.get(session.session_key)
-          if (!results) continue
-          for (const r of results) {
-            if (r.position === 1) {
-              const cur = standings.get(r.driver_number) ?? { points: 0, wins: 0, poles: 0 }
-              cur.poles++
-              standings.set(r.driver_number, cur)
-            }
-          }
-        }
+      let leaderId = -1, maxPts = -1
+      for (const [id, { points }] of standings) {
+        if (points > maxPts) { maxPts = points; leaderId = id }
+      }
+      if (leaderId === -1) return
 
-        let leaderId = -1, maxPts = -1
-        for (const [id, { points }] of standings) {
-          if (points > maxPts) { maxPts = points; leaderId = id }
-        }
-        if (leaderId === -1) return
-
-        const info = driverMap.get(leaderId)
-        const s2 = standings.get(leaderId)!
-        const acronym = info?.name_acronym ?? '---'
-        setLeader({
-          name: info?.full_name ?? `Driver #${leaderId}`,
-          acronym,
-          teamName: info?.team_name ?? '',
-          teamColour: info?.team_colour ?? '6B7280',
-          headshot: DRIVER_PHOTOS[acronym] ?? info?.headshot_url ?? null,
-          points: s2.points,
-          wins: s2.wins,
-          poles: s2.poles,
-        })
+      const info = driverMap.get(leaderId)
+      const s2 = standings.get(leaderId)!
+      const acronym = info?.name_acronym ?? '---'
+      setLeader({
+        name: info?.full_name ?? `Driver #${leaderId}`,
+        acronym,
+        teamName: info?.team_name ?? '',
+        teamColour: info?.team_colour ?? '6B7280',
+        headshot: DRIVER_PHOTOS[acronym] ?? info?.headshot_url ?? null,
+        points: s2.points,
+        wins: s2.wins,
+        poles: s2.poles,
       })
-      .finally(() => setLoading(false))
-  }, [])
+    })
+  }, [sessions])
 
-  if (loading) return <div className="min-h-[100dvh] bg-black" />
+  if (loading) return (
+    <div className="min-h-[100dvh] bg-zinc-950 flex flex-col">
+      {/* Hero skeleton */}
+      <div className="relative flex-1 flex flex-col justify-between px-8 md:px-14 py-10 md:py-14 max-w-[1400px] w-full mx-auto">
+        <div className="flex items-center gap-3">
+          <span className="w-px h-4 rounded-full bg-zinc-800" />
+          <span className="h-3 w-32 bg-zinc-800/60 rounded animate-pulse" />
+        </div>
+        <div className="my-auto py-8 space-y-6">
+          <div className="h-3 w-24 bg-zinc-800/40 rounded animate-pulse" />
+          <div className="h-16 w-80 bg-zinc-800/30 rounded animate-pulse" />
+          <div className="h-6 w-48 bg-zinc-800/20 rounded animate-pulse" />
+          <div className="h-px w-64 bg-zinc-800/30 rounded animate-pulse" />
+          <div className="flex gap-3">
+            {[1,2,3,4].map(i => (
+              <div key={i} className="w-24 h-28 rounded-2xl bg-zinc-900/50 border border-zinc-800/30 animate-pulse" />
+            ))}
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div className="h-2 w-full bg-zinc-900/50 rounded-full" />
+        </div>
+      </div>
+    </div>
+  )
 
   const raceMeetings = getRaceMeetings(meetings).sort(
     (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime()
@@ -209,54 +237,51 @@ export default function HomePage() {
         const firstName = nameParts.slice(0, -1).join(' ').toUpperCase()
         return (
           <section className="relative overflow-hidden bg-zinc-950">
-            {/* Team-colour left accent + ambient glow */}
             <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ backgroundColor: teamColor }} />
             <div
               className="absolute left-0 top-0 bottom-0 w-[600px] pointer-events-none"
-              style={{ background: `radial-gradient(ellipse at left center, ${teamColor}10, transparent 70%)` }}
+              style={{ background: `radial-gradient(ellipse at left center, ${teamColor}12, transparent 70%)` }}
             />
-            {/* Right-side headshot glow */}
             <div
               className="absolute right-0 top-0 bottom-0 w-[500px] pointer-events-none"
-              style={{ background: `radial-gradient(ellipse at right center, ${teamColor}08, transparent 60%)` }}
+              style={{ background: `radial-gradient(ellipse at right center, ${teamColor}0a, transparent 60%)` }}
             />
 
-            <div className="relative z-10 max-w-[1400px] mx-auto px-6 md:px-12 py-4 md:py-5">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-center">
+            <div className="relative z-10 max-w-[1400px] mx-auto px-6 md:px-12 py-6 md:py-8">
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-8 items-center">
 
-                {/* Left — identity + stats */}
                 <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-6 h-px" style={{ backgroundColor: teamColor }} />
+                  <div className="flex items-center gap-2.5 mb-4">
+                    <div className="w-8 h-px" style={{ backgroundColor: teamColor }} />
                     <span className="text-[10px] font-black tracking-[0.4em] uppercase" style={{ color: teamColor }}>
                       Championship Leader · 2026
                     </span>
                   </div>
 
-                  <div className="mb-3">
+                  <div className="mb-4">
                     <h2
                       className="font-black text-white tracking-tighter leading-[0.85]"
-                      style={{ fontSize: 'clamp(1.5rem, 2.5vw, 2.5rem)' }}
+                      style={{ fontSize: 'clamp(2rem, 3.5vw, 3.5rem)' }}
                     >
                       {lastName}
                     </h2>
                     {firstName && (
                       <p
-                        className="font-black tracking-tight leading-none mt-0.5"
-                        style={{ fontSize: 'clamp(0.8rem, 1.3vw, 1.3rem)', color: 'rgba(255,255,255,0.18)' }}
+                        className="font-black tracking-tight leading-none mt-1"
+                        style={{ fontSize: 'clamp(0.9rem, 1.5vw, 1.5rem)', color: 'rgba(255,255,255,0.12)' }}
                       >
                         {firstName}
                       </p>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2 mb-4">
+                  <div className="flex items-center gap-2 mb-5">
                     <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: teamColor }} />
                     <span className="text-zinc-400 text-xs font-medium">{leader.teamName}</span>
                   </div>
 
-                  {/* Stats */}
-                  <div className="grid grid-cols-3 gap-2">
+                  {/* Stats — glassmorphism cards */}
+                  <div className="grid grid-cols-3 gap-2.5">
                     {[
                       { label: 'Points', value: leader.points },
                       { label: 'Wins', value: leader.wins },
@@ -264,16 +289,16 @@ export default function HomePage() {
                     ].map(({ label, value }) => (
                       <div
                         key={label}
-                        className="relative rounded-lg border border-zinc-800/50 bg-zinc-900/40 p-3 overflow-hidden"
+                        className="glass relative rounded-xl p-3.5 overflow-hidden group"
                       >
                         <div
                           className="absolute top-0 left-0 right-0 h-px"
-                          style={{ background: `linear-gradient(to right, ${teamColor}60, transparent)` }}
+                          style={{ background: `linear-gradient(to right, ${teamColor}80, transparent 70%)` }}
                         />
-                        <p className="text-[9px] font-black text-zinc-600 tracking-[0.25em] uppercase mb-1">{label}</p>
+                        <p className="text-[9px] font-bold text-zinc-500 tracking-[0.25em] uppercase mb-1.5">{label}</p>
                         <p
                           className="font-black tabular-nums leading-none"
-                          style={{ fontSize: 'clamp(1rem, 1.5vw, 1.4rem)', color: teamColor }}
+                          style={{ fontSize: 'clamp(1.2rem, 1.8vw, 1.6rem)', color: teamColor }}
                         >
                           {value}
                         </p>
@@ -286,9 +311,8 @@ export default function HomePage() {
                 <div className="flex items-end justify-center lg:justify-end">
                   {leader.headshot ? (
                     <div className="relative">
-                      {/* Glow behind image */}
                       <div
-                        className="absolute -inset-8 rounded-full blur-3xl opacity-20 pointer-events-none"
+                        className="absolute -inset-12 rounded-full blur-3xl opacity-25 pointer-events-none"
                         style={{ backgroundColor: teamColor }}
                       />
                       <Image
@@ -296,14 +320,18 @@ export default function HomePage() {
                         alt={leader.name}
                         width={384}
                         height={480}
-                        className="relative object-contain drop-shadow-2xl"
-                        style={{ filter: 'drop-shadow(0 20px 60px rgba(0,0,0,0.8))', width: 'clamp(7rem, 9vw, 11rem)', height: 'auto' }}
+                        className="relative object-contain"
+                        style={{
+                          filter: `drop-shadow(0 20px 60px rgba(0,0,0,0.8)) drop-shadow(0 0 40px ${teamColor}15)`,
+                          width: 'clamp(8rem, 12vw, 14rem)',
+                          height: 'auto',
+                        }}
                         unoptimized
                       />
                     </div>
                   ) : (
-                    <div className="w-64 h-64 rounded-full bg-zinc-900 border border-zinc-800/40 flex items-center justify-center">
-                      <span className="text-6xl font-black text-zinc-700">{leader.acronym}</span>
+                    <div className="w-48 h-48 rounded-full bg-zinc-900/50 border border-zinc-800/40 flex items-center justify-center backdrop-blur-sm">
+                      <span className="text-5xl font-black text-zinc-700">{leader.acronym}</span>
                     </div>
                   )}
                 </div>
@@ -361,17 +389,18 @@ export default function HomePage() {
                     key={meeting.meeting_key}
                     className={[
                       'relative group rounded-xl overflow-hidden border transition-all duration-300',
+                      isTarget ? 'col-span-2 row-span-1 sm:col-span-1' : '',
                       isCancelled
-                        ? 'border-zinc-800/20 opacity-50'
+                        ? 'border-zinc-800/20 opacity-40'
                         : isTarget
-                        ? 'border-red-500/60 shadow-[0_0_30px_-6px_rgba(239,68,68,0.4)] scale-[1.02]'
+                        ? 'border-red-500/50 shadow-[0_0_40px_-8px_rgba(239,68,68,0.35)]'
                         : isCompleted
-                        ? 'border-zinc-900/40 opacity-50 hover:opacity-75'
-                        : 'border-zinc-800/50 hover:border-zinc-600/50 hover:scale-[1.02]',
+                        ? 'border-zinc-800/30 opacity-45 hover:opacity-70 hover:border-zinc-700/40'
+                        : 'border-zinc-800/40 hover:border-zinc-600/60 hover:shadow-[0_8px_30px_-12px_rgba(0,0,0,0.6)] hover:-translate-y-0.5',
                     ].join(' ')}
                   >
                     {/* Photo thumbnail */}
-                    <div className="relative h-[80px] overflow-hidden">
+                    <div className={['relative overflow-hidden', isTarget ? 'h-[100px]' : 'h-[80px]'].join(' ')}>
                       {photo ? (
                         <Image
                           src={photo}
@@ -379,7 +408,7 @@ export default function HomePage() {
                           fill
                           className={[
                             'object-cover transition-transform duration-700 group-hover:scale-110',
-                            isCompleted ? 'grayscale brightness-50' : '',
+                            isCompleted ? 'grayscale brightness-[0.35]' : '',
                           ].join(' ')}
                           unoptimized
                         />
@@ -387,31 +416,26 @@ export default function HomePage() {
                         <div className="w-full h-full bg-zinc-900" />
                       )}
 
-                      {/* Gradient overlay */}
                       <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/80" />
 
-                      {/* Round number — top left ghost */}
-                      <span className="absolute top-1.5 left-2.5 text-[9px] font-black text-white/30 tabular-nums select-none">
+                      <span className="absolute top-1.5 left-2.5 text-[9px] font-black text-white/25 tabular-nums select-none">
                         {String(idx + 1).padStart(2, '0')}
                       </span>
 
-                      {/* Flag — top right */}
                       {meeting.country_flag && (
                         <div className="absolute top-1.5 right-1.5 w-[18px] h-[13px] rounded-sm overflow-hidden border border-white/15 shadow">
                           <Image src={meeting.country_flag} alt="" fill className="object-cover" unoptimized />
                         </div>
                       )}
 
-                      {/* Cancelled overlay */}
                       {isCancelled && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                          <span className="text-[9px] font-black tracking-[0.2em] uppercase text-red-500 border border-red-500/40 px-2 py-0.5 rounded bg-black/60">
+                          <span className="text-[9px] font-black tracking-[0.2em] uppercase text-red-500/80 border border-red-500/30 px-2 py-0.5 rounded bg-black/60">
                             Cancelled
                           </span>
                         </div>
                       )}
 
-                      {/* Live / Next badge */}
                       {isLive && (
                         <div className="absolute bottom-1.5 left-2 flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
@@ -428,7 +452,7 @@ export default function HomePage() {
                     {/* Info row */}
                     <div className={[
                       'px-3 py-2.5',
-                      isTarget ? 'bg-zinc-900' : 'bg-zinc-950',
+                      isTarget ? 'bg-zinc-900/80' : 'bg-zinc-950',
                     ].join(' ')}>
                       <p className={[
                         'text-[11px] font-black tracking-tight truncate',
@@ -443,7 +467,6 @@ export default function HomePage() {
                       </p>
                     </div>
 
-                    {/* Red bottom stripe on target */}
                     {isTarget && (
                       <div className="absolute bottom-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(to right, #dc2626, #ef444440)' }} />
                     )}
