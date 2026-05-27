@@ -1,4 +1,4 @@
-import type { Meeting, Session, Weather, RaceControl, Lap, Driver, PitStop, Position, Stint, TeamRadio } from './openf1'
+import type { Meeting, Session, Weather, RaceControl, Lap, Driver, PitStop, Position, Stint, TeamRadio, SessionResult } from './openf1'
 import {
   getMeetings,
   getAllSessions,
@@ -10,6 +10,7 @@ import {
   getPositions,
   getStints,
   getTeamRadio,
+  getSessionResult,
 } from './openf1'
 
 const SESSION_TTL = 5 * 60 * 1000   // 5 min — session list rarely changes
@@ -114,11 +115,12 @@ export async function getCachedLatestDrivers(): Promise<Driver[]> {
 
 // ─── Per-session data caches ──────────────────────────────────────────────────
 
-export const getCachedWeather      = makeCache<Weather>(getWeather, DATA_TTL)
-export const getCachedRaceControl  = makeCache<RaceControl>(getRaceControl, DATA_TTL)
-export const getCachedLaps         = makeCache<Lap>(getLaps, DATA_TTL)
-export const getCachedDrivers      = makeCache<Driver>(getDrivers, DATA_TTL)
-export const getCachedPitStops     = makeCache<PitStop>(getPitStops, DATA_TTL)
-export const getCachedPositions    = makeCache<Position>(getPositions, DATA_TTL)
-export const getCachedStints       = makeCache<Stint>(getStints, DATA_TTL)
-export const getCachedTeamRadio    = makeCache<TeamRadio>(getTeamRadio, DATA_TTL)
+export const getCachedWeather        = makeCache<Weather>(getWeather, DATA_TTL)
+export const getCachedRaceControl    = makeCache<RaceControl>(getRaceControl, DATA_TTL)
+export const getCachedLaps           = makeCache<Lap>(getLaps, DATA_TTL)
+export const getCachedDrivers        = makeCache<Driver>(getDrivers, DATA_TTL)
+export const getCachedPitStops       = makeCache<PitStop>(getPitStops, DATA_TTL)
+export const getCachedPositions      = makeCache<Position>(getPositions, DATA_TTL)
+export const getCachedStints         = makeCache<Stint>(getStints, DATA_TTL)
+export const getCachedTeamRadio      = makeCache<TeamRadio>(getTeamRadio, DATA_TTL)
+export const getCachedSessionResult  = makeCache<SessionResult>(getSessionResult, DATA_TTL)

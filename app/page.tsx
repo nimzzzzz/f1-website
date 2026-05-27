@@ -2,44 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
-import type { Meeting, Session, Position } from '@/lib/openf1'
+import type { Meeting, Session } from '@/lib/openf1'
 import { getCachedMeetings, getCachedSessions } from '@/lib/client-cache'
 import Countdown from '@/components/Countdown'
-import { getRaceMeetings, isMeetingCompleted, getCurrentMeeting, getNextMeeting, RACE_POINTS, SPRINT_POINTS } from '@/lib/openf1'
+import { getRaceMeetings, isMeetingCompleted, getCurrentMeeting, getNextMeeting, CANCELLED_COUNTRIES, fetchAllSessionResults } from '@/lib/openf1'
 import { ShaderAnimation } from '@/components/ui/shader-animation'
-import { getCachedDrivers, getCachedPositions } from '@/lib/client-cache'
+import { getCachedDrivers, getCachedSessionResult } from '@/lib/client-cache'
 import { DRIVER_PHOTOS } from '@/lib/driver-data'
-
-function getLatestPositions(positions: Position[]): Map<number, number> {
-  const sorted = [...positions].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  )
-  const map = new Map<number, number>()
-  for (const p of sorted) {
-    if (!map.has(p.driver_number)) map.set(p.driver_number, p.position)
-  }
-  return map
-}
-
-async function fetchAllPositions(sessionKeys: number[]): Promise<Map<number, Position[]>> {
-  const results = await Promise.all(
-    sessionKeys.map(async (key) => ({ key, data: await getCachedPositions(key) }))
-  )
-  const map = new Map<number, Position[]>()
-  const empties: number[] = []
-  for (const { key, data } of results) {
-    if (data.length > 0) map.set(key, data)
-    else empties.push(key)
-  }
-  for (const key of empties) {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      await new Promise((r) => setTimeout(r, 600))
-      const data = await getCachedPositions(key)
-      if (data.length > 0) { map.set(key, data); break }
-    }
-  }
-  return map
-}
 
 const CIRCUIT_PHOTOS: Record<string, string> = {
   Sakhir: 'https://upload.wikimedia.org/wikipedia/commons/b/bc/Bahrain_International_Circuit%2C_November_2%2C_2017_SkySat_%28cropped%29.jpg',
@@ -79,8 +48,6 @@ const CIRCUIT_PHOTOS: Record<string, string> = {
   'Abu Dhabi': 'https://upload.wikimedia.org/wikipedia/commons/e/e1/Yas_Marina_Circuit%2C_October_12%2C_2018_SkySat_%28cropped%29.jpg',
 }
 
-// Races cancelled for 2026
-const CANCELLED_COUNTRIES = new Set(['Bahrain', 'Saudi Arabia'])
 
 function getCircuitPhoto(meeting: Meeting): string | null {
   return (
@@ -123,19 +90,19 @@ export default function HomePage() {
       .then(([m, s]) => { setMeetings(m); setSessions(s); return s })
       .then(async (s) => {
         const now = new Date()
+        const notCancelled = (x: Session) => !CANCELLED_COUNTRIES.has(x.country_name)
 
         const completedRaceSessions = s.filter(
-          x => x.session_type === 'Race' && x.session_name === 'Race' && new Date(x.date_end) < now
+          x => x.session_type === 'Race' && x.session_name === 'Race' && new Date(x.date_end) < now && notCancelled(x)
         )
         const completedSprintSessions = s.filter(
-          x => x.session_type === 'Race' && x.session_name === 'Sprint' && new Date(x.date_end) < now
+          x => x.session_type === 'Race' && x.session_name === 'Sprint' && new Date(x.date_end) < now && notCancelled(x)
         )
         const completedQualSessions = s.filter(
-          x => x.session_name === 'Qualifying' && new Date(x.date_end) < now
+          x => x.session_name === 'Qualifying' && new Date(x.date_end) < now && notCancelled(x)
         )
         if (completedRaceSessions.length === 0) return
 
-        // Most recent completed race session for driver info
         const driverRefKey = [...completedRaceSessions].sort(
           (a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime()
         )[0].session_key
@@ -146,47 +113,37 @@ export default function HomePage() {
           ...completedQualSessions.map(x => x.session_key),
         ]
 
-        const [drivers, positionsMap] = await Promise.all([
+        const [drivers, resultsMap] = await Promise.all([
           getCachedDrivers(driverRefKey),
-          fetchAllPositions(allSessionKeys),
+          fetchAllSessionResults(allSessionKeys, getCachedSessionResult),
         ])
 
         const driverMap = new Map(drivers.map(d => [d.driver_number, d]))
         const standings = new Map<number, { points: number; wins: number; poles: number }>()
 
-        const processSessions = (sessions: Session[], pointsTable: number[]) => {
-          for (const session of sessions) {
-            const positions = positionsMap.get(session.session_key)
-            if (!positions || positions.length === 0) continue
-            const latestPos = getLatestPositions(positions)
-            latestPos.forEach((pos, driverNum) => {
-              const pts = pos >= 1 && pos <= pointsTable.length ? pointsTable[pos - 1] : 0
-              const cur = standings.get(driverNum) ?? { points: 0, wins: 0, poles: 0 }
-              cur.points += pts
-              if (pos === 1) cur.wins++
-              standings.set(driverNum, cur)
-            })
+        for (const session of allPointsSessions) {
+          const results = resultsMap.get(session.session_key)
+          if (!results) continue
+          for (const r of results) {
+            const cur = standings.get(r.driver_number) ?? { points: 0, wins: 0, poles: 0 }
+            cur.points += r.points ?? 0
+            if (r.position === 1) cur.wins++
+            standings.set(r.driver_number, cur)
           }
         }
 
-        processSessions(completedRaceSessions, RACE_POINTS)
-        processSessions(completedSprintSessions, SPRINT_POINTS)
-
-        // Compute poles from qualifying
         for (const session of completedQualSessions) {
-          const positions = positionsMap.get(session.session_key)
-          if (!positions || positions.length === 0) continue
-          const latestPos = getLatestPositions(positions)
-          latestPos.forEach((pos, driverNum) => {
-            if (pos === 1) {
-              const cur = standings.get(driverNum) ?? { points: 0, wins: 0, poles: 0 }
+          const results = resultsMap.get(session.session_key)
+          if (!results) continue
+          for (const r of results) {
+            if (r.position === 1) {
+              const cur = standings.get(r.driver_number) ?? { points: 0, wins: 0, poles: 0 }
               cur.poles++
-              standings.set(driverNum, cur)
+              standings.set(r.driver_number, cur)
             }
-          })
+          }
         }
 
-        // Find leader
         let leaderId = -1, maxPts = -1
         for (const [id, { points }] of standings) {
           if (points > maxPts) { maxPts = points; leaderId = id }

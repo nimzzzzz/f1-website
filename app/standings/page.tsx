@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { Session, Driver, Position } from '@/lib/openf1'
+import type { Session, Driver } from '@/lib/openf1'
 import { getCachedSessions } from '@/lib/client-cache'
-import { RACE_POINTS, SPRINT_POINTS } from '@/lib/openf1'
-import { getCachedDrivers, getCachedPositions } from '@/lib/client-cache'
+import { CANCELLED_COUNTRIES, fetchAllSessionResults } from '@/lib/openf1'
+import { getCachedDrivers, getCachedSessionResult } from '@/lib/client-cache'
 import EmptyState from '@/components/EmptyState'
 
 interface DriverStanding {
@@ -25,46 +25,6 @@ interface TeamStanding {
   wins: number
 }
 
-function getLatestPositions(positions: Position[]): Map<number, number> {
-  const sorted = [...positions].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  )
-  const map = new Map<number, number>()
-  for (const p of sorted) {
-    if (!map.has(p.driver_number)) map.set(p.driver_number, p.position)
-  }
-  return map
-}
-
-// Fetch positions for multiple sessions in parallel, then retry any that came
-// back empty (OpenF1 intermittently returns non-array responses). Parallel first
-// pass keeps it fast; retries only fire for the rare failures.
-async function fetchAllPositions(sessionKeys: number[]): Promise<Map<number, Position[]>> {
-  // First pass: all in parallel
-  const results = await Promise.all(
-    sessionKeys.map(async (key) => ({ key, data: await getCachedPositions(key) }))
-  )
-
-  const map = new Map<number, Position[]>()
-  const empties: number[] = []
-
-  for (const { key, data } of results) {
-    if (data.length > 0) map.set(key, data)
-    else empties.push(key)
-  }
-
-  // Second pass: retry empties sequentially with a short delay
-  for (const key of empties) {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      await new Promise((r) => setTimeout(r, 600))
-      const data = await getCachedPositions(key)
-      if (data.length > 0) { map.set(key, data); break }
-    }
-  }
-
-  return map
-}
-
 export default function StandingsPage() {
   const [driverStandings, setDriverStandings] = useState<DriverStanding[]>([])
   const [teamStandings, setTeamStandings] = useState<TeamStanding[]>([])
@@ -77,36 +37,37 @@ export default function StandingsPage() {
       try {
         const allSessions = await getCachedSessions()
         const now = new Date()
+        const notCancelled = (s: Session) => !CANCELLED_COUNTRIES.has(s.country_name)
 
         const completedRaceSessions = allSessions.filter(
           (s) =>
             s.session_type === 'Race' &&
             s.session_name === 'Race' &&
-            new Date(s.date_end) < now
+            new Date(s.date_end) < now &&
+            notCancelled(s)
         )
 
         const completedSprintSessions = allSessions.filter(
           (s) =>
             s.session_type === 'Race' &&
             s.session_name === 'Sprint' &&
-            new Date(s.date_end) < now
+            new Date(s.date_end) < now &&
+            notCancelled(s)
         )
 
         setCompletedRaces(completedRaceSessions.length)
 
-        const allRaceSessions = [...completedRaceSessions, ...completedSprintSessions]
+        const allPointsSessions = [...completedRaceSessions, ...completedSprintSessions]
 
-        // Fetch driver info and all race positions in parallel
         const driverRefKey = completedRaceSessions.length > 0
           ? [...completedRaceSessions].sort((a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime())[0].session_key
-          : allSessions.filter((s) => new Date(s.date_end) < now).sort((a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime())[0]?.session_key
+          : allSessions.filter((s) => new Date(s.date_end) < now && notCancelled(s)).sort((a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime())[0]?.session_key
 
-        const [refDrivers, positionsMap] = await Promise.all([
+        const [refDrivers, resultsMap] = await Promise.all([
           driverRefKey ? getCachedDrivers(driverRefKey) : Promise.resolve([] as Driver[]),
-          fetchAllPositions(allRaceSessions.map((s) => s.session_key)),
+          fetchAllSessionResults(allPointsSessions.map((s) => s.session_key), getCachedSessionResult),
         ])
 
-        // Maps: driverNumber -> standing data
         const driverMap = new Map<number, DriverStanding>()
         const teamMap = new Map<string, TeamStanding>()
 
@@ -133,34 +94,24 @@ export default function StandingsPage() {
           }
         }
 
-        const processSessions = (sessionsToProcess: Session[], pointsTable: number[]) => {
-          for (const session of sessionsToProcess) {
-            const positions = positionsMap.get(session.session_key)
-            if (!positions || positions.length === 0) continue
+        for (const session of allPointsSessions) {
+          const results = resultsMap.get(session.session_key)
+          if (!results) continue
+          for (const r of results) {
+            const ds = driverMap.get(r.driver_number)
+            if (ds) {
+              ds.points += r.points ?? 0
+              if (r.position === 1) ds.wins++
+              if (r.position !== null && r.position <= 3) ds.podiums++
 
-            const latestPos = getLatestPositions(positions)
-            latestPos.forEach((pos, driverNum) => {
-              const pts = pos >= 1 && pos <= pointsTable.length ? pointsTable[pos - 1] : 0
-              const ds = driverMap.get(driverNum)
-              if (ds) {
-                ds.points += pts
-                if (pos === 1) ds.wins++
-                if (pos <= 3) ds.podiums++
-                driverMap.set(driverNum, ds)
-
-                const ts = teamMap.get(ds.teamName)
-                if (ts) {
-                  ts.points += pts
-                  if (pos === 1) ts.wins++
-                  teamMap.set(ds.teamName, ts)
-                }
+              const ts = teamMap.get(ds.teamName)
+              if (ts) {
+                ts.points += r.points ?? 0
+                if (r.position === 1) ts.wins++
               }
-            })
+            }
           }
         }
-
-        processSessions(completedRaceSessions, RACE_POINTS)
-        processSessions(completedSprintSessions, SPRINT_POINTS)
 
         const sortedDrivers = Array.from(driverMap.values())
           .sort((a, b) => b.points - a.points || b.wins - a.wins)

@@ -154,6 +154,20 @@ export interface CarData {
   drs: number
 }
 
+export interface SessionResult {
+  session_key: number
+  meeting_key: number
+  driver_number: number
+  position: number | null
+  number_of_laps: number
+  points: number
+  dnf: boolean
+  dns: boolean
+  dsq: boolean
+  duration: number | number[] | null
+  gap_to_leader: number | number[] | null
+}
+
 // ─── Core Fetch ──────────────────────────────────────────────────────────────
 
 async function apiFetch<T>(
@@ -161,15 +175,19 @@ async function apiFetch<T>(
   params: Record<string, string | number> = {},
   options: RequestInit = {}
 ): Promise<T[]> {
+  const url = new URL(`${BASE}${path}`)
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)))
   try {
-    const url = new URL(`${BASE}${path}`)
-    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)))
     const res = await fetch(url.toString(), options)
-    if (!res.ok) return []
+    if (!res.ok) {
+      console.error(`[OpenF1] ${res.status} ${res.statusText} — ${url}`)
+      return []
+    }
     const data = await res.json()
     if (!Array.isArray(data)) return []
     return data as T[]
-  } catch {
+  } catch (err) {
+    console.error(`[OpenF1] fetch failed — ${url}`, err)
     return []
   }
 }
@@ -241,6 +259,33 @@ export async function getIntervals(sessionKey: number): Promise<Interval[]> {
   return apiFetch<Interval>('/intervals', { session_key: sessionKey }, { cache: 'no-store' })
 }
 
+export async function getSessionResult(sessionKey: number): Promise<SessionResult[]> {
+  return apiFetch<SessionResult>('/session_result', { session_key: sessionKey }, { cache: 'no-store' })
+}
+
+// ─── Batch Fetch Helper ──────────────────────────────────────────────────────
+
+export async function fetchAllSessionResults(
+  sessionKeys: number[],
+  getCached: (key: number) => Promise<SessionResult[]>
+): Promise<Map<number, SessionResult[]>> {
+  const results = await Promise.all(
+    sessionKeys.map(async (key) => ({ key, data: await getCached(key) }))
+  )
+  const map = new Map<number, SessionResult[]>()
+  const empties: number[] = []
+  for (const { key, data } of results) {
+    if (data.length > 0) map.set(key, data)
+    else empties.push(key)
+  }
+  for (const key of empties) {
+    await new Promise((r) => setTimeout(r, 800))
+    const data = await getCached(key)
+    if (data.length > 0) map.set(key, data)
+  }
+  return map
+}
+
 // ─── Helper Functions ─────────────────────────────────────────────────────────
 
 export function getRaceMeetings(meetings: Meeting[]): Meeting[] {
@@ -303,3 +348,7 @@ export function formatGap(seconds: number | null): string {
 
 export const RACE_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
 export const SPRINT_POINTS = [8, 7, 6, 5, 4, 3, 2, 1]
+
+// ─── Cancelled Races ─────────────────────────────────────────────────────────
+
+export const CANCELLED_COUNTRIES = new Set(['Bahrain', 'Saudi Arabia'])
