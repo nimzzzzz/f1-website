@@ -5,8 +5,7 @@ import Image from 'next/image'
 import { motion } from 'framer-motion'
 import type { Meeting, Session } from '@/lib/openf1'
 import { getRaceMeetings, getCurrentMeeting, getNextMeeting, isMeetingCompleted } from '@/lib/openf1'
-
-const HERO_IMAGE = '/miami-circuit.avif'
+import { getHeroImage, FALLBACK_CIRCUIT_PHOTO } from '@/lib/circuit-data'
 
 interface Props {
   meetings: Meeting[]
@@ -84,6 +83,9 @@ const Countdown = memo(function Countdown({ meetings, sessions }: Props) {
   const targetMeeting = currentMeeting ?? nextMeeting
   const isLive = currentMeeting !== null
 
+  // Hero image follows the current/next grand prix's circuit, falling back when unmapped.
+  const heroImage = targetMeeting ? getHeroImage(targetMeeting) : FALLBACK_CIRCUIT_PHOTO
+
   const completedCount = raceMeetings.filter((m) => isMeetingCompleted(m)).length
   const progressPct = raceMeetings.length > 0 ? (completedCount / raceMeetings.length) * 100 : 0
 
@@ -143,8 +145,9 @@ const Countdown = memo(function Countdown({ meetings, sessions }: Props) {
       {/* Background image */}
       <div className="absolute inset-0">
         <Image
-          src={HERO_IMAGE}
-          alt="Formula 1 race"
+          key={heroImage}
+          src={heroImage}
+          alt={`${targetMeeting.circuit_short_name} circuit`}
           fill
           className="object-cover object-center"
           unoptimized
