@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import Image from 'next/image'
+import { motion } from 'framer-motion'
 import type { Meeting, Session } from '@/lib/openf1'
 import { getCachedMeetings, getCachedSessions } from '@/lib/client-cache'
 import Countdown from '@/components/Countdown'
@@ -10,6 +11,7 @@ import { ShaderAnimation } from '@/components/ui/shader-animation'
 import { getCachedDrivers, getCachedSessionResult } from '@/lib/client-cache'
 import { DRIVER_PHOTOS } from '@/lib/driver-data'
 import { getCircuitPhoto } from '@/lib/circuit-data'
+import IntroSequence, { type RevealMode } from '@/components/IntroSequence'
 
 
 interface LeaderStats {
@@ -33,11 +35,45 @@ const SESSION_SHORT: Record<string, string> = {
   'Race': 'RACE',
 }
 
+// Staggered reveal wrapper for the intro handoff: content mounts hidden
+// behind the intro overlay and cascades in when the intro hands off.
+// 'instant' (reduced motion) shows content with no animation.
+function Reveal({ order, state, children }: {
+  order: number
+  state: 'hidden' | RevealMode
+  children: ReactNode
+}) {
+  return (
+    <motion.div
+      initial={false}
+      animate={state === 'hidden' ? { opacity: 0, y: 24 } : { opacity: 1, y: 0 }}
+      transition={
+        state === 'instant'
+          ? { duration: 0 }
+          : { duration: 0.7, delay: order * 0.18, ease: [0.22, 1, 0.36, 1] }
+      }
+    >
+      {children}
+    </motion.div>
+  )
+}
+
 export default function HomePage() {
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [leader, setLeader] = useState<LeaderStats | null>(null)
+  // Cinematic intro overlay — plays on every visit to /; data fetching below
+  // runs in parallel behind it.
+  const [introActive, setIntroActive] = useState(true)
+  const [reveal, setReveal] = useState<'hidden' | RevealMode>('hidden')
+
+  const handleIntroReveal = useCallback((mode: RevealMode) => setReveal(mode), [])
+  const handleIntroDone = useCallback(() => {
+    setIntroActive(false)
+    // Safety net: never leave content hidden once the overlay is gone
+    setReveal((r) => (r === 'hidden' ? 'cascade' : r))
+  }, [])
 
   // Phase 1: fetch meetings + sessions, then show the page immediately
   useEffect(() => {
@@ -125,7 +161,13 @@ export default function HomePage() {
     })
   }, [sessions])
 
+  const intro = introActive && (
+    <IntroSequence onReveal={handleIntroReveal} onDone={handleIntroDone} />
+  )
+
   if (loading) return (
+    <>
+    {intro}
     <div className="min-h-[100dvh] bg-zinc-950 flex flex-col">
       {/* Hero skeleton */}
       <div className="relative flex-1 flex flex-col justify-between px-8 md:px-14 py-10 md:py-14 max-w-[1400px] w-full mx-auto">
@@ -149,6 +191,7 @@ export default function HomePage() {
         </div>
       </div>
     </div>
+    </>
   )
 
   const raceMeetings = getRaceMeetings(meetings).sort(
@@ -180,11 +223,15 @@ export default function HomePage() {
 
   return (
     <>
+      {intro}
+
       {/* ─── Hero countdown ─── */}
-      <Countdown meetings={activeMeetings} sessions={sessions} />
+      <Reveal order={0} state={reveal}>
+        <Countdown meetings={activeMeetings} sessions={sessions} />
+      </Reveal>
 
       {/* ─── Championship Leader ─── */}
-      {leader && (() => {
+      {leader && <Reveal order={1} state={reveal}>{(() => {
         const teamColor = `#${leader.teamColour}`
         const nameParts = leader.name.split(' ')
         const lastName = nameParts[nameParts.length - 1].toUpperCase()
@@ -295,10 +342,11 @@ export default function HomePage() {
             <div className="absolute bottom-0 left-0 right-0 h-px bg-zinc-800/40" />
           </section>
         )
-      })()}
+      })()}</Reveal>}
 
       {/* ─── Season Calendar ─── */}
       {raceMeetings.length > 0 && (
+        <Reveal order={2} state={reveal}>
         <section className="bg-zinc-950">
           <div className="max-w-[1400px] mx-auto px-6 md:px-12 pt-4 pb-20 md:pb-28">
 
@@ -442,6 +490,7 @@ export default function HomePage() {
           </div>
 
         </section>
+        </Reveal>
       )}
     </>
   )
