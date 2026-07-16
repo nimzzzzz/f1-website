@@ -7,6 +7,15 @@
 :root {
   --font-body: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* LIGHTS OUT design tokens. --accent is scarce by rule: P1/leader,
+     live states, hover states, and the menu only — never decorative. */
+  --bg: #0a0a0a; /* pure black is reserved for transition panels + intro */
+  --surface: #111113;
+  --line: rgba(255, 255, 255, 0.08);
+  --text: #f5f5f3;
+  --text-dim: rgba(245, 245, 243, 0.55);
+  --accent: #e10600;
 }
 
 * {
@@ -18,10 +27,29 @@ html {
 }
 
 body {
-  background-color: #09090b;
-  color: #f4f4f5;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body), sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Mono label — the redesign's small-type register:
+   11px mono, tracked 0.2em, uppercase. */
+.label-mono {
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* Oversized dim outline numerals (display-scale backdrop digits) */
+.outline-numeral {
+  font-family: var(--font-display), sans-serif;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(245, 245, 243, 0.14);
+  user-select: none;
+  pointer-events: none;
 }
 
 ::selection {
