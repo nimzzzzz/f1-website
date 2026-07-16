@@ -19,7 +19,7 @@ interface Props {
 // NOTE: the AI-generated clip shows FOUR start lights, not the five of a
 // real F1 gantry, so the marker dots sync to the four real ignitions.
 const CUES = {
-  kicker: 0.3, // "2026 SEASON" kicker fades in
+  kicker: 0.3, // "<year> SEASON" kicker fades in
   lights: [0.8, 1.6, 2.25, 3.05], // each start light ignites
   out: 5.45, // all lights dark — the LIGHTS OUT moment
   gone: 6.9, // car fully out of frame; empty wet-track hold begins
@@ -284,7 +284,7 @@ export default function IntroSequence({ onReveal, onDone }: Props) {
                       textIndent: '0.25em',
                     }}
                   >
-                    2026 Season
+                    {new Date().getFullYear()} Season
                   </motion.p>
 
                   {/* Light markers — the clip's gantry has four lights */}
