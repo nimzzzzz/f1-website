@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState, type RefObject } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 
 // How the page content should animate in once the intro hands off.
@@ -38,11 +38,36 @@ const OVERLAY_FADE_S = 0.8
 const GRAIN_URL =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)'/%3E%3C/svg%3E\")"
 
+// The video is SSR'd as raw markup for two reasons: (1) the browser's
+// preload scanner starts the media fetch at HTML parse — several seconds
+// before hydration on slow connections — and muted autoplay begins without
+// JS; (2) React omits the `muted` attribute during SSR (react#11041),
+// which would block pre-hydration autoplay, so React must not own this
+// element. motion-reduce:hidden keeps it invisible for reduced-motion
+// users until hydration unmounts the whole overlay.
+// Kept single-line, no self-closing slashes, no style attribute: the string
+// must survive browser HTML re-serialization byte-identical, or hydration
+// treats it as a mismatch and recreates the element (restarting playback).
+const VIDEO_HTML =
+  '<video muted autoplay playsinline preload="auto" fetchpriority="high" poster="/intro/poster.jpg" class="h-full w-full object-cover intro-video-poster"><source src="/intro/launch.webm" type="video/webm"><source src="/intro/launch.mp4" type="video/mp4"></video>'
+
+// memo with stable props: renders exactly once, so React never updates the
+// dangerouslySetInnerHTML node after hydration. Without this, React 18's
+// post-hydration update path re-assigns the innerHTML on every parent
+// re-render (e.g. each beat change), recreating the video and restarting
+// playback in a loop.
+const VideoLayer = memo(function VideoLayer({ wrapRef }: { wrapRef: RefObject<HTMLDivElement> }) {
+  return (
+    <div
+      ref={wrapRef}
+      className="h-full w-full motion-reduce:hidden"
+      dangerouslySetInnerHTML={{ __html: VIDEO_HTML }}
+    />
+  )
+})
+
 export default function IntroSequence({ onReveal, onDone }: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  // Video mounts client-side only; the black overlay itself renders on the
-  // server too so there is never a flash of page content.
-  const [showVideo, setShowVideo] = useState(false)
+  const videoWrapRef = useRef<HTMLDivElement>(null)
   const [fading, setFading] = useState(false)
   const [beat, setBeat] = useState<{ lit: number; phase: BeatPhase }>({ lit: 0, phase: 'idle' })
   const handedOffRef = useRef(false)
@@ -69,7 +94,6 @@ export default function IntroSequence({ onReveal, onDone }: Props) {
       handoff('instant')
       return
     }
-    setShowVideo(true)
     document.body.style.overflow = 'hidden'
     return () => {
       document.body.style.overflow = ''
@@ -78,10 +102,10 @@ export default function IntroSequence({ onReveal, onDone }: Props) {
   }, [])
 
   useEffect(() => {
-    if (!showVideo) return
-    const video = videoRef.current
-    if (!video) return
+    const wrap = videoWrapRef.current
+    if (!wrap) return
 
+    let video: HTMLVideoElement | null = null
     let started = false
     let stallTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -110,9 +134,10 @@ export default function IntroSequence({ onReveal, onDone }: Props) {
     }
 
     const onTimeUpdate = () => {
-      if (video.currentTime > 0) started = true
+      if (video && video.currentTime > 0) started = true
       clearStallTimer()
       if (
+        video &&
         Number.isFinite(video.duration) &&
         video.currentTime >= video.duration - HANDOFF_BEFORE_END_S
       ) {
@@ -123,23 +148,73 @@ export default function IntroSequence({ onReveal, onDone }: Props) {
     const onEnded = () => handoff('fade')
     const onError = () => abort()
 
-    video.addEventListener('playing', onPlaying)
-    video.addEventListener('waiting', onWaiting)
-    video.addEventListener('timeupdate', onTimeUpdate)
-    video.addEventListener('ended', onEnded)
-    video.addEventListener('error', onError)
-    video.play().catch(abort)
+    const unbind = (v: HTMLVideoElement) => {
+      v.removeEventListener('playing', onPlaying)
+      v.removeEventListener('waiting', onWaiting)
+      v.removeEventListener('timeupdate', onTimeUpdate)
+      v.removeEventListener('ended', onEnded)
+      v.removeEventListener('error', onError)
+    }
+
+    const bind = (v: HTMLVideoElement) => {
+      video = v
+      v.addEventListener('playing', onPlaying)
+      v.addEventListener('waiting', onWaiting)
+      v.addEventListener('timeupdate', onTimeUpdate)
+      v.addEventListener('ended', onEnded)
+      v.addEventListener('error', onError)
+      // The SSR'd video may have been playing since before hydration —
+      // catch anything that already happened while no listeners were attached.
+      if (v.ended) handoff('fade')
+      if (v.currentTime > 0) started = true
+      if (v.error) abort()
+      // Abort only if the rejection is for the element that is still live
+      // AND still in the document: replacing the element rejects its pending
+      // play() with AbortError (often before the next tick rebinds), which
+      // must not kill the intro. A genuine autoplay denial happens on a
+      // connected element.
+      v.play().catch(() => {
+        if (v === video && v.isConnected) abort()
+      })
+    }
 
     // Beat engine: timeupdate only fires ~4Hz, far too coarse to sync the
     // light ignitions, so read currentTime every frame and only set state
-    // when the derived beat actually changes.
+    // when the derived beat actually changes. The tick is also the
+    // self-healing layer for React's hydration/re-render DOM churn:
+    // - element recreated → rebind listeners to the live element;
+    // - element MOVED (React remove+reinsert of the same node — which per
+    //   spec pauses a media element, with no autoplay re-trigger) → resume.
     let raf = 0
+    let lastResume = 0
+    let resumeFails = 0
     const tick = () => {
-      const t = video.currentTime
-      const phase: BeatPhase =
-        t >= CUES.gone ? 'gone' : t >= CUES.out ? 'out' : t >= CUES.kicker ? 'grid' : 'idle'
-      const lit = phase === 'grid' ? CUES.lights.filter((c) => t >= c).length : 0
-      setBeat((b) => (b.phase === phase && b.lit === lit ? b : { lit, phase }))
+      const current = wrap.querySelector('video')
+      if (current !== video) {
+        if (video) unbind(video)
+        if (current) bind(current)
+      }
+      if (video) {
+        if (video.paused && !video.ended && !handedOffRef.current) {
+          const now = performance.now()
+          if (now - lastResume > 400) {
+            lastResume = now
+            const v = video
+            v.play().then(() => {
+              resumeFails = 0
+            }).catch(() => {
+              // Repeated rejections on a live, connected element mean
+              // playback genuinely can't proceed — cut to content.
+              if (v === video && v.isConnected && ++resumeFails >= 6) abort()
+            })
+          }
+        }
+        const t = video.currentTime
+        const phase: BeatPhase =
+          t >= CUES.gone ? 'gone' : t >= CUES.out ? 'out' : t >= CUES.kicker ? 'grid' : 'idle'
+        const lit = phase === 'grid' ? CUES.lights.filter((c) => t >= c).length : 0
+        setBeat((b) => (b.phase === phase && b.lit === lit ? b : { lit, phase }))
+      }
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
@@ -148,14 +223,10 @@ export default function IntroSequence({ onReveal, onDone }: Props) {
       clearTimeout(startTimer)
       clearStallTimer()
       cancelAnimationFrame(raf)
-      video.removeEventListener('playing', onPlaying)
-      video.removeEventListener('waiting', onWaiting)
-      video.removeEventListener('timeupdate', onTimeUpdate)
-      video.removeEventListener('ended', onEnded)
-      video.removeEventListener('error', onError)
+      if (video) unbind(video)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showVideo])
+  }, [])
 
   return (
     <motion.div
@@ -167,20 +238,8 @@ export default function IntroSequence({ onReveal, onDone }: Props) {
         if (fading) callbacksRef.current.onDone()
       }}
     >
-      {showVideo && (
-        <>
-          <video
-            ref={videoRef}
-            muted
-            autoPlay
-            playsInline
-            preload="auto"
-            poster="/intro/poster.jpg"
-            className="h-full w-full object-cover"
-          >
-            <source src="/intro/launch.webm" type="video/webm" />
-            <source src="/intro/launch.mp4" type="video/mp4" />
-          </video>
+      <>
+          <VideoLayer wrapRef={videoWrapRef} />
 
           {/* Texture: vignette + film grain over the video */}
           <div
@@ -306,8 +365,7 @@ export default function IntroSequence({ onReveal, onDone }: Props) {
           >
             Skip
           </motion.button>
-        </>
-      )}
+      </>
     </motion.div>
   )
 }

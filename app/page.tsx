@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import ReactDOM from 'react-dom'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
 import type { Meeting, Session } from '@/lib/openf1'
@@ -58,7 +59,23 @@ function Reveal({ order, state, children }: {
   )
 }
 
+// react-dom's float preload API (present in the React canary Next 14 ships,
+// but missing from @types/react-dom@18, hence the loose typing).
+const preloadAsset = (
+  ReactDOM as unknown as {
+    preload?: (href: string, opts: { as: string; type?: string; fetchPriority?: string }) => void
+  }
+).preload
+
 export default function HomePage() {
+  // Start the poster fetch while the HTML is still streaming — called during
+  // render so SSR hoists <link rel="preload"> into <head>. The video itself
+  // is NOT link-preloaded: measured in Chromium, as="video" preloads are
+  // never fetched and as="fetch" preloads double-download alongside the
+  // media request. The webm loads early because IntroSequence SSRs the
+  // <video> element, which the browser's preload scanner picks up at parse.
+  preloadAsset?.('/intro/poster.jpg', { as: 'image', fetchPriority: 'high' })
+
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
@@ -161,13 +178,14 @@ export default function HomePage() {
     })
   }, [sessions])
 
+  // Keep the intro at ONE stable tree position across the loading flip —
+  // rendering it from two different return statements remounts it (and the
+  // video) when `loading` changes.
   const intro = introActive && (
-    <IntroSequence onReveal={handleIntroReveal} onDone={handleIntroDone} />
+    <IntroSequence key="intro" onReveal={handleIntroReveal} onDone={handleIntroDone} />
   )
 
-  if (loading) return (
-    <>
-    {intro}
+  const skeleton = (
     <div className="min-h-[100dvh] bg-zinc-950 flex flex-col">
       {/* Hero skeleton */}
       <div className="relative flex-1 flex flex-col justify-between px-8 md:px-14 py-10 md:py-14 max-w-[1400px] w-full mx-auto">
@@ -191,8 +209,8 @@ export default function HomePage() {
         </div>
       </div>
     </div>
-    </>
   )
+
 
   const raceMeetings = getRaceMeetings(meetings).sort(
     (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime()
@@ -224,7 +242,8 @@ export default function HomePage() {
   return (
     <>
       {intro}
-
+      {loading ? skeleton : (
+    <>
       {/* ─── Hero countdown ─── */}
       <Reveal order={0} state={reveal}>
         <Countdown meetings={activeMeetings} sessions={sessions} />
@@ -491,6 +510,8 @@ export default function HomePage() {
 
         </section>
         </Reveal>
+      )}
+    </>
       )}
     </>
   )
