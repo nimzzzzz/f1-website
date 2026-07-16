@@ -93,8 +93,11 @@ export default function Sidebar() {
             <rect y="8" width="20" height="4" rx="1" fill="#DC2626" />
             <rect y="16" width="24" height="4" rx="1" fill="#DC2626" />
           </svg>
-          <span className="relative z-10 text-base font-black tracking-tight text-zinc-100 drop-shadow-[0_0_6px_rgba(220,38,38,0.15)]">
-            Nimas F1 Tracker
+          <span
+            className="relative z-10 text-2xl leading-none text-zinc-100 drop-shadow-[0_0_6px_rgba(220,38,38,0.15)]"
+            style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.06em' }}
+          >
+            LIGHTS OUT
           </span>
         </div>
         <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-zinc-600">

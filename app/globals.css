@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Brand font variables — --font-display comes from next/font (Bebas Neue);
+   Geist ships its own fixed var names, aliased here to the brand names. */
+:root {
+  --font-body: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
 * {
   box-sizing: border-box;
 }
