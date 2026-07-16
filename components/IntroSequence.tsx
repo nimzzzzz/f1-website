@@ -204,39 +204,41 @@ export default function IntroSequence({ onReveal, onDone }: Props) {
                 <motion.div
                   key="kicker"
                   className="col-start-1 row-start-1 flex flex-col items-center"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: beat.phase === 'grid' ? 1 : 0 }}
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={beat.phase === 'grid' ? { opacity: 1, y: 0 } : { opacity: 0, y: 18 }}
                   exit={{ opacity: 0, transition: { duration: 0.2 } }}
                   transition={{ duration: 0.6, ease: 'easeOut' }}
                 >
+                  {/* Title card, not caption: display face, near-full white */}
                   <motion.p
                     key={`pulse-${beat.lit}`}
                     animate={beat.lit > 0 ? { scale: [1, 1.03, 1] } : { scale: 1 }}
                     transition={{ duration: 0.3, ease: 'easeOut' }}
                     className="uppercase"
                     style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 14,
-                      letterSpacing: '0.3em',
-                      color: 'rgba(255,255,255,0.6)',
+                      fontFamily: 'var(--font-display)',
+                      fontSize: 'clamp(1.6rem, 3.5vw, 2.8rem)',
+                      letterSpacing: '0.25em',
+                      lineHeight: 1,
+                      color: 'rgba(255,255,255,0.85)',
                       // recentres text that letterspacing skews right
-                      textIndent: '0.3em',
+                      textIndent: '0.25em',
                     }}
                   >
                     2026 Season
                   </motion.p>
 
                   {/* Light markers — the clip's gantry has four lights */}
-                  <div className="flex gap-2.5 mt-4">
+                  <div className="flex gap-3.5 mt-6">
                     {CUES.lights.map((cue, i) => {
                       const on = i < beat.lit
                       return (
                         <span
                           key={cue}
-                          className="w-1.5 h-1.5 rounded-full transition-all duration-150"
+                          className="w-2.5 h-2.5 rounded-full transition-all duration-150"
                           style={{
                             backgroundColor: on ? '#E10600' : 'rgba(255,255,255,0.14)',
-                            boxShadow: on ? '0 0 10px 2px rgba(225,6,0,0.55)' : 'none',
+                            boxShadow: on ? '0 0 14px 3px rgba(225,6,0,0.55)' : 'none',
                           }}
                         />
                       )
