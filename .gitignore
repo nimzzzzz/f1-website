@@ -1,3 +1,6 @@
 node_modules
 .next
 .vercel
+
+# raw AI-generated intro source — only processed assets in public/intro/ are committed
+intro-raw.mp4
