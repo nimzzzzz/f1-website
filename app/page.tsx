@@ -2,38 +2,29 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import ReactDOM from 'react-dom'
-import Image from 'next/image'
 import { motion } from 'framer-motion'
-import type { Meeting, Session } from '@/lib/openf1'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import type { Meeting, Session, SessionResult } from '@/lib/openf1'
 import { getCachedMeetings, getCachedSessions } from '@/lib/client-cache'
-import Countdown from '@/components/Countdown'
-import { getRaceMeetings, isMeetingCompleted, getCurrentMeeting, getNextMeeting, CANCELLED_COUNTRIES, fetchAllSessionResults } from '@/lib/openf1'
-import { ShaderAnimation } from '@/components/ui/shader-animation'
+import {
+  getRaceMeetings,
+  isMeetingCompleted,
+  getCurrentMeeting,
+  getNextMeeting,
+  CANCELLED_COUNTRIES,
+  fetchAllSessionResults,
+} from '@/lib/openf1'
 import { getCachedDrivers, getCachedSessionResult } from '@/lib/client-cache'
-import { DRIVER_PHOTOS } from '@/lib/driver-data'
-import { getCircuitPhoto } from '@/lib/circuit-data'
 import IntroSequence, { type RevealMode } from '@/components/IntroSequence'
+import NowSection from '@/components/home/NowSection'
+import FightSection, { type FightRow } from '@/components/home/FightSection'
+import LastRaceSection, { type PodiumRow } from '@/components/home/LastRaceSection'
+import SeasonSection from '@/components/home/SeasonSection'
+import HomeFooter from '@/components/home/HomeFooter'
 
-
-interface LeaderStats {
-  name: string
-  acronym: string
-  teamName: string
-  teamColour: string
-  headshot: string | null
-  points: number
-  wins: number
-  poles: number
-}
-
-const SESSION_SHORT: Record<string, string> = {
-  'Practice 1': 'P1',
-  'Practice 2': 'P2',
-  'Practice 3': 'P3',
-  'Sprint Shootout': 'SQ',
-  'Sprint': 'SPR',
-  'Qualifying': 'QUALI',
-  'Race': 'RACE',
+interface LastRaceData {
+  label: string
+  podium: PodiumRow[]
 }
 
 // Staggered reveal wrapper for the intro handoff: content mounts hidden
@@ -67,6 +58,20 @@ const preloadAsset = (
   }
 ).preload
 
+function surnameOf(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/)
+  return (parts[parts.length - 1] ?? fullName).toUpperCase()
+}
+
+function gapLabel(gap: SessionResult['gap_to_leader']): string {
+  if (gap === null || gap === undefined) return '—'
+  if (Array.isArray(gap)) {
+    const laps = gap[0] ?? 1
+    return `+${laps} LAP${laps > 1 ? 'S' : ''}`
+  }
+  return `+${gap.toFixed(3)}S`
+}
+
 export default function HomePage() {
   // Start the poster fetch while the HTML is still streaming — called during
   // render so SSR hoists <link rel="preload"> into <head>. The video itself
@@ -79,7 +84,8 @@ export default function HomePage() {
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
-  const [leader, setLeader] = useState<LeaderStats | null>(null)
+  const [fight, setFight] = useState<FightRow[] | null>(null)
+  const [lastRace, setLastRace] = useState<LastRaceData | null>(null)
   // Cinematic intro overlay — plays on every visit to /; data fetching below
   // runs in parallel behind it.
   const [introActive, setIntroActive] = useState(true)
@@ -99,9 +105,10 @@ export default function HomePage() {
       .catch(() => setLoading(false))
   }, [])
 
-  // Phase 2: compute championship leader in the background (doesn't block render)
+  // Phase 2: compute championship top 3 + last race podium in the background
+  // (same fetches as before — standings from race/sprint results)
   useEffect(() => {
-    if (sessions.length === 0) return
+    if (sessions.length === 0 || meetings.length === 0) return
     const now = new Date()
     const notCancelled = (x: Session) => !CANCELLED_COUNTRIES.has(x.country_name)
 
@@ -111,72 +118,81 @@ export default function HomePage() {
     const completedSprintSessions = sessions.filter(
       x => x.session_type === 'Race' && x.session_name === 'Sprint' && new Date(x.date_end) < now && notCancelled(x)
     )
-    const completedQualSessions = sessions.filter(
-      x => x.session_name === 'Qualifying' && new Date(x.date_end) < now && notCancelled(x)
-    )
     if (completedRaceSessions.length === 0) return
 
-    const driverRefKey = [...completedRaceSessions].sort(
+    const latestRace = [...completedRaceSessions].sort(
       (a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime()
-    )[0].session_key
+    )[0]
 
     const allPointsSessions = [...completedRaceSessions, ...completedSprintSessions]
-    const allSessionKeys = [
-      ...allPointsSessions.map(x => x.session_key),
-      ...completedQualSessions.map(x => x.session_key),
-    ]
+    const allSessionKeys = allPointsSessions.map(x => x.session_key)
 
     Promise.all([
-      getCachedDrivers(driverRefKey),
+      getCachedDrivers(latestRace.session_key),
       fetchAllSessionResults(allSessionKeys, getCachedSessionResult),
     ]).then(([drivers, resultsMap]) => {
       const driverMap = new Map(drivers.map(d => [d.driver_number, d]))
-      const standings = new Map<number, { points: number; wins: number; poles: number }>()
+      const standings = new Map<number, { points: number; wins: number }>()
 
       for (const session of allPointsSessions) {
         const results = resultsMap.get(session.session_key)
         if (!results) continue
         for (const r of results) {
-          const cur = standings.get(r.driver_number) ?? { points: 0, wins: 0, poles: 0 }
+          const cur = standings.get(r.driver_number) ?? { points: 0, wins: 0 }
           cur.points += r.points ?? 0
-          if (r.position === 1) cur.wins++
+          if (r.position === 1 && session.session_name === 'Race') cur.wins++
           standings.set(r.driver_number, cur)
         }
       }
 
-      for (const session of completedQualSessions) {
-        const results = resultsMap.get(session.session_key)
-        if (!results) continue
-        for (const r of results) {
-          if (r.position === 1) {
-            const cur = standings.get(r.driver_number) ?? { points: 0, wins: 0, poles: 0 }
-            cur.poles++
-            standings.set(r.driver_number, cur)
+      const top3: FightRow[] = [...standings.entries()]
+        .sort((a, b) => b[1].points - a[1].points)
+        .slice(0, 3)
+        .map(([driverNumber, s], i) => {
+          const info = driverMap.get(driverNumber)
+          const fullName = info?.full_name ?? `Driver #${driverNumber}`
+          return {
+            position: i + 1,
+            surname: surnameOf(fullName),
+            fullName,
+            points: s.points,
+            wins: s.wins,
           }
+        })
+      if (top3.length > 0) setFight(top3)
+
+      // Last time out: podium of the most recent completed grand prix
+      const latestResults = resultsMap.get(latestRace.session_key)
+      const latestMeeting = meetings.find(m => m.meeting_key === latestRace.meeting_key)
+      if (latestResults && latestMeeting) {
+        const podium: PodiumRow[] = latestResults
+          .filter(r => r.position !== null && r.position <= 3)
+          .sort((a, b) => (a.position ?? 9) - (b.position ?? 9))
+          .map(r => {
+            const info = driverMap.get(r.driver_number)
+            const fullName = info?.full_name ?? `Driver #${r.driver_number}`
+            return {
+              position: r.position ?? 0,
+              surname: surnameOf(fullName),
+              fullName,
+              gapLabel: r.position === 1 ? '' : gapLabel(r.gap_to_leader),
+            }
+          })
+        if (podium.length > 0) {
+          setLastRace({
+            label: latestMeeting.meeting_name.replace(/grand prix/i, 'GP').toUpperCase(),
+            podium,
+          })
         }
       }
-
-      let leaderId = -1, maxPts = -1
-      for (const [id, { points }] of standings) {
-        if (points > maxPts) { maxPts = points; leaderId = id }
-      }
-      if (leaderId === -1) return
-
-      const info = driverMap.get(leaderId)
-      const s2 = standings.get(leaderId)!
-      const acronym = info?.name_acronym ?? '---'
-      setLeader({
-        name: info?.full_name ?? `Driver #${leaderId}`,
-        acronym,
-        teamName: info?.team_name ?? '',
-        teamColour: info?.team_colour ?? '6B7280',
-        headshot: DRIVER_PHOTOS[acronym] ?? info?.headshot_url ?? null,
-        points: s2.points,
-        wins: s2.wins,
-        poles: s2.poles,
-      })
     })
-  }, [sessions])
+  }, [sessions, meetings])
+
+  // Sections 2–3 mount after their data arrives, which changes the page
+  // height above the pinned season strip — recompute trigger positions.
+  useEffect(() => {
+    if (fight || lastRace) requestAnimationFrame(() => ScrollTrigger.refresh())
+  }, [fight, lastRace])
 
   // Keep the intro at ONE stable tree position across the loading flip —
   // rendering it from two different return statements remounts it (and the
@@ -186,31 +202,17 @@ export default function HomePage() {
   )
 
   const skeleton = (
-    <div className="min-h-[100dvh] bg-zinc-950 flex flex-col">
-      {/* Hero skeleton */}
-      <div className="relative flex-1 flex flex-col justify-between px-8 md:px-14 py-10 md:py-14 max-w-[1400px] w-full mx-auto">
-        <div className="flex items-center gap-3">
-          <span className="w-px h-4 rounded-full bg-zinc-800" />
-          <span className="h-3 w-32 bg-zinc-800/60 rounded animate-pulse" />
-        </div>
-        <div className="my-auto py-8 space-y-6">
-          <div className="h-3 w-24 bg-zinc-800/40 rounded animate-pulse" />
-          <div className="h-16 w-80 bg-zinc-800/30 rounded animate-pulse" />
-          <div className="h-6 w-48 bg-zinc-800/20 rounded animate-pulse" />
-          <div className="h-px w-64 bg-zinc-800/30 rounded animate-pulse" />
-          <div className="flex gap-3">
-            {[1,2,3,4].map(i => (
-              <div key={i} className="w-24 h-28 rounded-2xl bg-zinc-900/50 border border-zinc-800/30 animate-pulse" />
-            ))}
-          </div>
-        </div>
-        <div className="space-y-2">
-          <div className="h-2 w-full bg-zinc-900/50 rounded-full" />
-        </div>
+    <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
+      <div className="h-3 w-40 animate-pulse rounded bg-white/5" />
+      <div className="mt-8 h-28 w-[70%] animate-pulse rounded bg-white/5 md:h-44" />
+      <div className="mt-6 h-4 w-64 animate-pulse rounded bg-white/5" />
+      <div className="mt-14 flex gap-6">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="h-20 w-24 animate-pulse rounded bg-white/5" />
+        ))}
       </div>
     </div>
   )
-
 
   const raceMeetings = getRaceMeetings(meetings).sort(
     (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime()
@@ -222,296 +224,84 @@ export default function HomePage() {
   const targetMeeting = currentMeeting ?? nextMeeting
   const isLiveWeekend = currentMeeting !== null
 
-  const meetingSessions = targetMeeting
-    ? sessions
-        .filter((s) => s.meeting_key === targetMeeting.meeting_key)
-        .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime())
-    : []
+  const raceSession = targetMeeting
+    ? sessions.find(
+        (s) => s.meeting_key === targetMeeting.meeting_key && s.session_name === 'Race'
+      ) ?? null
+    : null
 
-  const circuitPhoto = targetMeeting ? getCircuitPhoto(targetMeeting) : null
-  const completedCount = raceMeetings.filter((m) => isMeetingCompleted(m)).length
   const roundNumber = targetMeeting
     ? raceMeetings.findIndex((m) => m.meeting_key === targetMeeting.meeting_key) + 1
     : null
 
-  // Split name for editorial typography
-  const nameMatch = targetMeeting?.meeting_name.match(/^(.*?)\s+(Grand\s+Prix)$/i)
-  const locationPart = nameMatch ? nameMatch[1].toUpperCase() : (targetMeeting?.meeting_name.toUpperCase() ?? '')
-  const gpPart = nameMatch ? nameMatch[2].toUpperCase() : ''
+  const seasonRounds = raceMeetings.map((m) => ({
+    meeting: m,
+    isPast: isMeetingCompleted(m),
+    isNext: targetMeeting?.meeting_key === m.meeting_key,
+    isCancelled: CANCELLED_COUNTRIES.has(m.country_name),
+  }))
+
+  const seasonYear = raceMeetings[0]?.year ?? null
 
   return (
     <>
       {intro}
       {loading ? skeleton : (
-    <>
-      {/* ─── Hero countdown ─── */}
-      <Reveal order={0} state={reveal}>
-        <Countdown meetings={activeMeetings} sessions={sessions} />
-      </Reveal>
-
-      {/* ─── Championship Leader ─── */}
-      {leader && <Reveal order={1} state={reveal}>{(() => {
-        const teamColor = `#${leader.teamColour}`
-        const nameParts = leader.name.split(' ')
-        const lastName = nameParts[nameParts.length - 1].toUpperCase()
-        const firstName = nameParts.slice(0, -1).join(' ').toUpperCase()
-        return (
-          <section className="relative overflow-hidden bg-zinc-950">
-            <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ backgroundColor: teamColor }} />
-            <div
-              className="absolute left-0 top-0 bottom-0 w-[600px] pointer-events-none"
-              style={{ background: `radial-gradient(ellipse at left center, ${teamColor}12, transparent 70%)` }}
-            />
-            <div
-              className="absolute right-0 top-0 bottom-0 w-[500px] pointer-events-none"
-              style={{ background: `radial-gradient(ellipse at right center, ${teamColor}0a, transparent 60%)` }}
-            />
-
-            <div className="relative z-10 max-w-[1400px] mx-auto px-6 md:px-12 py-6 md:py-8">
-              <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-8 items-center">
-
-                <div>
-                  <div className="flex items-center gap-2.5 mb-4">
-                    <div className="w-8 h-px" style={{ backgroundColor: teamColor }} />
-                    <span className="text-[10px] font-black tracking-[0.4em] uppercase" style={{ color: teamColor }}>
-                      Championship Leader · 2026
-                    </span>
-                  </div>
-
-                  <div className="mb-4">
-                    <h2
-                      className="font-black text-white tracking-tighter leading-[0.85]"
-                      style={{ fontSize: 'clamp(2rem, 3.5vw, 3.5rem)' }}
-                    >
-                      {lastName}
-                    </h2>
-                    {firstName && (
-                      <p
-                        className="font-black tracking-tight leading-none mt-1"
-                        style={{ fontSize: 'clamp(0.9rem, 1.5vw, 1.5rem)', color: 'rgba(255,255,255,0.12)' }}
-                      >
-                        {firstName}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2 mb-5">
-                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: teamColor }} />
-                    <span className="text-zinc-400 text-xs font-medium">{leader.teamName}</span>
-                  </div>
-
-                  {/* Stats — glassmorphism cards */}
-                  <div className="grid grid-cols-3 gap-2.5">
-                    {[
-                      { label: 'Points', value: leader.points },
-                      { label: 'Wins', value: leader.wins },
-                      { label: 'Poles', value: leader.poles },
-                    ].map(({ label, value }) => (
-                      <div
-                        key={label}
-                        className="glass relative rounded-xl p-3.5 overflow-hidden group"
-                      >
-                        <div
-                          className="absolute top-0 left-0 right-0 h-px"
-                          style={{ background: `linear-gradient(to right, ${teamColor}80, transparent 70%)` }}
-                        />
-                        <p className="text-[9px] font-bold text-zinc-500 tracking-[0.25em] uppercase mb-1.5">{label}</p>
-                        <p
-                          className="font-black tabular-nums leading-none"
-                          style={{ fontSize: 'clamp(1.2rem, 1.8vw, 1.6rem)', color: teamColor }}
-                        >
-                          {value}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Right — driver headshot */}
-                <div className="flex items-end justify-center lg:justify-end">
-                  {leader.headshot ? (
-                    <div className="relative">
-                      <div
-                        className="absolute -inset-12 rounded-full blur-3xl opacity-25 pointer-events-none"
-                        style={{ backgroundColor: teamColor }}
-                      />
-                      <Image
-                        src={leader.headshot}
-                        alt={leader.name}
-                        width={384}
-                        height={480}
-                        className="relative object-contain"
-                        style={{
-                          filter: `drop-shadow(0 20px 60px rgba(0,0,0,0.8)) drop-shadow(0 0 40px ${teamColor}15)`,
-                          width: 'clamp(8rem, 12vw, 14rem)',
-                          height: 'auto',
-                        }}
-                        unoptimized
-                      />
-                    </div>
-                  ) : (
-                    <div className="w-48 h-48 rounded-full bg-zinc-900/50 border border-zinc-800/40 flex items-center justify-center backdrop-blur-sm">
-                      <span className="text-5xl font-black text-zinc-700">{leader.acronym}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="absolute bottom-0 left-0 right-0 h-px bg-zinc-800/40" />
-          </section>
-        )
-      })()}</Reveal>}
-
-      {/* ─── Season Calendar ─── */}
-      {raceMeetings.length > 0 && (
-        <Reveal order={2} state={reveal}>
-        <section className="bg-zinc-950">
-          <div className="max-w-[1400px] mx-auto px-6 md:px-12 pt-4 pb-20 md:pb-28">
-
-            {/* Header row */}
-            <div className="flex items-end justify-between mb-8">
-              <div>
-                <p className="text-[11px] font-black text-red-500 tracking-[0.3em] uppercase mb-3">2026 Season</p>
-                <h2 className="text-3xl md:text-5xl font-black tracking-tighter text-white">Race Calendar</h2>
-              </div>
-              <div className="text-right hidden sm:block">
-                <p className="text-4xl font-black text-white tabular-nums">
-                  {completedCount}
-                  <span className="text-zinc-800 text-2xl">/{raceMeetings.length}</span>
-                </p>
-                <p className="text-[10px] text-zinc-600 tracking-[0.3em] uppercase mt-1">Completed</p>
-              </div>
-            </div>
-
-            {/* Thin red progress bar */}
-            <div className="relative mb-10 h-[2px] bg-zinc-900 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${raceMeetings.length > 0 ? (completedCount / raceMeetings.length) * 100 : 0}%`,
-                  background: 'linear-gradient(to right, #7f1d1d, #dc2626, #ef4444)',
-                }}
+        <>
+          {/* ─── Section 1: NOW ─── */}
+          <Reveal order={0} state={reveal}>
+            {targetMeeting && roundNumber !== null ? (
+              <NowSection
+                meeting={targetMeeting}
+                raceSession={raceSession}
+                round={roundNumber}
+                totalRounds={raceMeetings.length}
+                isLive={isLiveWeekend}
               />
+            ) : (
+              <section className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
+                <h1
+                  className="uppercase text-[var(--text)]"
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 'clamp(4rem, 12vw, 13rem)',
+                    lineHeight: 0.85,
+                  }}
+                >
+                  Season complete
+                </h1>
+              </section>
+            )}
+          </Reveal>
+
+          {/* ─── Section 2: THE FIGHT ─── */}
+          {fight && (
+            <Reveal order={1} state={reveal}>
+              <FightSection rows={fight} />
+            </Reveal>
+          )}
+
+          {/* ─── Section 3: LAST TIME OUT ─── */}
+          {lastRace && (
+            <Reveal order={2} state={reveal}>
+              <LastRaceSection raceLabel={lastRace.label} podium={lastRace.podium} />
+            </Reveal>
+          )}
+
+          {/* ─── Section 4: THE SEASON ───
+              Not wrapped in Reveal (pins must not live inside a transformed
+              ancestor). The plain div is load-bearing: ScrollTrigger's pin
+              reparents the section into a pin-spacer, and React must never
+              use that moved node as an insertBefore reference when the data
+              sections above mount late — the wrapper stays React-owned. */}
+          {seasonRounds.length > 0 && (
+            <div>
+              <SeasonSection rounds={seasonRounds} />
             </div>
+          )}
 
-            {/* Calendar grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-              {raceMeetings.map((meeting, idx) => {
-                const isTarget = targetMeeting?.meeting_key === meeting.meeting_key
-                const isCompleted = isMeetingCompleted(meeting)
-                const isCancelled = CANCELLED_COUNTRIES.has(meeting.country_name)
-                const now = new Date()
-                const isLive = new Date(meeting.date_start) <= now && new Date(meeting.date_end) >= now
-                const photo = getCircuitPhoto(meeting)
-
-                return (
-                  <div
-                    key={meeting.meeting_key}
-                    className={[
-                      'relative group rounded-xl overflow-hidden border transition-all duration-300',
-                      isTarget ? 'col-span-2 row-span-1 sm:col-span-1' : '',
-                      isCancelled
-                        ? 'border-zinc-800/20 opacity-40'
-                        : isTarget
-                        ? 'border-red-500/50 shadow-[0_0_40px_-8px_rgba(239,68,68,0.35)]'
-                        : isCompleted
-                        ? 'border-zinc-800/30 opacity-45 hover:opacity-70 hover:border-zinc-700/40'
-                        : 'border-zinc-800/40 hover:border-zinc-600/60 hover:shadow-[0_8px_30px_-12px_rgba(0,0,0,0.6)] hover:-translate-y-0.5',
-                    ].join(' ')}
-                  >
-                    {/* Photo thumbnail */}
-                    <div className={['relative overflow-hidden', isTarget ? 'h-[100px]' : 'h-[80px]'].join(' ')}>
-                      {photo ? (
-                        <Image
-                          src={photo}
-                          alt={meeting.country_name}
-                          fill
-                          className={[
-                            'object-cover transition-transform duration-700 group-hover:scale-110',
-                            isCompleted ? 'grayscale brightness-[0.35]' : '',
-                          ].join(' ')}
-                          unoptimized
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-zinc-900" />
-                      )}
-
-                      <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/80" />
-
-                      <span className="absolute top-1.5 left-2.5 text-[9px] font-black text-white/25 tabular-nums select-none">
-                        {String(idx + 1).padStart(2, '0')}
-                      </span>
-
-                      {meeting.country_flag && (
-                        <div className="absolute top-1.5 right-1.5 w-[18px] h-[13px] rounded-sm overflow-hidden border border-white/15 shadow">
-                          <Image src={meeting.country_flag} alt="" fill className="object-cover" unoptimized />
-                        </div>
-                      )}
-
-                      {isCancelled && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                          <span className="text-[9px] font-black tracking-[0.2em] uppercase text-red-500/80 border border-red-500/30 px-2 py-0.5 rounded bg-black/60">
-                            Cancelled
-                          </span>
-                        </div>
-                      )}
-
-                      {isLive && (
-                        <div className="absolute bottom-1.5 left-2 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
-                          <span className="text-[9px] font-black text-red-400 tracking-widest uppercase">Live</span>
-                        </div>
-                      )}
-                      {isTarget && !isLive && (
-                        <div className="absolute bottom-1.5 left-2">
-                          <span className="text-[9px] font-black text-red-500 tracking-widest uppercase">Next</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Info row */}
-                    <div className={[
-                      'px-3 py-2.5',
-                      isTarget ? 'bg-zinc-900/80' : 'bg-zinc-950',
-                    ].join(' ')}>
-                      <p className={[
-                        'text-[11px] font-black tracking-tight truncate',
-                        isCompleted ? 'text-zinc-600' : isTarget ? 'text-white' : 'text-zinc-300',
-                      ].join(' ')}>
-                        {meeting.country_name}
-                      </p>
-                      <p className={`text-[10px] tabular-nums mt-0.5 ${isCompleted ? 'text-zinc-800' : 'text-zinc-600'}`}>
-                        {new Date(meeting.date_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        {' – '}
-                        {new Date(meeting.date_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      </p>
-                    </div>
-
-                    {isTarget && (
-                      <div className="absolute bottom-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(to right, #dc2626, #ef444440)' }} />
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Shader animation banner */}
-          <div className="relative -mx-6 md:-mx-12">
-            <ShaderAnimation />
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <p className="text-[11px] font-black text-red-500 tracking-[0.4em] uppercase mb-3">2026 Formula 1</p>
-              <h3 className="text-4xl md:text-6xl font-black tracking-tighter text-white text-center">
-                World Championship
-              </h3>
-            </div>
-          </div>
-
-        </section>
-        </Reveal>
-      )}
-    </>
+          <HomeFooter seasonYear={seasonYear} />
+        </>
       )}
     </>
   )
