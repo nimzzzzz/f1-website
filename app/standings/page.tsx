@@ -5,10 +5,8 @@ import type { Session, Driver } from '@/lib/openf1'
 import { getCachedSessions } from '@/lib/client-cache'
 import { CANCELLED_COUNTRIES, fetchAllSessionResults } from '@/lib/openf1'
 import { getCachedDrivers, getCachedSessionResult } from '@/lib/client-cache'
-import EmptyState from '@/components/EmptyState'
-import Image from 'next/image'
-import { motion } from 'framer-motion'
-import { DRIVER_PHOTOS } from '@/lib/driver-data'
+import { ClipReveal, CountUp, FadeUp } from '@/components/motion/reveals'
+import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
 interface DriverStanding {
   driverNumber: number
@@ -28,17 +26,39 @@ interface TeamStanding {
   wins: number
 }
 
+const surname = (fullName: string) => {
+  const parts = fullName.trim().split(/\s+/)
+  return (parts[parts.length - 1] ?? fullName).toUpperCase()
+}
+
+// Divider between consecutive tower rows carrying the points gap — the
+// hairline is data here, not decoration.
+function GapDivider({ gap }: { gap: number }) {
+  return (
+    <div className="relative h-px bg-[var(--line)]">
+      {gap > 0 && (
+        <span className="label-mono absolute right-[8%] top-1/2 -translate-y-1/2 bg-[var(--bg)] px-2.5 text-[var(--text-dim)]">
+          −{Math.floor(gap)}
+        </span>
+      )}
+    </div>
+  )
+}
+
 export default function StandingsPage() {
   const [driverStandings, setDriverStandings] = useState<DriverStanding[]>([])
   const [teamStandings, setTeamStandings] = useState<TeamStanding[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [completedRaces, setCompletedRaces] = useState(0)
+  const [seasonYear, setSeasonYear] = useState<number | null>(null)
+  const apiBlocked = useApiBlocked()
 
   useEffect(() => {
     async function compute() {
       try {
         const allSessions = await getCachedSessions()
+        setSeasonYear(allSessions[0]?.year ?? null)
         const now = new Date()
         const notCancelled = (s: Session) => !CANCELLED_COUNTRIES.has(s.country_name)
 
@@ -135,354 +155,176 @@ export default function StandingsPage() {
 
   if (loading) {
     return (
-      <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-        <div className="animate-pulse space-y-4">
-          <div className="h-3 w-20 bg-zinc-800 rounded" />
-          <div className="h-10 w-48 bg-zinc-800 rounded" />
-          <div className="h-64 bg-zinc-900/60 border border-zinc-800/50 rounded-xl mt-6" />
+      <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
+        <div className="h-3 w-44 animate-pulse rounded bg-white/5" />
+        <div className="mt-8 space-y-6">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-20 w-[65%] animate-pulse rounded bg-white/5" />
+          ))}
         </div>
-        <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-zinc-600 mt-6 animate-pulse">
-          Computing standings...
-        </p>
+        <p className="label-mono mt-10 text-[var(--text-dim)]">COMPUTING STANDINGS…</p>
       </div>
     )
   }
 
-  const podiumDrivers = driverStandings.slice(0, 3)
-  const restDrivers = driverStandings.slice(3)
-  const leaderPoints = driverStandings[0]?.points ?? 1
-  const teamLeaderPoints = teamStandings[0]?.points ?? 1
-
-  // Podium display order: P2 (index 1), P1 (index 0), P3 (index 2)
-  const podiumOrder = podiumDrivers.length >= 3
-    ? [podiumDrivers[1], podiumDrivers[0], podiumDrivers[2]]
-    : podiumDrivers
-
-  const podiumPositions = podiumDrivers.length >= 3 ? [2, 1, 3] : podiumDrivers.map((_, i) => i + 1)
-
   return (
-    <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-      {/* Header */}
-      <motion.div
-        className="mb-14"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+    <div className="relative overflow-x-clip">
+      {/* massive dim outline header behind the tower */}
+      <span
+        aria-hidden
+        className="outline-numeral absolute -right-[4vw] top-[1vh] z-0 leading-none"
+        style={{ fontSize: 'clamp(7rem, 17vw, 21rem)', WebkitTextStroke: '1px rgba(245,245,243,0.07)' }}
       >
-        <p className="text-[11px] font-bold text-red-500 tracking-[0.3em] uppercase mb-3">
-          2026 Season
-        </p>
-        <h1 className="text-5xl md:text-7xl font-black tracking-tighter text-zinc-100">
-          Standings
-        </h1>
-        <p className="text-zinc-500 text-sm mt-2">
-          After {completedRaces} race{completedRaces !== 1 ? 's' : ''}
-        </p>
-        {/* Animated red gradient line */}
-        <div className="relative mt-5 h-px w-full overflow-hidden">
-          <motion.div
-            className="absolute inset-y-0 left-0 h-full"
-            style={{
-              background: 'linear-gradient(90deg, transparent, #ef4444, #dc2626, transparent)',
-              width: '200%',
-            }}
-            animate={{ x: ['-50%', '0%'] }}
-            transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
-          />
-        </div>
-      </motion.div>
+        STANDINGS
+      </span>
 
-      {error && (
-        <div className="mb-6 px-4 py-3 bg-red-950/30 border border-red-800/40 rounded-lg text-red-400 text-sm">
-          {error}
-        </div>
-      )}
+      <div className="relative z-10 px-6 pb-28 pt-20 md:px-14">
+        <FadeUp>
+          <p className="label-mono text-[var(--text-dim)]">
+            DRIVERS&rsquo; CHAMPIONSHIP{seasonYear !== null ? ` — ${seasonYear}` : ''} · AFTER{' '}
+            {String(completedRaces).padStart(2, '0')} ROUND{completedRaces !== 1 ? 'S' : ''}
+          </p>
+        </FadeUp>
 
-      {driverStandings.length === 0 ? (
-        <EmptyState
-          title="No standings yet"
-          message="Standings will update as races complete throughout the 2026 season."
-        />
-      ) : (
-        <>
-          {/* ===== PODIUM HERO ===== */}
-          <div className="mb-16">
-            <p className="text-[11px] font-bold text-zinc-500 tracking-[0.3em] uppercase mb-8">
-              Drivers Championship
+        {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
+
+        {driverStandings.length === 0 ? (
+          !apiBlocked && (
+            <p className="label-mono mt-16 text-[var(--text-dim)]">
+              NO STANDINGS YET — DATA ARRIVES AS THE SEASON RUNS
             </p>
-
-            {podiumDrivers.length >= 3 && (
-              <div className="grid grid-cols-3 gap-3 md:gap-5 items-end max-w-4xl mx-auto">
-                {podiumOrder.map((d, i) => {
-                  const pos = podiumPositions[i]
-                  const isP1 = pos === 1
-                  const photo = DRIVER_PHOTOS[d.nameAcronym]
-                  return (
-                    <motion.div
-                      key={d.driverNumber}
-                      initial={{ opacity: 0, y: 30 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.5, delay: i * 0.1 }}
-                      className={`glass rounded-xl overflow-hidden relative ${
-                        isP1 ? 'md:-mt-8' : ''
-                      }`}
-                      style={{ borderTop: `3px solid #${d.teamColour}` }}
-                    >
-                      {/* Position badge */}
-                      <div className="absolute top-3 left-3 z-10">
-                        <span
-                          className={`font-black tabular-nums ${
-                            isP1
-                              ? 'text-5xl md:text-6xl text-white/20'
-                              : 'text-4xl md:text-5xl text-white/10'
-                          }`}
-                        >
-                          {pos}
-                        </span>
-                      </div>
-
-                      {/* Driver headshot */}
-                      {photo && (
-                        <div
-                          className={`relative w-full flex justify-center ${
-                            isP1 ? 'h-40 md:h-56' : 'h-32 md:h-44'
-                          }`}
-                        >
-                          <Image
-                            src={photo}
-                            alt={d.fullName}
-                            width={280}
-                            height={280}
-                            unoptimized
-                            className="object-cover object-top w-full"
-                          />
-                          {/* Bottom fade */}
-                          <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-zinc-950/90 to-transparent" />
-                        </div>
-                      )}
-
-                      {/* Info */}
-                      <div className="px-3 md:px-4 pb-4 pt-2 relative z-10">
-                        <p className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase">
-                          {d.nameAcronym}
-                        </p>
+          )
+        ) : (
+          <>
+            {/* ─── The drivers tower ─── */}
+            <div className="mt-10">
+              {driverStandings.map((d, i) => (
+                <div key={d.driverNumber}>
+                  {i > 0 && (
+                    <GapDivider gap={driverStandings[i - 1].points - d.points} />
+                  )}
+                  <ClipReveal>
+                    <div className="flex items-baseline gap-5 py-3 md:gap-9">
+                      <span
+                        aria-label={`Position ${i + 1}`}
+                        className={`w-[1.4em] shrink-0 text-right leading-[0.85] ${
+                          i === 0 ? '' : 'outline-numeral'
+                        }`}
+                        style={{
+                          fontFamily: 'var(--font-display)',
+                          fontSize: 'clamp(6rem, 12vw, 11rem)',
+                          ...(i === 0 ? { color: 'var(--accent)' } : {}),
+                        }}
+                      >
+                        {i + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
                         <p
-                          className={`font-bold tracking-tight text-zinc-100 ${
-                            isP1 ? 'text-sm md:text-base' : 'text-xs md:text-sm'
-                          }`}
+                          className="truncate uppercase leading-[0.9] text-[var(--text)]"
+                          style={{
+                            fontFamily: 'var(--font-display)',
+                            fontSize: 'clamp(2.4rem, 6vw, 6rem)',
+                          }}
+                          title={d.fullName}
                         >
-                          {d.fullName}
+                          {surname(d.fullName)}
                         </p>
-                        <p className="text-[10px] text-zinc-600 mt-0.5">{d.teamName}</p>
-
-                        <div className="mt-3 flex items-baseline gap-1">
+                        <p className="label-mono mt-2 flex items-center gap-2 text-[var(--text-dim)]">
                           <span
-                            className={`font-black tabular-nums text-zinc-100 ${
-                              isP1 ? 'text-2xl md:text-3xl' : 'text-xl md:text-2xl'
-                            }`}
-                          >
-                            {Math.floor(d.points)}
-                          </span>
-                          <span className="text-[10px] text-zinc-600 font-bold uppercase tracking-wider">
-                            pts
-                          </span>
-                        </div>
-
-                        <div className="mt-2 flex gap-3">
-                          <div>
-                            <span className="text-xs font-bold text-zinc-300 tabular-nums">
-                              {d.wins}
-                            </span>
-                            <span className="text-[9px] text-zinc-600 ml-1 uppercase tracking-wider">
-                              wins
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-xs font-bold text-zinc-300 tabular-nums">
-                              {d.podiums}
-                            </span>
-                            <span className="text-[9px] text-zinc-600 ml-1 uppercase tracking-wider">
-                              pods
-                            </span>
-                          </div>
-                        </div>
+                            aria-hidden
+                            className="inline-block h-[2px] w-3"
+                            style={{ backgroundColor: `#${d.teamColour}` }}
+                          />
+                          {d.teamName.toUpperCase()}
+                          {d.wins > 0 && <span>· {d.wins} WIN{d.wins > 1 ? 'S' : ''}</span>}
+                        </p>
                       </div>
-                    </motion.div>
+                      <div className="shrink-0 text-right">
+                        <span
+                          className="font-mono tabular-nums text-[var(--text)]"
+                          style={{ fontSize: 'clamp(1.3rem, 2.6vw, 2.2rem)' }}
+                        >
+                          <CountUp value={Math.floor(d.points)} />
+                        </span>
+                        <span className="label-mono ml-2 text-[var(--text-dim)]">PTS</span>
+                      </div>
+                    </div>
+                  </ClipReveal>
+                </div>
+              ))}
+            </div>
+
+            {/* ─── The constructors tower ─── */}
+            <div className="mt-28">
+              <FadeUp>
+                <p className="label-mono text-[var(--text-dim)]">
+                  CONSTRUCTORS&rsquo; CHAMPIONSHIP
+                </p>
+              </FadeUp>
+              <div className="mt-10">
+                {teamStandings.map((t, i) => {
+                  const teamDrivers = driverStandings
+                    .filter((d) => d.teamName === t.teamName)
+                    .map((d) => surname(d.fullName))
+                  return (
+                    <div key={t.teamName}>
+                      {i > 0 && (
+                        <GapDivider gap={teamStandings[i - 1].points - t.points} />
+                      )}
+                      <ClipReveal>
+                        <div className="flex items-baseline gap-5 py-3 md:gap-9">
+                          <span
+                            aria-label={`Position ${i + 1}`}
+                            className={`w-[1.4em] shrink-0 text-right leading-[0.85] ${
+                              i === 0 ? '' : 'outline-numeral'
+                            }`}
+                            style={{
+                              fontFamily: 'var(--font-display)',
+                              fontSize: 'clamp(4.5rem, 9vw, 8rem)',
+                              ...(i === 0 ? { color: 'var(--accent)' } : {}),
+                            }}
+                          >
+                            {i + 1}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className="truncate uppercase leading-[0.9] text-[var(--text)]"
+                              style={{
+                                fontFamily: 'var(--font-display)',
+                                fontSize: 'clamp(2rem, 5vw, 4.6rem)',
+                              }}
+                            >
+                              {t.teamName}
+                            </p>
+                            <p className="label-mono mt-2 flex items-center gap-2 text-[var(--text-dim)]">
+                              <span
+                                aria-hidden
+                                className="inline-block h-[2px] w-3"
+                                style={{ backgroundColor: `#${t.teamColour}` }}
+                              />
+                              {teamDrivers.join(' / ')}
+                              {t.wins > 0 && <span>· {t.wins} WIN{t.wins > 1 ? 'S' : ''}</span>}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <span
+                              className="font-mono tabular-nums text-[var(--text)]"
+                              style={{ fontSize: 'clamp(1.2rem, 2.2vw, 1.9rem)' }}
+                            >
+                              <CountUp value={Math.floor(t.points)} />
+                            </span>
+                            <span className="label-mono ml-2 text-[var(--text-dim)]">PTS</span>
+                          </div>
+                        </div>
+                      </ClipReveal>
+                    </div>
                   )
                 })}
               </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-            {/* ===== DRIVERS TABLE (P4+) ===== */}
-            <div>
-              <p className="text-[11px] font-bold text-zinc-500 tracking-[0.3em] uppercase mb-4">
-                Rest of the Grid
-              </p>
-              <div className="border border-zinc-800/50 bg-zinc-900/40 rounded-xl overflow-hidden">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-zinc-800/40">
-                      <th className="px-4 py-3 text-left text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase w-12">
-                        Pos
-                      </th>
-                      <th className="px-4 py-3 text-left text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                        Driver
-                      </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase w-20">
-                        Pts
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800/40">
-                    {restDrivers.map((d, idx) => {
-                      const barWidth =
-                        leaderPoints > 0
-                          ? (d.points / leaderPoints) * 100
-                          : 0
-                      return (
-                        <motion.tr
-                          key={d.driverNumber}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{
-                            duration: 0.3,
-                            delay: 0.4 + idx * 0.03,
-                          }}
-                          className="relative hover:bg-zinc-800/20 transition-colors group"
-                        >
-                          <td className="px-4 py-3 text-sm font-black text-zinc-500 tabular-nums relative z-10">
-                            {idx + 4}
-                          </td>
-                          <td className="px-4 py-3 relative">
-                            {/* Points bar behind the row content */}
-                            <div
-                              className="absolute inset-y-0 left-0 rounded-r transition-all duration-500"
-                              style={{
-                                width: `${barWidth}%`,
-                                backgroundColor: `#${d.teamColour}`,
-                                opacity: 0.1,
-                              }}
-                            />
-                            <div className="flex items-center gap-2.5 relative z-10">
-                              <div
-                                className="w-0.5 h-5 rounded-full flex-shrink-0"
-                                style={{
-                                  backgroundColor: `#${d.teamColour}`,
-                                }}
-                              />
-                              <div>
-                                <p className="text-sm text-zinc-200 font-medium">
-                                  {d.fullName}
-                                </p>
-                                <p className="text-[10px] text-zinc-600">
-                                  {d.teamName}
-                                </p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-right relative z-10">
-                            <span className="text-sm font-black text-zinc-100 tabular-nums">
-                              {Math.floor(d.points)}
-                            </span>
-                          </td>
-                        </motion.tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
             </div>
-
-            {/* ===== CONSTRUCTORS CHAMPIONSHIP ===== */}
-            <div>
-              <p className="text-[11px] font-bold text-zinc-500 tracking-[0.3em] uppercase mb-4">
-                Constructors Championship
-              </p>
-              <div className="border border-zinc-800/50 bg-zinc-900/40 rounded-xl overflow-hidden">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-zinc-800/40">
-                      <th className="px-4 py-3 text-left text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase w-12">
-                        Pos
-                      </th>
-                      <th className="px-4 py-3 text-left text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                        Constructor
-                      </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase w-20">
-                        Pts
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800/40">
-                    {teamStandings.map((t, idx) => {
-                      const barWidth =
-                        teamLeaderPoints > 0
-                          ? (t.points / teamLeaderPoints) * 100
-                          : 0
-                      // Find drivers belonging to this team
-                      const teamDrivers = driverStandings
-                        .filter((d) => d.teamName === t.teamName)
-                        .map((d) => d.fullName)
-                      return (
-                        <motion.tr
-                          key={t.teamName}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{
-                            duration: 0.3,
-                            delay: 0.5 + idx * 0.03,
-                          }}
-                          className="relative hover:bg-zinc-800/20 transition-colors"
-                        >
-                          <td className="px-4 py-3 text-sm font-black text-zinc-500 tabular-nums relative z-10 align-top pt-4">
-                            {idx + 1}
-                          </td>
-                          <td className="px-4 py-3 relative">
-                            {/* Points bar */}
-                            <div
-                              className="absolute inset-y-0 left-0 rounded-r transition-all duration-500"
-                              style={{
-                                width: `${barWidth}%`,
-                                backgroundColor: `#${t.teamColour}`,
-                                opacity: 0.12,
-                              }}
-                            />
-                            <div className="relative z-10">
-                              <div className="flex items-center gap-2.5">
-                                <div
-                                  className="w-1 h-5 rounded-full flex-shrink-0"
-                                  style={{
-                                    backgroundColor: `#${t.teamColour}`,
-                                  }}
-                                />
-                                <span className="text-sm text-zinc-200 font-medium">
-                                  {t.teamName}
-                                </span>
-                              </div>
-                              {teamDrivers.length > 0 && (
-                                <p className="text-[10px] text-zinc-600 mt-1 ml-[18px]">
-                                  {teamDrivers.join(' / ')}
-                                </p>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-right relative z-10 align-top pt-4">
-                            <span className="text-sm font-black text-zinc-100 tabular-nums">
-                              {Math.floor(t.points)}
-                            </span>
-                          </td>
-                        </motion.tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </div>
   )
 }

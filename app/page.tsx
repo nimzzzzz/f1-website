@@ -310,24 +310,22 @@ export default function HomePage() {
             )}
           </Reveal>
 
-          {/* ─── Section 2: THE FIGHT ─── */}
-          {fight && (
-            <Reveal order={1} state={reveal}>
-              <FightSection rows={fight} />
-            </Reveal>
-          )}
-
-          {/* ─── Section 3: LAST TIME OUT ─── */}
-          {lastRace && (
-            <Reveal order={2} state={reveal}>
-              <LastRaceSection raceLabel={lastRace.label} podium={lastRace.podium} />
-            </Reveal>
-          )}
-
-          {/* Results blocked mid-lockout while the calendar already loaded:
-              one inline notice stands in for the missing data sections */}
-          {apiBlocked && targetMeeting && !fight && !lastRace && (
-            <LiveSessionNotice variant="inline" />
+          {/* ─── Sections 2–3: frames render immediately with same-scale
+              ghost content; data replaces in place (no late mounting, no
+              layout shift). Blocked = the lockout note inside the frame. */}
+          {targetMeeting && (
+            <>
+              <Reveal order={1} state={reveal}>
+                <FightSection rows={fight} blocked={apiBlocked && !fight} />
+              </Reveal>
+              <Reveal order={2} state={reveal}>
+                <LastRaceSection
+                  raceLabel={lastRace?.label ?? null}
+                  podium={lastRace?.podium ?? null}
+                  blocked={apiBlocked && !lastRace}
+                />
+              </Reveal>
+            </>
           )}
 
           {/* ─── Section 4: THE SEASON ───
