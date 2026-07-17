@@ -21,7 +21,13 @@ export default function Shell({ children }: { children: ReactNode }) {
       <TopBar menuOpen={menuOpen} onToggleMenu={() => setMenuOpen((v) => !v)} />
       <MenuOverlay open={menuOpen} onClose={() => setMenuOpen(false)} />
       <main className="min-h-[100dvh] overflow-x-clip pt-16">
-        {apiBlocked && pathname !== '/' && <LiveSessionNotice variant="banner" />}
+        {/* fixed overlay, not in-flow: inserting it mid-session must never
+            shift the page (CLS) — it floats over the routes' top padding */}
+        {apiBlocked && pathname !== '/' && (
+          <div className="fixed inset-x-0 top-16 z-[140] bg-[rgba(10,10,10,0.92)] backdrop-blur-sm">
+            <LiveSessionNotice variant="banner" />
+          </div>
+        )}
         {children}
       </main>
     </>

@@ -44,6 +44,9 @@ export default function DriversPage() {
     }).finally(() => setLoading(false))
   }, [])
 
+  const [pointsSettled, setPointsSettled] = useState(false)
+  const [orderDeadline, setOrderDeadline] = useState(false)
+
   useEffect(() => {
     let alive = true
     getCachedSessions()
@@ -71,17 +74,33 @@ export default function DriversPage() {
         if (tally.size > 0) setPoints(tally)
       })
       .catch(() => {})
+      .finally(() => {
+        if (alive) setPointsSettled(true)
+      })
     return () => {
       alive = false
     }
   }, [])
 
-  // Championship order when points are known; the existing team order otherwise.
-  const ordered = points
-    ? [...unique].sort(
-        (a, b) => (points.get(b.driver_number) ?? 0) - (points.get(a.driver_number) ?? 0)
-      )
-    : unique
+  // Zero-CLS rule: reordering rendered panels when late points arrive would
+  // shift the whole gallery. Hold the skeleton until the points settle (or a
+  // short deadline passes), then freeze the order for this visit.
+  useEffect(() => {
+    if (loading) return
+    const t = setTimeout(() => setOrderDeadline(true), 2500)
+    return () => clearTimeout(t)
+  }, [loading])
+
+  const ready = !loading && (pointsSettled || orderDeadline)
+  const frozenOrderRef = useRef<Driver[] | null>(null)
+  if (ready && frozenOrderRef.current === null && unique.length > 0) {
+    frozenOrderRef.current = points
+      ? [...unique].sort(
+          (a, b) => (points.get(b.driver_number) ?? 0) - (points.get(a.driver_number) ?? 0)
+        )
+      : unique
+  }
+  const ordered = frozenOrderRef.current ?? []
 
   // The pin is created ONCE per mount (recreating a pinned ScrollTrigger on
   // dependency changes leaves a stale pin-spacer behind and breaks the fixed
@@ -146,7 +165,7 @@ export default function DriversPage() {
     if (points) requestAnimationFrame(() => ScrollTrigger.refresh())
   }, [points])
 
-  if (loading) {
+  if (!ready) {
     return (
       <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
         <div className="h-3 w-36 animate-pulse rounded bg-white/5" />
