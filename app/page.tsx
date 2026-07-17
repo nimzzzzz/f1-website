@@ -86,6 +86,9 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
   const [fight, setFight] = useState<FightRow[] | null>(null)
   const [lastRace, setLastRace] = useState<LastRaceData | null>(null)
+  // meeting_key → winner surname, for the season index (derived from the
+  // same session results the standings math already fetches)
+  const [winners, setWinners] = useState<Record<number, string>>({})
   // Cinematic intro overlay — plays on every visit to /; data fetching below
   // runs in parallel behind it.
   const [introActive, setIntroActive] = useState(true)
@@ -161,6 +164,16 @@ export default function HomePage() {
         })
       if (top3.length > 0) setFight(top3)
 
+      // Race winner per meeting, for THE SEASON index
+      const winnersMap: Record<number, string> = {}
+      for (const session of completedRaceSessions) {
+        const results = resultsMap.get(session.session_key)
+        const first = results?.find(r => r.position === 1)
+        const info = first ? driverMap.get(first.driver_number) : undefined
+        if (info?.full_name) winnersMap[session.meeting_key] = surnameOf(info.full_name)
+      }
+      if (Object.keys(winnersMap).length > 0) setWinners(winnersMap)
+
       // Last time out: podium of the most recent completed grand prix
       const latestResults = resultsMap.get(latestRace.session_key)
       const latestMeeting = meetings.find(m => m.meeting_key === latestRace.meeting_key)
@@ -191,8 +204,10 @@ export default function HomePage() {
   // Sections 2–3 mount after their data arrives, which changes the page
   // height above the pinned season strip — recompute trigger positions.
   useEffect(() => {
-    if (fight || lastRace) requestAnimationFrame(() => ScrollTrigger.refresh())
-  }, [fight, lastRace])
+    if (fight || lastRace || Object.keys(winners).length > 0) {
+      requestAnimationFrame(() => ScrollTrigger.refresh())
+    }
+  }, [fight, lastRace, winners])
 
   // Keep the intro at ONE stable tree position across the loading flip —
   // rendering it from two different return statements remounts it (and the
@@ -296,7 +311,7 @@ export default function HomePage() {
               sections above mount late — the wrapper stays React-owned. */}
           {seasonRounds.length > 0 && (
             <div>
-              <SeasonSection rounds={seasonRounds} />
+              <SeasonSection rounds={seasonRounds} winners={winners} />
             </div>
           )}
 
