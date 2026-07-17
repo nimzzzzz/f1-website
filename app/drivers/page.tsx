@@ -1,19 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import type { Driver } from '@/lib/openf1'
-import { getCachedLatestDrivers } from '@/lib/client-cache'
-import EmptyState from '@/components/EmptyState'
-import Image from 'next/image'
-import { DRIVER_PHOTOS, CAREER_STATS } from '@/lib/driver-data'
+import { useEffect, useRef, useState } from 'react'
+import gsap from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import { useGSAP } from '@gsap/react'
+import type { Driver, Session } from '@/lib/openf1'
+import { getCachedLatestDrivers, getCachedSessions, getCachedSessionResult } from '@/lib/client-cache'
+import { CANCELLED_COUNTRIES, fetchAllSessionResults } from '@/lib/openf1'
+import { TransitionLink } from '@/components/motion/TransitionProvider'
+import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
-function darkenHex(hex: string): string {
-  const r = parseInt(hex.slice(0, 2), 16)
-  const g = parseInt(hex.slice(2, 4), 16)
-  const b = parseInt(hex.slice(4, 6), 16)
-  return `rgb(${Math.round(r * 0.25)}, ${Math.round(g * 0.25)}, ${Math.round(b * 0.25)})`
-}
+gsap.registerPlugin(ScrollTrigger, useGSAP)
 
 function deduplicateDrivers(drivers: Driver[]): Driver[] {
   const map = new Map<number, Driver>()
@@ -21,9 +18,20 @@ function deduplicateDrivers(drivers: Driver[]): Driver[] {
   return Array.from(map.values())
 }
 
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
 export default function DriversPage() {
   const [unique, setUnique] = useState<Driver[]>([])
   const [loading, setLoading] = useState(true)
+  // Championship points per driver — enrichment via the same cached fetchers
+  // the standings page uses (shared request cache, no new fetch pattern).
+  const [points, setPoints] = useState<Map<number, number> | null>(null)
+  const apiBlocked = useApiBlocked()
+
+  const sectionRef = useRef<HTMLElement>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const trackRef = useRef<HTMLDivElement>(null)
+  const railRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     getCachedLatestDrivers().then((drivers) => {
@@ -36,136 +44,230 @@ export default function DriversPage() {
     }).finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    let alive = true
+    getCachedSessions()
+      .then(async (allSessions: Session[]) => {
+        const now = new Date()
+        const pointsSessions = allSessions.filter(
+          (s) =>
+            s.session_type === 'Race' &&
+            (s.session_name === 'Race' || s.session_name === 'Sprint') &&
+            new Date(s.date_end) < now &&
+            !CANCELLED_COUNTRIES.has(s.country_name)
+        )
+        if (pointsSessions.length === 0) return
+        const resultsMap = await fetchAllSessionResults(
+          pointsSessions.map((s) => s.session_key),
+          getCachedSessionResult
+        )
+        if (!alive) return
+        const tally = new Map<number, number>()
+        for (const s of pointsSessions) {
+          for (const r of resultsMap.get(s.session_key) ?? []) {
+            tally.set(r.driver_number, (tally.get(r.driver_number) ?? 0) + (r.points ?? 0))
+          }
+        }
+        if (tally.size > 0) setPoints(tally)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // Championship order when points are known; the existing team order otherwise.
+  const ordered = points
+    ? [...unique].sort(
+        (a, b) => (points.get(b.driver_number) ?? 0) - (points.get(a.driver_number) ?? 0)
+      )
+    : unique
+
+  // The pin is created ONCE per mount (recreating a pinned ScrollTrigger on
+  // dependency changes leaves a stale pin-spacer behind and breaks the fixed
+  // coordinates). Reorders flow through this ref; the rail reads it live.
+  const orderedRef = useRef(ordered)
+  orderedRef.current = ordered
+  const hasDrivers = ordered.length > 0
+
+  useGSAP(
+    () => {
+      const section = sectionRef.current
+      const viewport = viewportRef.current
+      const track = trackRef.current
+      const rail = railRef.current
+      if (!section || !viewport || !track || !hasDrivers) return
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+      const mm = gsap.matchMedia()
+      mm.add('(min-width: 768px) and (hover: hover)', () => {
+        const distance = () => Math.max(0, track.scrollWidth - viewport.clientWidth)
+        let lastIdx = -1
+        const setPanel = (progress: number) => {
+          const list = orderedRef.current
+          if (!rail || list.length === 0) return
+          const idx = Math.min(list.length - 1, Math.round(progress * (list.length - 1)))
+          if (idx === lastIdx) return
+          lastIdx = idx
+          const counter = rail.querySelector<HTMLElement>('[data-rail-counter]')
+          if (counter) counter.textContent = `${pad2(idx + 1)} / ${pad2(list.length)}`
+          rail.querySelectorAll<HTMLElement>('[data-tick]').forEach((t, i) => {
+            t.style.backgroundColor =
+              i === idx ? `#${list[i]?.team_colour || 'F5F5F3'}` : 'rgba(245,245,243,0.18)'
+            t.style.transform = i === idx ? 'scaleY(1.8)' : 'scaleY(1)'
+          })
+        }
+        gsap.fromTo(
+          track,
+          { x: 0 },
+          {
+            x: () => -distance(),
+            ease: 'none',
+            scrollTrigger: {
+              trigger: section,
+              start: 'top top',
+              end: () => `+=${Math.max(window.innerHeight, distance() * 0.45)}`,
+              pin: true,
+              scrub: 0.5,
+              invalidateOnRefresh: true,
+              onUpdate: (st) => setPanel(st.progress),
+              onRefresh: (st) => setPanel(st.progress),
+            },
+          }
+        )
+      })
+      return () => mm.revert()
+    },
+    { scope: sectionRef, dependencies: [hasDrivers] }
+  )
+
+  // Reorder / late points: re-measure trigger positions without recreating
+  useEffect(() => {
+    if (points) requestAnimationFrame(() => ScrollTrigger.refresh())
+  }, [points])
+
   if (loading) {
     return (
-      <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-        <div className="animate-pulse space-y-4">
-          <div className="h-3 w-20 bg-zinc-800 rounded" />
-          <div className="h-10 w-48 bg-zinc-800 rounded" />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-64 bg-zinc-900/60 border border-zinc-800/50 rounded-2xl" />
-            ))}
-          </div>
-        </div>
+      <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
+        <div className="h-3 w-36 animate-pulse rounded bg-white/5" />
+        <div className="mt-10 h-56 w-[70%] animate-pulse rounded bg-white/5" />
+        <p className="label-mono mt-10 text-[var(--text-dim)]">LOADING THE GRID…</p>
       </div>
     )
   }
 
-  if (unique.length === 0) {
+  if (ordered.length === 0) {
     return (
-      <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-        <EmptyState title="No driver data" message="Driver information is not yet available for the 2026 season." />
+      <div className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
+        {!apiBlocked && <p className="label-mono text-[var(--text-dim)]">NO DRIVER DATA YET</p>}
       </div>
     )
   }
 
   return (
-    <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-      {/* Header */}
-      <div className="mb-10">
-        <p className="text-[11px] font-bold text-red-500 tracking-[0.3em] uppercase mb-3">2026 Season</p>
-        <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-zinc-100">2026 Drivers</h1>
-        <p className="text-zinc-500 text-sm mt-2">{unique.length} drivers · click a card to view profile</p>
+    <section ref={sectionRef} className="relative overflow-hidden">
+      <div className="px-6 pt-10 md:px-14">
+        <p className="label-mono text-[var(--text-dim)]">
+          THE GRID — {pad2(ordered.length)} DRIVERS
+          {points ? ' · CHAMPIONSHIP ORDER' : ''}
+        </p>
       </div>
 
-      {/* Driver grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {unique.map((driver) => {
-          const photo = DRIVER_PHOTOS[driver.name_acronym] ?? driver.headshot_url
-          const stats = CAREER_STATS[driver.name_acronym]
-          const teamColor = `#${driver.team_colour}`
-          const bgColor = darkenHex(driver.team_colour)
+      <div ref={viewportRef} className="mt-6 overflow-x-hidden">
+        {/* one full-viewport panel per driver: horizontal on desktop,
+            a vertical stack on mobile and under reduced motion */}
+        <div
+          ref={trackRef}
+          className="flex w-full flex-col md:w-max md:flex-row motion-reduce:md:w-full motion-reduce:md:flex-col"
+        >
+          {ordered.map((d, i) => {
+            const teamColor = `#${d.team_colour || 'F5F5F3'}`
+            const pts = points?.get(d.driver_number)
+            return (
+              <TransitionLink
+                key={d.driver_number}
+                href={`/drivers/${d.name_acronym.toLowerCase()}`}
+                className="group relative flex min-h-[72vh] w-full shrink-0 flex-col justify-end overflow-hidden border-t border-[var(--line)] px-6 pb-16 pt-10 md:min-h-[calc(100dvh-11rem)] md:w-screen md:border-l md:border-t-0 md:px-14 motion-reduce:md:w-full motion-reduce:md:border-l-0 motion-reduce:md:border-t"
+              >
+                {/* the race number — massive, outlined in the team's color.
+                    Team colors are the dataset here; red stays scarce. */}
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute right-[2vw] top-1/2 -translate-y-1/2 leading-none"
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 'clamp(14rem, 30vw, 26rem)',
+                    color: 'transparent',
+                    WebkitTextStroke: `2px ${teamColor}`,
+                    opacity: 0.55,
+                  }}
+                >
+                  {d.driver_number}
+                </span>
 
-          return (
-            <Link
-              key={driver.driver_number}
-              href={`/drivers/${driver.name_acronym.toLowerCase()}`}
-              className="relative rounded-2xl overflow-hidden min-h-[260px] flex flex-col group cursor-pointer transition-transform duration-200 hover:scale-[1.015] hover:shadow-2xl"
-              style={{ backgroundColor: bgColor }}
-            >
+                {/* championship index */}
+                <span className="label-mono absolute right-6 top-6 text-[var(--text-dim)] md:right-14">
+                  {pad2(i + 1)} / {pad2(ordered.length)}
+                </span>
 
-              {/* Top team-colour accent line */}
-              <div className="absolute top-0 left-0 right-0 h-0.5 z-20" style={{ backgroundColor: teamColor }} />
-
-              {/* Driver image */}
-              {photo && (
-                <div className="absolute right-0 top-0 h-full w-[58%] z-0">
-                  <Image
-                    src={photo}
-                    alt={driver.full_name}
-                    fill
-                    className="object-contain object-top transition-transform duration-300 group-hover:scale-105"
-                    unoptimized
-                  />
-                </div>
-              )}
-
-              {/* Gradient overlay */}
-              <div
-                className="absolute inset-0 z-10 pointer-events-none"
-                style={{
-                  background: `linear-gradient(to right, ${bgColor} 38%, ${bgColor}cc 55%, transparent 75%)`,
-                }}
-              />
-
-              {/* Content */}
-              <div className="relative z-20 flex flex-col h-full p-6">
-                <div className="flex-1">
-                  <p className="text-base font-normal text-white/80 leading-tight">{driver.first_name}</p>
-                  <p className="text-3xl font-black tracking-tight text-white leading-tight mb-1">{driver.last_name}</p>
-                  <p className="text-[11px] font-semibold text-white/50 uppercase tracking-widest">{driver.team_name}</p>
-                </div>
-                <div className="mt-4">
-                  <span
-                    className="text-[5.5rem] font-black tabular-nums leading-none select-none"
-                    style={{ color: 'rgba(255,255,255,0.15)' }}
+                <div className="relative">
+                  <p className="label-mono mb-3 text-[var(--text-dim)]">
+                    {d.first_name?.toUpperCase()}
+                  </p>
+                  <p
+                    className="uppercase leading-[0.85] text-[var(--text)] transition-transform duration-300 group-hover:translate-x-3 motion-reduce:transition-none"
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      fontSize: 'clamp(3.4rem, 9vw, 9rem)',
+                    }}
                   >
-                    {driver.driver_number}
-                  </span>
+                    {d.last_name}
+                  </p>
+                  <div className="label-mono mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-[var(--text-dim)]">
+                    <span className="flex items-center gap-2">
+                      <span
+                        aria-hidden
+                        className="inline-block h-[2px] w-3"
+                        style={{ backgroundColor: teamColor }}
+                      />
+                      {d.team_name?.toUpperCase()}
+                    </span>
+                    {d.country_code && <span>{d.country_code}</span>}
+                    {pts !== undefined && (
+                      <span className="text-[var(--text)]">{Math.floor(pts)} PTS</span>
+                    )}
+                    <span className="opacity-0 transition-opacity duration-300 group-hover:opacity-100 motion-reduce:transition-none">
+                      PROFILE →
+                    </span>
+                  </div>
                 </div>
-              </div>
-
-              {/* Career stats bar */}
-              {stats && (
-                <div
-                  className="relative z-20 grid grid-cols-3 divide-x border-t"
-                  style={{ borderColor: 'rgba(255,255,255,0.08)', backgroundColor: 'rgba(0,0,0,0.25)' }}
-                >
-                  {[
-                    { label: 'Grands Prix', value: stats.grandsPrix },
-                    { label: 'Wins', value: stats.wins },
-                    { label: 'Podiums', value: stats.podiums },
-                    { label: 'Poles', value: stats.poles },
-                    { label: 'Points', value: stats.points },
-                    { label: 'WDC', value: stats.championships },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="px-3 py-2.5 text-center" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-                      <p className="text-base font-black tabular-nums leading-none"
-                        style={{ color: value > 0 ? teamColor : 'rgba(255,255,255,0.4)' }}>
-                        {value}
-                      </p>
-                      <p className="text-[9px] font-bold uppercase tracking-wider mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                        {label}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* View profile arrow — appears on hover */}
-              <div className="absolute top-4 right-4 z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black"
-                  style={{ backgroundColor: teamColor, color: '#000' }}
-                >
-                  →
-                </div>
-              </div>
-            </Link>
-          )
-        })}
+              </TransitionLink>
+            )
+          })}
+        </div>
       </div>
-    </div>
+
+      {/* progress rail — desktop pinned mode only */}
+      <div
+        ref={railRef}
+        className="absolute inset-x-6 bottom-6 z-10 hidden items-center gap-4 md:inset-x-14 md:flex motion-reduce:md:hidden"
+      >
+        <div className="flex flex-1 items-center gap-1.5">
+          {ordered.map((d, i) => (
+            <span
+              key={d.driver_number}
+              data-tick
+              className="h-2 flex-1 origin-bottom transition-[transform,background-color] duration-200"
+              style={{
+                backgroundColor: i === 0 ? `#${d.team_colour || 'F5F5F3'}` : 'rgba(245,245,243,0.18)',
+              }}
+            />
+          ))}
+        </div>
+        <span data-rail-counter className="label-mono shrink-0 text-[var(--text-dim)]">
+          01 / {pad2(ordered.length)}
+        </span>
+      </div>
+    </section>
   )
 }
