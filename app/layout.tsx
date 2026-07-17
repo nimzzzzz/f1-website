@@ -3,8 +3,10 @@ import { Outfit, Bebas_Neue } from 'next/font/google'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import './globals.css'
-import Sidebar from '@/components/Sidebar'
 import SessionsPreloader from '@/components/SessionsPreloader'
+import LenisProvider from '@/components/motion/LenisProvider'
+import TransitionProvider from '@/components/motion/TransitionProvider'
+import Shell from '@/components/shell/Shell'
 
 const outfit = Outfit({
   subsets: ['latin'],
@@ -15,8 +17,7 @@ const outfit = Outfit({
 
 // Brand fonts (LIGHTS OUT). Geist ships via the official `geist` package
 // because next/font/google in Next 14 doesn't carry the Geist family yet.
-// For now only the intro overlay and the sidebar wordmark use these —
-// the site-wide restyle comes with the redesign pass.
+// Outfit remains loaded for legacy route styling during the phased redesign.
 const bebasNeue = Bebas_Neue({
   subsets: ['latin'],
   weight: '400',
@@ -35,14 +36,13 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${outfit.variable} ${bebasNeue.variable} ${GeistSans.variable} ${GeistMono.variable}`}>
-      <body className="bg-zinc-950 text-zinc-100 font-sans">
+      <body>
         <SessionsPreloader />
-        <div className="flex min-h-[100dvh]">
-          <Sidebar />
-          <main className="flex-1 md:ml-60 min-h-[100dvh] overflow-x-hidden">
-            {children}
-          </main>
-        </div>
+        <LenisProvider>
+          <TransitionProvider>
+            <Shell>{children}</Shell>
+          </TransitionProvider>
+        </LenisProvider>
       </body>
     </html>
   )
