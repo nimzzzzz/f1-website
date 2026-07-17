@@ -16,6 +16,8 @@ import {
 } from '@/lib/openf1'
 import { getCachedDrivers, getCachedSessionResult } from '@/lib/client-cache'
 import IntroSequence, { type RevealMode } from '@/components/IntroSequence'
+import LiveSessionNotice from '@/components/LiveSessionNotice'
+import { useApiBlocked } from '@/components/shell/useApiBlocked'
 import NowSection from '@/components/home/NowSection'
 import FightSection, { type FightRow } from '@/components/home/FightSection'
 import LastRaceSection, { type PodiumRow } from '@/components/home/LastRaceSection'
@@ -93,6 +95,11 @@ export default function HomePage() {
   // runs in parallel behind it.
   const [introActive, setIntroActive] = useState(true)
   const [reveal, setReveal] = useState<'hidden' | RevealMode>('hidden')
+  // Live-session lockout (openf1 401s) vs genuine off-season: when meetings
+  // come back empty, hold a short grace window so the async 401 probe can
+  // classify the failure before we commit to showing either state.
+  const apiBlocked = useApiBlocked()
+  const [classifyGraceOver, setClassifyGraceOver] = useState(false)
 
   const handleIntroReveal = useCallback((mode: RevealMode) => setReveal(mode), [])
   const handleIntroDone = useCallback(() => {
@@ -107,6 +114,12 @@ export default function HomePage() {
       .then(([m, s]) => { setMeetings(m); setSessions(s); setLoading(false) })
       .catch(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    if (loading || meetings.length > 0) return
+    const t = setTimeout(() => setClassifyGraceOver(true), 1800)
+    return () => clearTimeout(t)
+  }, [loading, meetings])
 
   // Phase 2: compute championship top 3 + last race podium in the background
   // (same fetches as before — standings from race/sprint results)
@@ -263,7 +276,11 @@ export default function HomePage() {
       {intro}
       {loading ? skeleton : (
         <>
-          {/* ─── Section 1: NOW ─── */}
+          {/* ─── Section 1: NOW ───
+              Four states, never conflated: race data → NowSection;
+              openf1 live-session lockout → honest notice; genuinely no
+              upcoming races (data loaded fine) → season complete; empty
+              while the 401 probe classifies → hold the placeholder. */}
           <Reveal order={0} state={reveal}>
             {targetMeeting && roundNumber !== null ? (
               <NowSection
@@ -273,7 +290,9 @@ export default function HomePage() {
                 totalRounds={raceMeetings.length}
                 isLive={isLiveWeekend}
               />
-            ) : (
+            ) : apiBlocked ? (
+              <LiveSessionNotice variant="full" />
+            ) : meetings.length > 0 || classifyGraceOver ? (
               <section className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
                 <h1
                   className="uppercase text-[var(--text)]"
@@ -286,6 +305,8 @@ export default function HomePage() {
                   Season complete
                 </h1>
               </section>
+            ) : (
+              skeleton
             )}
           </Reveal>
 
@@ -301,6 +322,12 @@ export default function HomePage() {
             <Reveal order={2} state={reveal}>
               <LastRaceSection raceLabel={lastRace.label} podium={lastRace.podium} />
             </Reveal>
+          )}
+
+          {/* Results blocked mid-lockout while the calendar already loaded:
+              one inline notice stands in for the missing data sections */}
+          {apiBlocked && targetMeeting && !fight && !lastRace && (
+            <LiveSessionNotice variant="inline" />
           )}
 
           {/* ─── Section 4: THE SEASON ───

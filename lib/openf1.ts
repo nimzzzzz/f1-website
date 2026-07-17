@@ -168,6 +168,53 @@ export interface SessionResult {
   gap_to_leader: number | number[] | null
 }
 
+// ─── Live-session lockout signal ─────────────────────────────────────────────
+// While an F1 session is live, openf1 401s every unauthenticated request.
+// In the browser the 401 is unreadable (the error response carries no CORS
+// headers, so fetch throws before a status exists), so failures are
+// classified through the same-origin /api/openf1-status probe, which reads
+// the real status server-side. All fetchers keep the return-[] contract;
+// this signal only tells UIs *why* data is absent.
+
+let apiBlocked = false
+let lastProbeAt = 0
+const blockedListeners = new Set<() => void>()
+
+export function isApiBlocked(): boolean {
+  return apiBlocked
+}
+
+// useSyncExternalStore-compatible subscription
+export function subscribeApiBlocked(listener: () => void): () => void {
+  blockedListeners.add(listener)
+  return () => {
+    blockedListeners.delete(listener)
+  }
+}
+
+function setApiBlocked(value: boolean) {
+  if (apiBlocked === value) return
+  apiBlocked = value
+  blockedListeners.forEach((fn) => fn())
+}
+
+const PROBE_INTERVAL_MS = 30_000
+
+async function classifyFailure() {
+  if (typeof window === 'undefined') return
+  const now = Date.now()
+  if (now - lastProbeAt < PROBE_INTERVAL_MS) return
+  lastProbeAt = now
+  try {
+    const res = await fetch('/api/openf1-status', { cache: 'no-store' })
+    if (!res.ok) return
+    const body = (await res.json()) as { blocked?: boolean }
+    setApiBlocked(Boolean(body.blocked))
+  } catch {
+    // probe itself unreachable — leave the current classification alone
+  }
+}
+
 // ─── Core Fetch ──────────────────────────────────────────────────────────────
 
 async function apiFetch<T>(
@@ -179,14 +226,22 @@ async function apiFetch<T>(
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)))
   try {
     const res = await fetch(url.toString(), options)
+    if (res.status === 401) {
+      // readable only server-side; browsers hit the catch path instead
+      setApiBlocked(true)
+      console.error(`[OpenF1] 401 (live-session lockout) — ${url}`)
+      return []
+    }
     if (!res.ok) {
       console.error(`[OpenF1] ${res.status} ${res.statusText} — ${url}`)
       return []
     }
+    setApiBlocked(false)
     const data = await res.json()
     if (!Array.isArray(data)) return []
     return data as T[]
   } catch (err) {
+    void classifyFailure()
     console.error(`[OpenF1] fetch failed — ${url}`, err)
     return []
   }
