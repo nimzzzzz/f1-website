@@ -1,35 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { Session, Driver } from '@/lib/openf1'
-import { getCachedSessions } from '@/lib/client-cache'
-import { CANCELLED_COUNTRIES, fetchAllSessionResults } from '@/lib/openf1'
-import { getCachedDrivers, getCachedSessionResult } from '@/lib/client-cache'
+import { fetchSeasonData, bundleAsOf } from '@/lib/season-data'
+import type { BundleDriverStanding, BundleTeamStanding } from '@/lib/season-data'
 import { ClipReveal, CountUp, FadeUp } from '@/components/motion/reveals'
 import { useApiBlocked } from '@/components/shell/useApiBlocked'
-
-interface DriverStanding {
-  driverNumber: number
-  fullName: string
-  teamName: string
-  teamColour: string
-  nameAcronym: string
-  points: number
-  wins: number
-  podiums: number
-}
-
-interface TeamStanding {
-  teamName: string
-  teamColour: string
-  points: number
-  wins: number
-}
-
-const surname = (fullName: string) => {
-  const parts = fullName.trim().split(/\s+/)
-  return (parts[parts.length - 1] ?? fullName).toUpperCase()
-}
 
 // Divider between consecutive tower rows carrying the points gap — the
 // hairline is data here, not decoration.
@@ -46,111 +21,37 @@ function GapDivider({ gap }: { gap: number }) {
 }
 
 export default function StandingsPage() {
-  const [driverStandings, setDriverStandings] = useState<DriverStanding[]>([])
-  const [teamStandings, setTeamStandings] = useState<TeamStanding[]>([])
+  const [driverStandings, setDriverStandings] = useState<BundleDriverStanding[]>([])
+  const [teamStandings, setTeamStandings] = useState<BundleTeamStanding[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [completedRaces, setCompletedRaces] = useState(0)
   const [seasonYear, setSeasonYear] = useState<number | null>(null)
+  const [asOf, setAsOf] = useState<string | null>(null)
   const apiBlocked = useApiBlocked()
 
+  // One server-computed bundle replaces the ~20-request client pipeline.
   useEffect(() => {
-    async function compute() {
-      try {
-        const allSessions = await getCachedSessions()
-        setSeasonYear(allSessions[0]?.year ?? null)
-        const now = new Date()
-        const notCancelled = (s: Session) => !CANCELLED_COUNTRIES.has(s.country_name)
-
-        const completedRaceSessions = allSessions.filter(
-          (s) =>
-            s.session_type === 'Race' &&
-            s.session_name === 'Race' &&
-            new Date(s.date_end) < now &&
-            notCancelled(s)
-        )
-
-        const completedSprintSessions = allSessions.filter(
-          (s) =>
-            s.session_type === 'Race' &&
-            s.session_name === 'Sprint' &&
-            new Date(s.date_end) < now &&
-            notCancelled(s)
-        )
-
-        setCompletedRaces(completedRaceSessions.length)
-
-        const allPointsSessions = [...completedRaceSessions, ...completedSprintSessions]
-
-        const driverRefKey = completedRaceSessions.length > 0
-          ? [...completedRaceSessions].sort((a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime())[0].session_key
-          : allSessions.filter((s) => new Date(s.date_end) < now && notCancelled(s)).sort((a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime())[0]?.session_key
-
-        const [refDrivers, resultsMap] = await Promise.all([
-          driverRefKey ? getCachedDrivers(driverRefKey) : Promise.resolve([] as Driver[]),
-          fetchAllSessionResults(allPointsSessions.map((s) => s.session_key), getCachedSessionResult),
-        ])
-
-        const driverMap = new Map<number, DriverStanding>()
-        const teamMap = new Map<string, TeamStanding>()
-
-        for (const d of refDrivers) {
-          if (!driverMap.has(d.driver_number)) {
-            driverMap.set(d.driver_number, {
-              driverNumber: d.driver_number,
-              fullName: d.full_name,
-              teamName: d.team_name,
-              teamColour: d.team_colour,
-              nameAcronym: d.name_acronym,
-              points: 0,
-              wins: 0,
-              podiums: 0,
-            })
-          }
-          if (!teamMap.has(d.team_name)) {
-            teamMap.set(d.team_name, {
-              teamName: d.team_name,
-              teamColour: d.team_colour,
-              points: 0,
-              wins: 0,
-            })
-          }
-        }
-
-        for (const session of allPointsSessions) {
-          const results = resultsMap.get(session.session_key)
-          if (!results) continue
-          for (const r of results) {
-            const ds = driverMap.get(r.driver_number)
-            if (ds) {
-              ds.points += r.points ?? 0
-              if (r.position === 1) ds.wins++
-              if (r.position !== null && r.position <= 3) ds.podiums++
-
-              const ts = teamMap.get(ds.teamName)
-              if (ts) {
-                ts.points += r.points ?? 0
-                if (r.position === 1) ts.wins++
-              }
-            }
-          }
-        }
-
-        const sortedDrivers = Array.from(driverMap.values())
-          .sort((a, b) => b.points - a.points || b.wins - a.wins)
-
-        const sortedTeams = Array.from(teamMap.values())
-          .sort((a, b) => b.points - a.points || b.wins - a.wins)
-
-        setDriverStandings(sortedDrivers)
-        setTeamStandings(sortedTeams)
-      } catch {
-        setError('Failed to compute standings')
-      } finally {
-        setLoading(false)
-      }
+    let alive = true
+    fetchSeasonData()
+      .then((bundle) => {
+        if (!alive) return
+        if (!bundle) return // blocked with no cached bundle — banner covers it
+        setDriverStandings(bundle.driverStandings)
+        setTeamStandings(bundle.teamStandings)
+        setCompletedRaces(bundle.completedRaces)
+        setSeasonYear(bundle.seasonYear)
+        setAsOf(bundleAsOf(bundle))
+      })
+      .catch(() => {
+        if (alive) setError('Failed to load standings')
+      })
+      .finally(() => {
+        if (alive) setLoading(false)
+      })
+    return () => {
+      alive = false
     }
-    compute()
   }, [])
 
   if (loading) {
@@ -183,6 +84,7 @@ export default function StandingsPage() {
           <p className="label-mono text-[var(--text-dim)]">
             DRIVERS&rsquo; CHAMPIONSHIP{seasonYear !== null ? ` — ${seasonYear}` : ''} · AFTER{' '}
             {String(completedRaces).padStart(2, '0')} ROUND{completedRaces !== 1 ? 'S' : ''}
+            {asOf && <span className="ml-4">AS OF {asOf}</span>}
           </p>
         </FadeUp>
 
@@ -227,7 +129,7 @@ export default function StandingsPage() {
                           }}
                           title={d.fullName}
                         >
-                          {surname(d.fullName)}
+                          {d.surname}
                         </p>
                         <p className="label-mono mt-2 flex items-center gap-2 text-[var(--text-dim)]">
                           <span
@@ -263,9 +165,7 @@ export default function StandingsPage() {
               </FadeUp>
               <div className="mt-10">
                 {teamStandings.map((t, i) => {
-                  const teamDrivers = driverStandings
-                    .filter((d) => d.teamName === t.teamName)
-                    .map((d) => surname(d.fullName))
+                  const teamDrivers = t.driverSurnames
                   return (
                     <div key={t.teamName}>
                       {i > 0 && (

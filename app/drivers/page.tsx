@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useGSAP } from '@gsap/react'
-import type { Driver, Session } from '@/lib/openf1'
-import { getCachedLatestDrivers, getCachedSessions, getCachedSessionResult } from '@/lib/client-cache'
-import { CANCELLED_COUNTRIES, fetchAllSessionResults } from '@/lib/openf1'
+import type { Driver } from '@/lib/openf1'
+import { getCachedLatestDrivers } from '@/lib/client-cache'
+import { fetchSeasonData } from '@/lib/season-data'
 import { TransitionLink } from '@/components/motion/TransitionProvider'
 import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
@@ -49,29 +49,10 @@ export default function DriversPage() {
 
   useEffect(() => {
     let alive = true
-    getCachedSessions()
-      .then(async (allSessions: Session[]) => {
-        const now = new Date()
-        const pointsSessions = allSessions.filter(
-          (s) =>
-            s.session_type === 'Race' &&
-            (s.session_name === 'Race' || s.session_name === 'Sprint') &&
-            new Date(s.date_end) < now &&
-            !CANCELLED_COUNTRIES.has(s.country_name)
-        )
-        if (pointsSessions.length === 0) return
-        const resultsMap = await fetchAllSessionResults(
-          pointsSessions.map((s) => s.session_key),
-          getCachedSessionResult
-        )
-        if (!alive) return
-        const tally = new Map<number, number>()
-        for (const s of pointsSessions) {
-          for (const r of resultsMap.get(s.session_key) ?? []) {
-            tally.set(r.driver_number, (tally.get(r.driver_number) ?? 0) + (r.points ?? 0))
-          }
-        }
-        if (tally.size > 0) setPoints(tally)
+    fetchSeasonData()
+      .then((bundle) => {
+        if (!alive || !bundle || bundle.driverStandings.length === 0) return
+        setPoints(new Map(bundle.driverStandings.map((d) => [d.driverNumber, d.points])))
       })
       .catch(() => {})
       .finally(() => {
