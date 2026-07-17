@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import ReactDOM from 'react-dom'
 import { motion } from 'framer-motion'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import type { Meeting, Session, SessionResult } from '@/lib/openf1'
+import type { Meeting, Session } from '@/lib/openf1'
 import { getCachedMeetings, getCachedSessions } from '@/lib/client-cache'
 import {
   getRaceMeetings,
@@ -12,9 +12,8 @@ import {
   getCurrentMeeting,
   getNextMeeting,
   CANCELLED_COUNTRIES,
-  fetchAllSessionResults,
 } from '@/lib/openf1'
-import { getCachedDrivers, getCachedSessionResult } from '@/lib/client-cache'
+import { fetchSeasonData, bundleAsOf } from '@/lib/season-data'
 import IntroSequence, { type RevealMode } from '@/components/IntroSequence'
 import LiveSessionNotice from '@/components/LiveSessionNotice'
 import { useApiBlocked } from '@/components/shell/useApiBlocked'
@@ -60,20 +59,6 @@ const preloadAsset = (
   }
 ).preload
 
-function surnameOf(fullName: string): string {
-  const parts = fullName.trim().split(/\s+/)
-  return (parts[parts.length - 1] ?? fullName).toUpperCase()
-}
-
-function gapLabel(gap: SessionResult['gap_to_leader']): string {
-  if (gap === null || gap === undefined) return '—'
-  if (Array.isArray(gap)) {
-    const laps = gap[0] ?? 1
-    return `+${laps} LAP${laps > 1 ? 'S' : ''}`
-  }
-  return `+${gap.toFixed(3)}S`
-}
-
 export default function HomePage() {
   // Start the poster fetch while the HTML is still streaming — called during
   // render so SSR hoists <link rel="preload"> into <head>. The video itself
@@ -88,9 +73,10 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
   const [fight, setFight] = useState<FightRow[] | null>(null)
   const [lastRace, setLastRace] = useState<LastRaceData | null>(null)
-  // meeting_key → winner surname, for the season index (derived from the
-  // same session results the standings math already fetches)
+  // meeting_key → winner surname, for the season index (from the bundle)
   const [winners, setWinners] = useState<Record<number, string>>({})
+  // "AS OF 14:32" when the bundle is stale (served through a lockout)
+  const [asOf, setAsOf] = useState<string | null>(null)
   // Cinematic intro overlay — plays on every visit to /; data fetching below
   // runs in parallel behind it.
   const [introActive, setIntroActive] = useState(true)
@@ -121,98 +107,38 @@ export default function HomePage() {
     return () => clearTimeout(t)
   }, [loading, meetings])
 
-  // Phase 2: compute championship top 3 + last race podium in the background
-  // (same fetches as before — standings from race/sprint results)
+  // Phase 2: one server-computed bundle replaces the client-side
+  // multi-fetch standings pipeline (fight, last race, season winners).
   useEffect(() => {
-    if (sessions.length === 0 || meetings.length === 0) return
-    const now = new Date()
-    const notCancelled = (x: Session) => !CANCELLED_COUNTRIES.has(x.country_name)
-
-    const completedRaceSessions = sessions.filter(
-      x => x.session_type === 'Race' && x.session_name === 'Race' && new Date(x.date_end) < now && notCancelled(x)
-    )
-    const completedSprintSessions = sessions.filter(
-      x => x.session_type === 'Race' && x.session_name === 'Sprint' && new Date(x.date_end) < now && notCancelled(x)
-    )
-    if (completedRaceSessions.length === 0) return
-
-    const latestRace = [...completedRaceSessions].sort(
-      (a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime()
-    )[0]
-
-    const allPointsSessions = [...completedRaceSessions, ...completedSprintSessions]
-    const allSessionKeys = allPointsSessions.map(x => x.session_key)
-
-    Promise.all([
-      getCachedDrivers(latestRace.session_key),
-      fetchAllSessionResults(allSessionKeys, getCachedSessionResult),
-    ]).then(([drivers, resultsMap]) => {
-      const driverMap = new Map(drivers.map(d => [d.driver_number, d]))
-      const standings = new Map<number, { points: number; wins: number }>()
-
-      for (const session of allPointsSessions) {
-        const results = resultsMap.get(session.session_key)
-        if (!results) continue
-        for (const r of results) {
-          const cur = standings.get(r.driver_number) ?? { points: 0, wins: 0 }
-          cur.points += r.points ?? 0
-          if (r.position === 1 && session.session_name === 'Race') cur.wins++
-          standings.set(r.driver_number, cur)
-        }
-      }
-
-      const top3: FightRow[] = [...standings.entries()]
-        .sort((a, b) => b[1].points - a[1].points)
-        .slice(0, 3)
-        .map(([driverNumber, s], i) => {
-          const info = driverMap.get(driverNumber)
-          const fullName = info?.full_name ?? `Driver #${driverNumber}`
-          return {
-            position: i + 1,
-            surname: surnameOf(fullName),
-            fullName,
-            points: s.points,
-            wins: s.wins,
-          }
-        })
+    let alive = true
+    fetchSeasonData().then((bundle) => {
+      if (!alive || !bundle) return
+      const top3: FightRow[] = bundle.driverStandings.slice(0, 3).map((d) => ({
+        position: d.position,
+        surname: d.surname,
+        fullName: d.fullName,
+        points: d.points,
+        wins: d.wins,
+      }))
       if (top3.length > 0) setFight(top3)
 
-      // Race winner per meeting, for THE SEASON index
-      const winnersMap: Record<number, string> = {}
-      for (const session of completedRaceSessions) {
-        const results = resultsMap.get(session.session_key)
-        const first = results?.find(r => r.position === 1)
-        const info = first ? driverMap.get(first.driver_number) : undefined
-        if (info?.full_name) winnersMap[session.meeting_key] = surnameOf(info.full_name)
+      if (bundle.lastRace && bundle.lastRace.podium.length > 0) {
+        const podium: PodiumRow[] = bundle.lastRace.podium.map((p) => ({
+          position: p.position,
+          surname: p.surname,
+          fullName: p.fullName,
+          gapLabel: p.gapLabel,
+        }))
+        setLastRace({ label: bundle.lastRace.label, podium })
       }
-      if (Object.keys(winnersMap).length > 0) setWinners(winnersMap)
 
-      // Last time out: podium of the most recent completed grand prix
-      const latestResults = resultsMap.get(latestRace.session_key)
-      const latestMeeting = meetings.find(m => m.meeting_key === latestRace.meeting_key)
-      if (latestResults && latestMeeting) {
-        const podium: PodiumRow[] = latestResults
-          .filter(r => r.position !== null && r.position <= 3)
-          .sort((a, b) => (a.position ?? 9) - (b.position ?? 9))
-          .map(r => {
-            const info = driverMap.get(r.driver_number)
-            const fullName = info?.full_name ?? `Driver #${r.driver_number}`
-            return {
-              position: r.position ?? 0,
-              surname: surnameOf(fullName),
-              fullName,
-              gapLabel: r.position === 1 ? '' : gapLabel(r.gap_to_leader),
-            }
-          })
-        if (podium.length > 0) {
-          setLastRace({
-            label: latestMeeting.meeting_name.replace(/grand prix/i, 'GP').toUpperCase(),
-            podium,
-          })
-        }
-      }
+      if (Object.keys(bundle.winnersByRound).length > 0) setWinners(bundle.winnersByRound)
+      setAsOf(bundleAsOf(bundle))
     })
-  }, [sessions, meetings])
+    return () => {
+      alive = false
+    }
+  }, [])
 
   // Sections 2–3 mount after their data arrives, which changes the page
   // height above the pinned season strip — recompute trigger positions.
@@ -316,13 +242,14 @@ export default function HomePage() {
           {targetMeeting && (
             <>
               <Reveal order={1} state={reveal}>
-                <FightSection rows={fight} blocked={apiBlocked && !fight} />
+                <FightSection rows={fight} blocked={apiBlocked && !fight} asOf={asOf} />
               </Reveal>
               <Reveal order={2} state={reveal}>
                 <LastRaceSection
                   raceLabel={lastRace?.label ?? null}
                   podium={lastRace?.podium ?? null}
                   blocked={apiBlocked && !lastRace}
+                  asOf={asOf}
                 />
               </Reveal>
             </>

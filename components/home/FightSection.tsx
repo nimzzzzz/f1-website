@@ -82,9 +82,11 @@ function Row({
 export default function FightSection({
   rows,
   blocked = false,
+  asOf = null,
 }: {
   rows: FightRow[] | null
   blocked?: boolean
+  asOf?: string | null
 }) {
   return (
     <section className="border-t border-[var(--line)] px-6 py-24 md:px-14 md:py-32">
@@ -97,6 +99,7 @@ export default function FightSection({
               LIVE SESSION — DATA PAUSED
             </span>
           )}
+          {!blocked && rows && asOf && <span>AS OF {asOf}</span>}
         </p>
       </FadeUp>
 

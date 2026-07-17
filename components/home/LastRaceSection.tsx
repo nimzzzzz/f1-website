@@ -16,10 +16,12 @@ export default function LastRaceSection({
   raceLabel,
   podium,
   blocked = false,
+  asOf = null,
 }: {
   raceLabel: string | null
   podium: PodiumRow[] | null
   blocked?: boolean
+  asOf?: string | null
 }) {
   const winner = podium?.find((p) => p.position === 1)
   const rest = podium ? podium.filter((p) => p.position !== 1) : [2, 3]
@@ -35,6 +37,7 @@ export default function LastRaceSection({
               LIVE SESSION — DATA PAUSED
             </span>
           )}
+          {!blocked && podium && asOf && <span>AS OF {asOf}</span>}
         </p>
       </FadeUp>
 
