@@ -53,26 +53,66 @@ export default function SeasonSection({
 
       const items = () => [...track.querySelectorAll<HTMLElement>('[data-round]')]
 
-      // Everything below writes only transforms/text at a given tip position
-      // (in track space): line scaleX, counter x, counter text.
+      // Cached per-round measurements (track space) + the elements the
+      // tip-focus effect writes to. Re-measured on ScrollTrigger refresh.
+      interface RoundMeasure {
+        el: HTMLElement
+        left: number
+        center: number
+        base: number
+        dimEls: HTMLElement[]
+        winEl: HTMLElement | null
+      }
+      let measures: RoundMeasure[] = []
+      const measure = () => {
+        measures = items().map((el) => ({
+          el,
+          left: el.offsetLeft,
+          center: el.offsetLeft + el.offsetWidth / 2,
+          base: parseFloat(el.dataset.dim ?? '1'),
+          dimEls: [...el.querySelectorAll<HTMLElement>('[data-dim-el]')],
+          winEl: el.querySelector<HTMLElement>('[data-win]'),
+        }))
+      }
+
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      // Focus zone around the tip: the round under the "cursor of time"
+      // scales to 1.06 and brightens to full, easing off with distance.
+      // Skipped entirely under reduced motion.
+      const FOCUS_ZONE = 300
+      const WINNER_BASE = 0.55
+
+      // Everything below writes only transforms/opacity/text at a given tip
+      // position (in track space): line scaleX, counter x, focus per round.
       let lastCount = -1
       const setTip = (tipX: number) => {
+        if (measures.length === 0) measure()
         const width = track.scrollWidth
         const clamped = Math.max(0, Math.min(tipX, width))
         line.style.transform = `scaleX(${clamped / width})`
         counter.style.transform = `translateX(${clamped}px)`
-        const count = items().filter((el) => el.offsetLeft + 16 < clamped).length
+        const count = measures.filter((m) => m.left + 16 < clamped).length
         if (count !== lastCount) {
           lastCount = count
           counter.textContent = `${pad2(count)} / ${pad2(total)}`
         }
+        if (reduced) return
+        for (const m of measures) {
+          const t = Math.max(0, 1 - Math.abs(m.center - clamped) / FOCUS_ZONE)
+          const e = t * t * (3 - 2 * t) // smoothstep — focus, not a carousel
+          m.el.style.transform = e > 0 ? `scale(${1 + 0.06 * e})` : ''
+          const dim = m.base + (1 - m.base) * e
+          for (const d of m.dimEls) d.style.opacity = String(dim)
+          if (m.winEl) m.winEl.style.opacity = String(WINNER_BASE + (1 - WINNER_BASE) * e)
+        }
       }
 
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (reduced) {
         // Static, meaningful: tip parked at the next round, counter shows
         // the season's real completed count.
-        const next = items().find((el) => el.dataset.round === 'next')
-        setTip(next ? next.offsetLeft : track.scrollWidth * (completed / Math.max(1, total)))
+        measure()
+        const next = measures.find((m) => m.el.dataset.round === 'next')
+        setTip(next ? next.left : track.scrollWidth * (completed / Math.max(1, total)))
         counter.textContent = `${pad2(completed)} / ${pad2(total)}`
         return
       }
@@ -96,7 +136,10 @@ export default function SeasonSection({
               scrub: 0.5,
               invalidateOnRefresh: true,
               onUpdate: (st) => setTip(st.progress * distance() + anchor()),
-              onRefresh: (st) => setTip(st.progress * distance() + anchor()),
+              onRefresh: (st) => {
+                measure()
+                setTip(st.progress * distance() + anchor())
+              },
             },
           }
         )
@@ -153,32 +196,40 @@ export default function SeasonSection({
             <div className="flex items-end">
               {rounds.map(({ meeting, isPast, isNext, isCancelled }, i) => {
                 const winner = !isCancelled && isPast ? winners[meeting.meeting_key] : undefined
-                const opacity = isCancelled ? 0.25 : isPast ? 0.35 : 1
+                // Dim lives on the sub-elements (not the container) so the
+                // winner record can exceed it and the tip focus can brighten
+                // everything independently.
+                const dim = isCancelled ? 0.25 : isPast ? 0.35 : 1
                 return (
                   <div
                     key={meeting.meeting_key}
                     data-round={isNext ? 'next' : ''}
+                    data-dim={dim}
                     className="shrink-0 pb-5 pr-[7vw]"
-                    style={{ opacity }}
+                    style={{ transformOrigin: 'left bottom' }}
                   >
                     <span
                       aria-label={`Round ${i + 1}`}
-                      className={isNext ? 'leading-none' : 'outline-numeral leading-none'}
+                      data-dim-el
+                      className={`block ${isNext ? 'leading-none' : 'outline-numeral leading-none'}`}
                       style={{
                         fontFamily: 'var(--font-display)',
                         fontSize: 'clamp(5rem, 10vw, 10rem)',
+                        opacity: dim,
                         ...(isNext ? { color: 'var(--accent)' } : {}),
                       }}
                     >
                       {pad2(i + 1)}
                     </span>
                     <p
+                      data-dim-el
                       className={`mt-1 flex items-center gap-2.5 uppercase leading-none text-[var(--text)] ${
                         isCancelled ? 'line-through decoration-1' : ''
                       }`}
                       style={{
                         fontFamily: 'var(--font-display)',
                         fontSize: 'clamp(1.6rem, 2.4vw, 2.4rem)',
+                        opacity: dim,
                       }}
                     >
                       {meeting.circuit_short_name}
@@ -190,9 +241,19 @@ export default function SeasonSection({
                       )}
                     </p>
                     {winner && (
-                      <p className="label-mono mt-2 text-[var(--text)]">P1 · {winner}</p>
+                      <p
+                        data-win
+                        className="label-mono mt-2 text-[var(--text)]"
+                        style={{ opacity: 0.55 }}
+                      >
+                        P1 · {winner}
+                      </p>
                     )}
-                    <p className="label-mono mt-2 text-[var(--text-dim)]">
+                    <p
+                      data-dim-el
+                      className="label-mono mt-2 text-[var(--text-dim)]"
+                      style={{ opacity: dim }}
+                    >
                       {isCancelled
                         ? 'CANCELLED'
                         : new Date(meeting.date_start)
