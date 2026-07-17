@@ -11,53 +11,106 @@ export interface FightRow {
   wins: number
 }
 
-// Section 2 — "THE FIGHT". Championship top 3 as a full-bleed typographic
-// monument. P1 wears the accent; that is the accent's whole job here.
-export default function FightSection({ rows }: { rows: FightRow[] }) {
+// Shared row frame so the ghost and the real content occupy identical
+// geometry — late data must replace in place, never resize the section.
+function Row({
+  numeral,
+  ghost,
+  name,
+  points,
+}: {
+  numeral: number
+  ghost: boolean
+  name: string
+  points: number | null
+}) {
+  return (
+    <div className="flex items-baseline gap-5 border-t border-[var(--line)] py-2 md:gap-10">
+      <span
+        aria-hidden={ghost}
+        aria-label={ghost ? undefined : `Position ${numeral}`}
+        className="shrink-0 leading-[0.85]"
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: 'clamp(8rem, 18vw, 16rem)',
+          ...(ghost
+            ? { color: 'transparent', WebkitTextStroke: '1px rgba(245,245,243,0.07)' }
+            : numeral === 1
+            ? { color: 'var(--accent)' }
+            : { color: 'var(--text)' }),
+        }}
+      >
+        {numeral}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p
+          className="truncate uppercase leading-[0.95]"
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 'clamp(2.6rem, 7vw, 7rem)',
+            color: ghost ? 'rgba(245,245,243,0.08)' : 'var(--text)',
+          }}
+          title={ghost ? undefined : name}
+        >
+          {ghost ? '———' : name}
+        </p>
+      </div>
+      <div className="shrink-0 text-right">
+        <span
+          className="font-mono tabular-nums"
+          style={{
+            fontSize: 'clamp(1.4rem, 3vw, 2.6rem)',
+            color: ghost ? 'rgba(245,245,243,0.15)' : 'var(--text)',
+          }}
+        >
+          {ghost || points === null ? '—' : <CountUp value={points} />}
+        </span>
+        <span
+          className="label-mono ml-2"
+          style={{ color: ghost ? 'rgba(245,245,243,0.15)' : 'var(--text-dim)' }}
+        >
+          PTS
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// Section 2 — "THE FIGHT". The frame renders immediately — ghost numerals
+// at full scale hold the layout — and real rows replace it in place when
+// the standings math lands. `blocked` marks the live-session lockout.
+export default function FightSection({
+  rows,
+  blocked = false,
+}: {
+  rows: FightRow[] | null
+  blocked?: boolean
+}) {
   return (
     <section className="border-t border-[var(--line)] px-6 py-24 md:px-14 md:py-32">
       <FadeUp>
-        <p className="label-mono mb-12 text-[var(--text-dim)]">
+        <p className="label-mono mb-12 flex flex-wrap items-center gap-x-4 gap-y-2 text-[var(--text-dim)]">
           THE FIGHT — DRIVERS&rsquo; CHAMPIONSHIP
+          {blocked && (
+            <span className="flex items-center gap-2 text-[var(--accent)]">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none" />
+              LIVE SESSION — DATA PAUSED
+            </span>
+          )}
         </p>
       </FadeUp>
 
-      <div>
-        {rows.map((row, i) => (
-          <ClipReveal key={row.position} delay={i * 0.08}>
-            <div className="flex items-baseline gap-5 border-t border-[var(--line)] py-2 md:gap-10">
-              <span
-                aria-label={`Position ${row.position}`}
-                className="shrink-0 leading-[0.85]"
-                style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: 'clamp(8rem, 18vw, 16rem)',
-                  color: row.position === 1 ? 'var(--accent)' : 'var(--text)',
-                }}
-              >
-                {row.position}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p
-                  className="truncate uppercase leading-[0.95] text-[var(--text)]"
-                  style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: 'clamp(2.6rem, 7vw, 7rem)',
-                  }}
-                  title={row.fullName}
-                >
-                  {row.surname}
-                </p>
-              </div>
-              <div className="shrink-0 text-right">
-                <span className="font-mono tabular-nums text-[var(--text)]" style={{ fontSize: 'clamp(1.4rem, 3vw, 2.6rem)' }}>
-                  <CountUp value={row.points} />
-                </span>
-                <span className="label-mono ml-2 text-[var(--text-dim)]">PTS</span>
-              </div>
-            </div>
-          </ClipReveal>
-        ))}
+      {/* keyed so arriving data remounts the reveals, in place */}
+      <div key={rows ? 'live' : 'ghost'}>
+        {rows
+          ? rows.map((row, i) => (
+              <ClipReveal key={row.position} delay={i * 0.08}>
+                <Row numeral={row.position} ghost={false} name={row.surname} points={row.points} />
+              </ClipReveal>
+            ))
+          : [1, 2, 3].map((n) => (
+              <Row key={`ghost-${n}`} numeral={n} ghost name="———" points={null} />
+            ))}
       </div>
 
       <FadeUp className="mt-12">
