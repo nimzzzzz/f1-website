@@ -16,9 +16,38 @@ import type { SeasonBundle } from '@/lib/season-data'
 // the last complete bundle through openf1's live-session 401 lockouts.
 // Only a cold cache during a lockout reports blocked.
 
+// Cold computes fetch ~17 result sets; paced batches below keep openf1's
+// burst limiter happy but need headroom beyond the default function budget.
+export const maxDuration = 30
+
 const surname = (fullName: string) => {
   const parts = fullName.trim().split(/\s+/)
   return (parts[parts.length - 1] ?? fullName).toUpperCase()
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+// openf1 429s concurrent bursts (observed live: 8+ of 17 parallel result
+// fetches rejected). Fetch in small batches with gaps, then retry any
+// empties once — the completeness guard still rejects anything missing.
+async function fetchResultsPaced(sessions: Session[]) {
+  const out: { session: Session; results: SessionResult[] }[] = []
+  const BATCH = 4
+  for (let i = 0; i < sessions.length; i += BATCH) {
+    const batch = sessions.slice(i, i + BATCH)
+    const settled = await Promise.all(
+      batch.map(async (s) => ({ session: s, results: await getSessionResult(s.session_key) }))
+    )
+    out.push(...settled)
+    if (i + BATCH < sessions.length) await sleep(400)
+  }
+  for (const row of out) {
+    if (row.results.length === 0) {
+      await sleep(600)
+      row.results = await getSessionResult(row.session.session_key)
+    }
+  }
+  return out
 }
 
 function gapLabel(r: SessionResult): string {
@@ -98,12 +127,7 @@ async function computeSeasonData(): Promise<SeasonBundle> {
   // Completeness guard: EVERY completed points session must return results.
   // A single missing set would silently distort the tally, so incomplete
   // computations throw and the cache keeps the last complete bundle.
-  const resultSets = await Promise.all(
-    allPointsSessions.map(async (s) => ({
-      session: s,
-      results: await getSessionResult(s.session_key),
-    }))
-  )
+  const resultSets = await fetchResultsPaced(allPointsSessions)
   const missing = resultSets.filter((r) => r.results.length === 0)
   if (missing.length > 0) {
     throw new Error(`season-data: ${missing.length}/${resultSets.length} result sets unavailable`)
