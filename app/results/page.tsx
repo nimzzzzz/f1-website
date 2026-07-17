@@ -1,11 +1,11 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import type { Session, Driver, Position } from '@/lib/openf1'
+import type { Session, Driver, Position, SessionResult } from '@/lib/openf1'
 import { getCachedSessions } from '@/lib/client-cache'
-import { getCachedDrivers, getCachedPositions, getCachedPitStops } from '@/lib/client-cache'
-import SessionPicker from '@/components/SessionPicker'
-import EmptyState from '@/components/EmptyState'
+import { getCachedDrivers, getCachedPositions, getCachedPitStops, getCachedSessionResult } from '@/lib/client-cache'
+import { ClipReveal, FadeUp } from '@/components/motion/reveals'
+import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
 interface DriverResult {
   position: number
@@ -26,14 +26,47 @@ function getLatestPositions(positions: Position[]): Map<number, number> {
   return map
 }
 
+const surname = (fullName: string) => {
+  const parts = fullName.trim().split(/\s+/)
+  return (parts[parts.length - 1] ?? fullName).toUpperCase()
+}
+
+function formatWinnerTime(duration: SessionResult['duration'] | null): string | null {
+  if (typeof duration !== 'number' || !isFinite(duration)) return null
+  const h = Math.floor(duration / 3600)
+  const m = Math.floor((duration % 3600) / 60)
+  const s = (duration % 60).toFixed(3).padStart(6, '0')
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`
+}
+
+function gapLabel(r: SessionResult | undefined): string {
+  if (!r) return '—'
+  if (r.dnf) return 'DNF'
+  if (r.dns) return 'DNS'
+  if (r.dsq) return 'DSQ'
+  const gap = r.gap_to_leader
+  if (gap === null || gap === undefined) return '—'
+  if (Array.isArray(gap)) {
+    const laps = gap[0] ?? 1
+    return `+${laps} LAP${laps > 1 ? 'S' : ''}`
+  }
+  return `+${gap.toFixed(3)}S`
+}
+
+const isOut = (r: SessionResult | undefined) => Boolean(r && (r.dnf || r.dns || r.dsq))
+
 export default function ResultsPage() {
   const allSessionsRef = useRef<Session[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [selectedKey, setSelectedKey] = useState<number | null>(null)
   const [results, setResults] = useState<DriverResult[]>([])
-const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
   const [fetchingResults, setFetchingResults] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Gap/time/status enrichment per driver — same cached fetcher family,
+  // fetched alongside (not inside) the untouched fetchResults flow.
+  const [resultDetail, setResultDetail] = useState<Map<number, SessionResult> | null>(null)
+  const apiBlocked = useApiBlocked()
 
   useEffect(() => {
     getCachedSessions()
@@ -90,125 +123,205 @@ const [loading, setLoading] = useState(true)
     if (selectedKey) fetchResults(selectedKey)
   }, [selectedKey, fetchResults])
 
+  useEffect(() => {
+    if (!selectedKey) return
+    let alive = true
+    setResultDetail(null)
+    getCachedSessionResult(selectedKey)
+      .then((rows: SessionResult[]) => {
+        if (!alive || rows.length === 0) return
+        setResultDetail(new Map(rows.map((r) => [r.driver_number, r])))
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [selectedKey])
+
   const selectedSession = sessions.find((s) => s.session_key === selectedKey)
 
   if (loading) {
     return (
-      <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-        <div className="animate-pulse space-y-4">
-          <div className="h-3 w-20 bg-zinc-800 rounded" />
-          <div className="h-10 w-48 bg-zinc-800 rounded" />
-          <div className="h-48 bg-zinc-900/60 border border-zinc-800/50 rounded-xl mt-6" />
-        </div>
+      <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
+        <div className="h-3 w-36 animate-pulse rounded bg-white/5" />
+        <div className="mt-10 h-40 w-[60%] animate-pulse rounded bg-white/5" />
+        <p className="label-mono mt-10 text-[var(--text-dim)]">LOADING SESSIONS…</p>
       </div>
     )
   }
 
-  const ResultTable = ({ rows, showPits }: { rows: DriverResult[], showPits: boolean }) => (
-    <div className="border border-zinc-800/50 bg-zinc-900/40 rounded-xl overflow-hidden">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-zinc-800/40">
-            <th className="px-5 py-3 text-left text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase w-12">Pos</th>
-            <th className="px-5 py-3 text-left text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">Driver</th>
-            <th className="px-5 py-3 text-left text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase hidden md:table-cell">Team</th>
-            {showPits && (
-              <th className="px-5 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">Pit Stops</th>
-            )}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-zinc-800/40">
-          {rows.map((row) => (
-            <tr key={row.driver.driver_number} className="hover:bg-zinc-800/20 transition-colors">
-              <td className="px-5 py-3.5 text-sm font-black text-zinc-100 tabular-nums">
-                {row.position <= 3 ? (
-                  <span className={row.position === 1 ? 'text-yellow-400' : row.position === 2 ? 'text-zinc-300' : 'text-amber-600'}>
-                    {row.position}
-                  </span>
-                ) : (
-                  row.position
-                )}
-              </td>
-              <td className="px-5 py-3.5">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-0.5 h-5 rounded-full flex-shrink-0" style={{ backgroundColor: `#${row.driver.team_colour}` }} />
-                  <div>
-                    <p className="text-sm text-zinc-200 font-medium">{row.driver.full_name}</p>
-                    <p className="text-[10px] text-zinc-600 font-bold tracking-wider">#{row.driver.driver_number} · {row.driver.name_acronym}</p>
-                  </div>
-                </div>
-              </td>
-              <td className="px-5 py-3.5 text-sm text-zinc-400 hidden md:table-cell">{row.driver.team_name}</td>
-              {showPits && (
-                <td className="px-5 py-3.5 text-sm text-zinc-400 text-right tabular-nums">{'pitStops' in row ? row.pitStops : 0}</td>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
+  const winner = results.find((r) => r.position === 1)
+  const p2 = results.find((r) => r.position === 2)
+  const p3 = results.find((r) => r.position === 3)
+  const field = results.filter((r) => r.position > 3)
+  const winnerTime = winner
+    ? formatWinnerTime(resultDetail?.get(winner.driver.driver_number)?.duration ?? null)
+    : null
 
   return (
-    <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-      {/* Header */}
-      <div className="mb-8">
-        <p className="text-[11px] font-bold text-red-500 tracking-[0.3em] uppercase mb-3">
-          2026 Season
-        </p>
-        <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-zinc-100">
-          Race Results
-        </h1>
-      </div>
-
-      {/* Session picker */}
-      <div className="mb-8 max-w-sm">
-        <SessionPicker
-          sessions={sessions}
-          selectedKey={selectedKey}
-          onSelect={setSelectedKey}
-          label="Select Session"
-        />
-      </div>
-
-      {error && (
-        <div className="mb-6 px-4 py-3 bg-red-950/30 border border-red-800/40 rounded-lg text-red-400 text-sm">
-          {error}
+    <div className="relative overflow-x-clip px-6 pb-28 pt-20 md:px-14">
+      <FadeUp>
+        <div className="flex flex-wrap items-center justify-between gap-6">
+          <p className="label-mono text-[var(--text-dim)]">
+            RESULTS{selectedSession ? ` — ${String(selectedSession.year)}` : ''}
+          </p>
+          {/* session picker — same selection logic, the design language's skin */}
+          <select
+            value={selectedKey ?? ''}
+            onChange={(e) => setSelectedKey(Number(e.target.value))}
+            aria-label="Select session"
+            className="label-mono max-w-full cursor-pointer border border-[var(--line)] bg-transparent px-4 py-3 text-[var(--text)] outline-none transition-colors hover:border-[rgba(245,245,243,0.3)] focus:border-[rgba(245,245,243,0.4)]"
+          >
+            {sessions.map((s) => (
+              <option key={s.session_key} value={s.session_key} className="bg-[#111113] text-[#F5F5F3]">
+                {s.location.toUpperCase()} · {s.session_name.toUpperCase()} ·{' '}
+                {new Date(s.date_start)
+                  .toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                  .toUpperCase()}
+              </option>
+            ))}
+          </select>
         </div>
-      )}
+      </FadeUp>
 
       {selectedSession && (
-        <div className="mb-6">
-          <h2 className="text-xl font-bold text-zinc-100">
+        <FadeUp className="mt-10">
+          <h1
+            className="uppercase leading-[0.9] text-[var(--text)]"
+            style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(2.4rem, 6vw, 5.5rem)' }}
+          >
             {selectedSession.location} — {selectedSession.session_name}
-          </h2>
-          <p className="text-sm text-zinc-500 mt-0.5">
-            {new Date(selectedSession.date_start).toLocaleDateString('en-US', {
-              month: 'long',
-              day: 'numeric',
-              year: 'numeric',
-            })}
+          </h1>
+          <p className="label-mono mt-3 text-[var(--text-dim)]">
+            {selectedSession.circuit_short_name.toUpperCase()} ·{' '}
+            {new Date(selectedSession.date_start)
+              .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+              .toUpperCase()}
           </p>
-        </div>
+        </FadeUp>
       )}
 
+      {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
+
       {fetchingResults ? (
-        <div className="border border-zinc-800/50 bg-zinc-900/40 rounded-xl overflow-hidden animate-pulse">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <div key={i} className="h-12 border-b border-zinc-800/40 last:border-0" />
+        <div className="mt-16 space-y-5">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-16 w-[55%] animate-pulse rounded bg-white/5" />
           ))}
         </div>
       ) : results.length === 0 ? (
-        <EmptyState
-          title="No results available"
-          message={
-            selectedKey
-              ? 'Position data has not been recorded for this session yet.'
-              : 'Select a race session to view results.'
-          }
-        />
+        !apiBlocked && (
+          <p className="label-mono mt-16 text-[var(--text-dim)]">
+            {selectedKey ? 'NO POSITION DATA FOR THIS SESSION' : 'SELECT A SESSION'}
+          </p>
+        )
       ) : (
-        <ResultTable rows={results} showPits={true} />
+        <>
+          {/* ─── the winner, monumental ─── */}
+          {winner && (
+            <ClipReveal className="mt-14">
+              <div className="border-t border-[var(--line)] pt-10">
+                <p className="label-mono flex items-center gap-2.5 text-[var(--accent)]">
+                  P1
+                  <span aria-hidden className="inline-block h-[2px] w-8 bg-[var(--accent)]" />
+                </p>
+                <p
+                  className="mt-4 uppercase leading-[0.85] text-[var(--text)]"
+                  style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(4.5rem, 13vw, 13rem)' }}
+                  title={winner.driver.full_name}
+                >
+                  {surname(winner.driver.full_name)}
+                </p>
+                <p className="label-mono mt-5 flex flex-wrap items-center gap-x-6 gap-y-2 text-[var(--text-dim)]">
+                  <span className="flex items-center gap-2">
+                    <span
+                      aria-hidden
+                      className="inline-block h-[2px] w-3"
+                      style={{ backgroundColor: `#${winner.driver.team_colour}` }}
+                    />
+                    {winner.driver.team_name?.toUpperCase()}
+                  </span>
+                  {winnerTime && <span className="tabular-nums text-[var(--text)]">{winnerTime}</span>}
+                </p>
+              </div>
+            </ClipReveal>
+          )}
+
+          {/* ─── P2 / P3 — the gaps are the story ─── */}
+          {(p2 || p3) && (
+            <div className="mt-14 grid grid-cols-1 gap-10 md:grid-cols-2">
+              {[p2, p3].filter(Boolean).map((r, i) => {
+                const row = r as DriverResult
+                const detail = resultDetail?.get(row.driver.driver_number)
+                return (
+                  <FadeUp key={row.driver.driver_number} delay={0.12 + i * 0.1}>
+                    <div className="border-t border-[var(--line)] pt-6">
+                      <p className="label-mono text-[var(--text-dim)]">P{row.position}</p>
+                      <p
+                        className="mt-2 uppercase leading-none text-[var(--text)]"
+                        style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(2.4rem, 5vw, 4.5rem)' }}
+                        title={row.driver.full_name}
+                      >
+                        {surname(row.driver.full_name)}
+                      </p>
+                      <p className="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                        <span
+                          className="font-mono tabular-nums text-[var(--text)]"
+                          style={{ fontSize: 'clamp(1.2rem, 2.4vw, 2rem)' }}
+                        >
+                          {gapLabel(detail)}
+                        </span>
+                        <span className="label-mono text-[var(--text-dim)]">
+                          {row.driver.team_name?.toUpperCase()}
+                        </span>
+                      </p>
+                    </div>
+                  </FadeUp>
+                )
+              })}
+            </div>
+          )}
+
+          {/* ─── the field ─── */}
+          {field.length > 0 && (
+            <div className="mt-20">
+              <FadeUp>
+                <p className="label-mono text-[var(--text-dim)]">THE FIELD</p>
+              </FadeUp>
+              <div className="mt-6">
+                {field.map((row) => {
+                  const detail = resultDetail?.get(row.driver.driver_number)
+                  const out = isOut(detail)
+                  return (
+                    <ClipReveal key={row.driver.driver_number}>
+                      <div
+                        className="flex items-baseline gap-5 border-t border-[var(--line)] py-3 md:gap-8"
+                        style={out ? { opacity: 0.35 } : undefined}
+                      >
+                        <span className="label-mono w-8 shrink-0 tabular-nums text-[var(--text-dim)]">
+                          P{row.position}
+                        </span>
+                        <p
+                          className="min-w-0 flex-1 truncate uppercase leading-none text-[var(--text)]"
+                          style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.4rem, 2.6vw, 2.2rem)' }}
+                          title={row.driver.full_name}
+                        >
+                          {surname(row.driver.full_name)}
+                        </p>
+                        <span className="label-mono hidden text-[var(--text-dim)] md:block">
+                          {row.driver.team_name?.toUpperCase()}
+                        </span>
+                        <span className="label-mono w-28 shrink-0 text-right tabular-nums text-[var(--text)]">
+                          {gapLabel(detail)}
+                        </span>
+                      </div>
+                    </ClipReveal>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
