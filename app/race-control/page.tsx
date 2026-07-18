@@ -4,30 +4,37 @@ import { useEffect, useState, useCallback } from 'react'
 import type { Session, RaceControl } from '@/lib/openf1'
 import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedRaceControl } from '@/lib/client-cache'
-import SessionPicker from '@/components/SessionPicker'
-import EmptyState from '@/components/EmptyState'
+import SessionHeader from '@/components/session/SessionHeader'
+import { FadeUp } from '@/components/motion/reveals'
+import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
-const FLAG_STYLES: Record<string, { bg: string; text: string; dot: string }> = {
-  'GREEN':         { bg: 'bg-green-950/40',  text: 'text-green-400',  dot: 'bg-green-500'  },
-  'YELLOW':        { bg: 'bg-yellow-950/40', text: 'text-yellow-400', dot: 'bg-yellow-500' },
-  'DOUBLE YELLOW': { bg: 'bg-yellow-950/40', text: 'text-yellow-400', dot: 'bg-yellow-500' },
-  'RED':           { bg: 'bg-red-950/40',    text: 'text-red-400',    dot: 'bg-red-500'    },
-  'CHEQUERED':     { bg: 'bg-zinc-800/40',   text: 'text-zinc-300',   dot: 'bg-zinc-400'   },
-  'BLUE':          { bg: 'bg-blue-950/40',   text: 'text-blue-400',   dot: 'bg-blue-500'   },
-  'SC DEPLOYED':   { bg: 'bg-yellow-950/40', text: 'text-yellow-300', dot: 'bg-yellow-400' },
-  'VSC DEPLOYED':  { bg: 'bg-orange-950/40', text: 'text-orange-400', dot: 'bg-orange-500' },
-  'VSC ENDING':    { bg: 'bg-orange-950/30', text: 'text-orange-300', dot: 'bg-orange-400' },
-  'SC ENDING':     { bg: 'bg-yellow-950/30', text: 'text-yellow-300', dot: 'bg-yellow-400' },
+// Flag colours are the dataset here (like compounds on /stints).
+const FLAG_COLOURS: Record<string, string> = {
+  'GREEN': '#4ADE80',
+  'YELLOW': '#FACC15',
+  'DOUBLE YELLOW': '#FACC15',
+  'RED': '#EF4444',
+  'CHEQUERED': '#F5F5F3',
+  'BLUE': '#60A5FA',
+  'SC DEPLOYED': '#FACC15',
+  'VSC DEPLOYED': '#FB923C',
+  'VSC ENDING': '#FB923C',
+  'SC ENDING': '#FACC15',
 }
 
-function getFlagStyle(flag: string | null) {
-  if (!flag) return { bg: 'bg-zinc-900/40', text: 'text-zinc-400', dot: 'bg-zinc-600' }
-  return FLAG_STYLES[flag.toUpperCase()] ?? { bg: 'bg-zinc-900/40', text: 'text-zinc-400', dot: 'bg-zinc-600' }
+function flagColour(flag: string | null): string {
+  if (!flag) return 'rgba(245,245,243,0.25)'
+  return FLAG_COLOURS[flag.toUpperCase()] ?? 'rgba(245,245,243,0.25)'
 }
 
 function formatTime(dateStr: string): string {
   const d = new Date(dateStr)
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  return d.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
 }
 
 const CATEGORIES = ['All', 'Flag', 'SafetyCar', 'DRS', 'Other'] as const
@@ -40,6 +47,7 @@ export default function RaceControlPage() {
   const [fetching, setFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [filterCat, setFilterCat] = useState<string>('All')
+  const apiBlocked = useApiBlocked()
 
   useEffect(() => {
     getCachedSessions()
@@ -83,139 +91,95 @@ export default function RaceControlPage() {
 
   if (loading) {
     return (
-      <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-        <div className="animate-pulse space-y-4">
-          <div className="h-3 w-20 bg-zinc-800 rounded" />
-          <div className="h-10 w-56 bg-zinc-800 rounded" />
-        </div>
+      <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
+        <div className="h-3 w-32 animate-pulse rounded bg-white/5" />
+        <div className="mt-8 h-24 w-[55%] animate-pulse rounded bg-white/5" />
+        <p className="label-mono mt-8 text-[var(--text-dim)]">LOADING SESSIONS…</p>
       </div>
     )
   }
 
   return (
-    <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-      {/* Header */}
-      <div className="mb-8">
-        <p className="text-[11px] font-bold text-red-500 tracking-[0.3em] uppercase mb-3">
-          2026 Season
-        </p>
-        <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-zinc-100">
-          Race Control
-        </h1>
-        <p className="text-zinc-500 text-sm mt-2">
-          Flags, safety car deployments, and official messages
-        </p>
+    <div className="relative overflow-x-clip px-6 pb-28 pt-20 md:px-14">
+      <SessionHeader
+        ghost="RC"
+        kicker="RACE CONTROL"
+        sessions={sessions}
+        selectedKey={selectedKey}
+        onSelect={setSelectedKey}
+      />
+
+      {/* category filter — menu grammar */}
+      <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat}
+            type="button"
+            onClick={() => setFilterCat(cat)}
+            className={`label-mono transition-colors hover:text-[var(--accent)] ${
+              filterCat === cat ? 'text-[var(--text)]' : 'text-[var(--text-dim)]'
+            }`}
+          >
+            {cat.toUpperCase()}
+          </button>
+        ))}
       </div>
 
-      {/* Controls row */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-8">
-        <div className="max-w-sm w-full">
-          <SessionPicker
-            sessions={sessions}
-            selectedKey={selectedKey}
-            onSelect={setSelectedKey}
-            label="Select Session"
-          />
-        </div>
-
-        {/* Category filter */}
-        <div className="flex items-end gap-2 flex-wrap">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setFilterCat(cat)}
-              className={[
-                'px-3 py-2 text-xs font-bold tracking-wider uppercase rounded-lg border transition-colors',
-                filterCat === cat
-                  ? 'border-red-600/50 bg-red-600/15 text-red-400'
-                  : 'border-zinc-800/50 bg-zinc-900/40 text-zinc-500 hover:text-zinc-300',
-              ].join(' ')}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {error && (
-        <div className="mb-6 px-4 py-3 bg-red-950/30 border border-red-800/40 rounded-lg text-red-400 text-sm">
-          {error}
-        </div>
-      )}
+      {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
 
       {fetching ? (
-        <div className="space-y-2 animate-pulse">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="h-14 bg-zinc-900/60 border border-zinc-800/50 rounded-lg" />
+        <div className="mt-16 space-y-4">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-8 w-[70%] animate-pulse rounded bg-white/5" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <EmptyState
-          title="No messages"
-          message={
-            selectedKey
-              ? 'No race control messages recorded for this session.'
-              : 'Select a session to view race control messages.'
-          }
-        />
-      ) : (
-        <div className="space-y-1.5">
-          <p className="text-[11px] font-bold text-zinc-600 tracking-[0.25em] uppercase mb-3">
-            {filtered.length} message{filtered.length !== 1 ? 's' : ''} — newest first
+        !apiBlocked && (
+          <p className="label-mono mt-16 text-[var(--text-dim)]">
+            {selectedKey ? 'NO MESSAGES FOR THIS FILTER' : 'SELECT A SESSION'}
           </p>
-          {filtered.map((msg, idx) => {
-            const style = getFlagStyle(msg.flag)
-            return (
-              <div
-                key={idx}
-                className={`flex items-start gap-4 px-4 py-3 rounded-lg border border-zinc-800/30 ${style.bg} transition-colors`}
-              >
-                {/* Flag dot */}
-                <div className="flex-shrink-0 mt-1.5">
-                  <span className={`w-2 h-2 rounded-full block ${style.dot}`} />
-                </div>
-
-                {/* Time */}
-                <span className="text-[11px] text-zinc-600 tabular-nums font-mono flex-shrink-0 mt-0.5 min-w-[60px]">
+        )
+      ) : (
+        <div className="mt-14">
+          <FadeUp>
+            <p className="label-mono text-[var(--text-dim)]">
+              FEED — {filtered.length} MESSAGE{filtered.length !== 1 ? 'S' : ''} · NEWEST FIRST
+            </p>
+          </FadeUp>
+          {/* the feed: a terminal in the site's mono register */}
+          <div className="mt-6 font-mono text-[12px] leading-relaxed">
+            {filtered.map((msg, idx) => (
+              <div key={idx} className="flex items-baseline gap-4 border-t border-[var(--line)] py-2.5">
+                {/* flag colour as the leading tick */}
+                <span
+                  aria-hidden
+                  className="inline-block h-3 w-[3px] shrink-0 self-center"
+                  style={{ backgroundColor: flagColour(msg.flag) }}
+                />
+                <span className="shrink-0 tabular-nums text-[var(--text-dim)]">
                   {formatTime(msg.date)}
                 </span>
-
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                    {msg.flag && (
-                      <span className={`text-[10px] font-black tracking-[0.2em] uppercase ${style.text}`}>
-                        {msg.flag}
-                      </span>
-                    )}
-                    {msg.category && (
-                      <span className="text-[10px] text-zinc-600 tracking-wider uppercase">
-                        {msg.category}
-                      </span>
-                    )}
-                    {msg.lap_number && (
-                      <span className="text-[10px] text-zinc-700">
-                        Lap {msg.lap_number}
-                      </span>
-                    )}
-                    {msg.driver_number && (
-                      <span className="text-[10px] text-zinc-700">
-                        #{msg.driver_number}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-zinc-300 leading-snug">{msg.message}</p>
-                </div>
-
-                {/* Scope */}
-                {msg.scope && (
-                  <span className="text-[10px] text-zinc-700 flex-shrink-0 mt-0.5 capitalize">
-                    {msg.scope}
+                {msg.lap_number != null && (
+                  <span className="hidden shrink-0 tabular-nums text-[var(--text-dim)] sm:inline">
+                    L{msg.lap_number}
+                  </span>
+                )}
+                <span className="min-w-0 flex-1 text-[var(--text)]">
+                  {msg.flag && (
+                    <span className="mr-3" style={{ color: flagColour(msg.flag) }}>
+                      [{msg.flag.toUpperCase()}]
+                    </span>
+                  )}
+                  {msg.message}
+                </span>
+                {msg.driver_number != null && (
+                  <span className="hidden shrink-0 text-[var(--text-dim)] md:inline">
+                    #{msg.driver_number}
                   </span>
                 )}
               </div>
-            )
-          })}
+            ))}
+          </div>
         </div>
       )}
     </div>
