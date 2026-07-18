@@ -111,6 +111,7 @@ async function computeSeasonData(): Promise<SeasonBundle> {
       teamStandings: [],
       lastRace: null,
       winnersByRound: {},
+      resultsByRound: {},
       meetings,
       sessions,
     }
@@ -136,6 +137,9 @@ async function computeSeasonData(): Promise<SeasonBundle> {
   const tally = new Map<number, { points: number; wins: number; podiums: number }>()
   const teamTally = new Map<string, { colour: string; points: number; wins: number }>()
   const winnersByRound: Record<number, string> = {}
+  // Per-round GP results, compact — powers per-driver season records
+  // without any extra upstream fetches (the data is already in hand).
+  const resultsByRound: Record<number, import('@/lib/season-data').RoundResultRow[]> = {}
 
   for (const d of drivers) {
     if (!tally.has(d.driver_number)) tally.set(d.driver_number, { points: 0, wins: 0, podiums: 0 })
@@ -146,6 +150,14 @@ async function computeSeasonData(): Promise<SeasonBundle> {
 
   for (const { session, results } of resultSets) {
     const isGrandPrix = session.session_name === 'Race'
+    if (isGrandPrix) {
+      resultsByRound[session.meeting_key] = results.map((r) => ({
+        d: r.driver_number,
+        p: r.position,
+        pts: r.points ?? 0,
+        ...(r.dnf || r.dns || r.dsq ? { out: 1 as const } : {}),
+      }))
+    }
     for (const r of results) {
       const t = tally.get(r.driver_number)
       if (!t) continue
@@ -234,12 +246,14 @@ async function computeSeasonData(): Promise<SeasonBundle> {
         }
       : null,
     winnersByRound,
+    resultsByRound,
     meetings,
     sessions,
   }
 }
 
-const getSeasonData = unstable_cache(computeSeasonData, ['season-data-v1'], {
+// v2: bundle gained resultsByRound (per-driver season records)
+const getSeasonData = unstable_cache(computeSeasonData, ['season-data-v2'], {
   revalidate: 300,
 })
 

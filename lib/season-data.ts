@@ -42,6 +42,15 @@ export interface BundleLastRace {
   podium: BundlePodiumRow[]
 }
 
+// Compact per-driver row of a grand prix result (race sessions only):
+// d = driver number, p = finishing position, pts = race points, out = DNF/DNS/DSQ
+export interface RoundResultRow {
+  d: number
+  p: number | null
+  pts: number
+  out?: 1
+}
+
 export interface SeasonBundle {
   blocked: false
   complete: true
@@ -52,6 +61,7 @@ export interface SeasonBundle {
   teamStandings: BundleTeamStanding[]
   lastRace: BundleLastRace | null
   winnersByRound: Record<number, string> // meeting_key → winner surname
+  resultsByRound: Record<number, RoundResultRow[]> // meeting_key → GP result rows
   meetings: Meeting[]
   sessions: Session[]
 }
