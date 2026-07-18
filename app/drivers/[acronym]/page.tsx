@@ -48,11 +48,28 @@ export default function DriverPage() {
     }
   }, [])
 
+  // The hero photo is derivable from the URL acronym alone — no data fetch.
+  // Rendering it (priority) even while the driver record is still loading puts
+  // its <link rel=preload> in the SSR HTML, so it downloads in the first
+  // request wave instead of waiting ~2s for JS to hydrate and fetch.
+  const heroPhoto = driverImage(acronym) ?? DRIVER_PHOTOS[acronym] ?? null
+
   if (loading) {
     return (
-      <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
-        <div className="h-3 w-32 animate-pulse rounded bg-white/5" />
-        <div className="mt-8 h-40 w-[60%] animate-pulse rounded bg-white/5" />
+      <div className="relative flex min-h-[calc(100dvh-4rem)] flex-col justify-end overflow-hidden px-6 pb-16 pt-8 md:px-14">
+        {heroPhoto && (
+          <TreatedImage
+            src={heroPhoto}
+            treatment="mono"
+            priority
+            sizes="(min-width: 768px) 42vw, 62vw"
+            className="pointer-events-none absolute right-0 top-0 h-full w-[62%] md:w-[42%]"
+          />
+        )}
+        <div className="relative">
+          <div className="h-3 w-32 animate-pulse rounded bg-white/5" />
+          <div className="mt-8 h-40 w-[60%] animate-pulse rounded bg-white/5" />
+        </div>
       </div>
     )
   }
@@ -71,8 +88,9 @@ export default function DriverPage() {
     )
   }
 
-  // Local fetched asset first; curated/openf1 remote URLs as fallback.
-  const photo = driverImage(acronym) ?? DRIVER_PHOTOS[acronym] ?? driver.headshot_url
+  // Same URL-derived asset preloaded above (cache hit); openf1 headshot only
+  // as a last resort when the acronym has no local/curated image.
+  const photo = heroPhoto ?? driver.headshot_url
   const car = driver.team_name ? carImage(teamToSlug(driver.team_name)) : null
   const career = CAREER_STATS[acronym]
   const nationality = DRIVER_NATIONALITIES[acronym] ?? driver.country_code ?? ''

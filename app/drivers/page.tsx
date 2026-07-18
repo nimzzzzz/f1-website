@@ -48,6 +48,10 @@ export default function DriversPage() {
 
   const [pointsSettled, setPointsSettled] = useState(false)
   const [orderDeadline, setOrderDeadline] = useState(false)
+  // The championship leader's acronym, known from the bundle alone (no drivers
+  // fetch). Used to warm P1's headshot while the skeleton still holds for the
+  // zero-CLS order freeze, so it's downloaded by the time panel 1 paints.
+  const [leaderAcronym, setLeaderAcronym] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -55,6 +59,7 @@ export default function DriversPage() {
       .then((bundle) => {
         if (!alive || !bundle || bundle.driverStandings.length === 0) return
         setPoints(new Map(bundle.driverStandings.map((d) => [d.driverNumber, d.points])))
+        setLeaderAcronym(bundle.driverStandings[0]?.nameAcronym ?? null)
       })
       .catch(() => {})
       .finally(() => {
@@ -149,11 +154,25 @@ export default function DriversPage() {
   }, [points])
 
   if (!ready) {
+    const leaderPhoto = leaderAcronym ? driverImage(leaderAcronym) : null
     return (
       <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
         <div className="h-3 w-36 animate-pulse rounded bg-white/5" />
         <div className="mt-10 h-56 w-[70%] animate-pulse rounded bg-white/5" />
         <p className="label-mono mt-10 text-[var(--text-dim)]">LOADING THE GRID…</p>
+        {/* Off-screen warm of panel 1's headshot: identical src + sizes as the
+            real panel, so the leader's image downloads during the order-freeze
+            gate and the first panel paints from cache (no pop-in). */}
+        {leaderPhoto && (
+          <TreatedImage
+            src={leaderPhoto}
+            treatment="mono"
+            priority
+            fade={false}
+            sizes="(min-width: 768px) 36vw, 72vw"
+            className="pointer-events-none fixed left-0 top-0 h-px w-px opacity-0"
+          />
+        )}
       </div>
     )
   }

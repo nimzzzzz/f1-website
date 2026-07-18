@@ -99,20 +99,28 @@ export default function TeamsPage() {
       </FadeUp>
 
       <div className="mt-12">
-        {teams.map((team) => {
+        {teams.map((team, idx) => {
           const teamDrivers = drivers
             .filter((d) => d.team_name === team.name)
             .sort((a, b) => a.driver_number - b.driver_number)
           const slug = teamToSlug(team.name)
           const car = carImage(slug)
           const logo = teamLogoImage(slug)
+          // The top two bands sit in the opening viewport at common heights —
+          // load their imagery eagerly so it's painted, not popped in on scroll.
+          const aboveFold = idx < 2
           return (
             <ClipReveal key={team.name}>
               <TransitionLink
                 href={`/teams/${teamToSlug(team.name)}`}
                 className="group relative block overflow-hidden border-t border-[var(--line)] py-10 md:py-12"
               >
-                {/* the car — low-saturation livery riding the band, under the numeral */}
+                {/* the car — low-saturation livery riding the band, under the
+                    numeral. Desktop-only (hidden md:block): kept lazy so mobile
+                    never fetches it. On desktop the top bands are in-viewport,
+                    so lazy loads them promptly; eager would only add a mobile
+                    fetch of an invisible image for no desktop gain (the paint
+                    is gated by the data fetch either way). */}
                 {car && (
                   <TreatedImage
                     src={car}
@@ -147,6 +155,7 @@ export default function TeamsPage() {
                       <TreatedImage
                         src={logo}
                         treatment="mono"
+                        eager={aboveFold}
                         fade={false}
                         position="center"
                         sizes="48px"

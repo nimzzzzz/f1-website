@@ -28,6 +28,7 @@ export default function TreatedImage({
   position = 'bottom',
   sizes = '50vw',
   priority = false,
+  eager = false,
   className = '',
 }: {
   src: string | null
@@ -39,7 +40,12 @@ export default function TreatedImage({
   fit?: 'contain' | 'cover'
   position?: string
   sizes?: string
+  /** Above-the-fold LCP candidate: eager + high fetch priority + SSR preload. */
   priority?: boolean
+  /** Fetch immediately (not lazy) at normal priority — for below-fold images
+   *  we want warmed during free loading time (e.g. behind the intro), without
+   *  stealing priority from the real LCP. */
+  eager?: boolean
   className?: string
 }) {
   // The fill Image needs a positioned box. Callers often position the box
@@ -63,6 +69,7 @@ export default function TreatedImage({
             fill
             sizes={sizes}
             priority={priority}
+            loading={priority ? undefined : eager ? 'eager' : undefined}
             unoptimized={src.endsWith('.svg')}
             className={fit === 'cover' ? 'object-cover' : 'object-contain'}
             style={{ filter: FILTERS[treatment], objectPosition: position }}
