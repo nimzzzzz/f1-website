@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
+
 interface YTVideo {
   id: string
   title: string
@@ -37,68 +38,77 @@ export default function HighlightsPage() {
   }, [])
 
   return (
-    <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-      {/* Header */}
-      <div className="mb-10">
-        <p className="text-[11px] font-bold text-red-500 tracking-[0.3em] uppercase mb-3">2026 Season</p>
-        <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-zinc-100">Highlights</h1>
-        <p className="text-zinc-500 text-sm mt-2">Latest videos from the official F1 YouTube channel</p>
-      </div>
+    <div className="relative overflow-x-clip px-6 pb-28 pt-20 md:px-14">
+      <span
+        aria-hidden
+        className="outline-numeral pointer-events-none absolute -right-[2vw] -top-2 leading-none"
+        style={{ fontSize: 'clamp(5rem, 12vw, 13rem)', WebkitTextStroke: '1px rgba(245,245,243,0.06)' }}
+      >
+        VIDEO
+      </span>
 
-      {/* Loading */}
+      <p className="label-mono text-[var(--text-dim)]">HIGHLIGHTS — OFFICIAL F1 CHANNEL</p>
+      <h1
+        className="mt-4 uppercase leading-[0.85] text-[var(--text)]"
+        style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(2.6rem, 6vw, 5.5rem)' }}
+      >
+        Latest videos
+      </h1>
+
       {loading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {Array.from({ length: 12 }).map((_, i) => (
-            <div key={i} className="animate-pulse">
-              <div className="aspect-video bg-zinc-900 rounded-xl mb-3" />
-              <div className="h-3 bg-zinc-800 rounded w-3/4 mb-2" />
-              <div className="h-3 bg-zinc-800 rounded w-1/2" />
+        <div className="mt-14 grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 9 }).map((_, i) => (
+            <div key={i}>
+              <div className="aspect-video animate-pulse bg-white/5" />
+              <div className="mt-4 h-4 w-3/4 animate-pulse rounded bg-white/5" />
             </div>
           ))}
         </div>
       )}
 
-      {/* Error */}
-      {!loading && error && (
-        <div className="px-4 py-3 bg-red-950/30 border border-red-800/40 rounded-lg text-red-400 text-sm">
-          {error}
-        </div>
-      )}
+      {!loading && error && <p className="label-mono mt-14 text-[var(--accent)]">{error}</p>}
 
-      {/* Videos grid */}
       {!loading && !error && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="mt-14 grid grid-cols-1 gap-x-8 gap-y-14 sm:grid-cols-2 lg:grid-cols-3">
           {videos.map((video) => (
             <a
               key={video.id}
               href={`https://www.youtube.com/watch?v=${video.id}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="group block"
+              className="group block border-t border-[var(--line)] pt-4"
             >
-              <div className="relative aspect-video rounded-xl overflow-hidden bg-zinc-900 mb-3">
+              <div className="relative aspect-video overflow-hidden bg-[var(--surface)]">
                 {video.thumbnail && (
                   <Image
                     src={video.thumbnail}
                     alt={video.title}
                     fill
-                    className="object-cover transition-transform duration-300 group-hover:scale-105"
+                    className="object-cover brightness-[0.7] saturate-[0.85] transition-[filter,transform] duration-300 group-hover:scale-[1.03] group-hover:brightness-90 motion-reduce:transition-none"
                     unoptimized
                   />
                 )}
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/40">
-                  <div className="w-14 h-14 rounded-full bg-red-600 flex items-center justify-center shadow-2xl">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </div>
-                </div>
-                <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-red-600 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                {/* dark treatment consistent with the site's grain-over-dark */}
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0"
+                  style={{
+                    background: 'linear-gradient(to top, rgba(10,10,10,0.55), transparent 55%)',
+                  }}
+                />
+                <span className="label-mono absolute bottom-3 left-3 text-[var(--text)] opacity-0 transition-opacity duration-200 group-hover:opacity-100 motion-reduce:transition-none">
+                  WATCH →
+                </span>
               </div>
-              <p className="text-zinc-200 text-sm font-medium leading-snug line-clamp-2 group-hover:text-white transition-colors mb-1">
+              <p
+                className="mt-4 line-clamp-2 uppercase leading-tight text-[var(--text)] transition-colors group-hover:text-[var(--accent)]"
+                style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem' }}
+              >
                 {video.title}
               </p>
-              <p className="text-zinc-600 text-[11px]">{timeAgo(video.publishedAt)}</p>
+              <p className="label-mono mt-2 text-[var(--text-dim)]">
+                {timeAgo(video.publishedAt).toUpperCase()}
+              </p>
             </a>
           ))}
         </div>
