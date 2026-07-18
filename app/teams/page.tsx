@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import type { Driver } from '@/lib/openf1'
 import { getCachedLatestDrivers } from '@/lib/client-cache'
-import EmptyState from '@/components/EmptyState'
-import Image from 'next/image'
-import { TEAM_CARS, DRIVER_AVATARS, TEAM_LOGOS, TEAM_COLOURS, TEAM_ORDER, teamToSlug } from '@/lib/team-data'
+import { fetchSeasonData, bundleAsOf, type SeasonBundle } from '@/lib/season-data'
+import { teamToSlug } from '@/lib/team-data'
+import { ClipReveal, CountUp, FadeUp } from '@/components/motion/reveals'
+import { TransitionLink } from '@/components/motion/TransitionProvider'
+import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
 function deduplicateDrivers(drivers: Driver[]): Driver[] {
   const map = new Map<number, Driver>()
@@ -14,163 +15,149 @@ function deduplicateDrivers(drivers: Driver[]): Driver[] {
   return Array.from(map.values())
 }
 
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
 export default function TeamsPage() {
-  const [sortedTeams, setSortedTeams] = useState<string[]>([])
-  const [byTeam, setByTeam] = useState<Record<string, Driver[]>>({})
+  const [drivers, setDrivers] = useState<Driver[]>([])
+  const [bundle, setBundle] = useState<SeasonBundle | null>(null)
   const [loading, setLoading] = useState(true)
+  const apiBlocked = useApiBlocked()
 
   useEffect(() => {
-    getCachedLatestDrivers().then((drivers) => {
-      const unique = deduplicateDrivers(drivers)
-      const grouped = unique.reduce<Record<string, Driver[]>>((acc, d) => {
-        if (!acc[d.team_name]) acc[d.team_name] = []
-        acc[d.team_name].push(d)
-        return acc
-      }, {})
-      const sorted = Object.keys(grouped).sort((a, b) => {
-        const ia = TEAM_ORDER.indexOf(a), ib = TEAM_ORDER.indexOf(b)
-        if (ia === -1 && ib === -1) return a.localeCompare(b)
-        if (ia === -1) return 1
-        if (ib === -1) return -1
-        return ia - ib
-      })
-      setByTeam(grouped)
-      setSortedTeams(sorted)
-    }).finally(() => setLoading(false))
+    getCachedLatestDrivers()
+      .then((all) => setDrivers(deduplicateDrivers(all)))
+      .finally(() => setLoading(false))
+  }, [])
+
+  // Constructor standings come from the server bundle.
+  useEffect(() => {
+    let alive = true
+    fetchSeasonData().then((b) => {
+      if (alive && b) setBundle(b)
+    })
+    return () => {
+      alive = false
+    }
   }, [])
 
   if (loading) {
     return (
-      <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-        <div className="animate-pulse space-y-4">
-          <div className="h-3 w-20 bg-zinc-800 rounded" />
-          <div className="h-10 w-48 bg-zinc-800 rounded" />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-6">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-72 bg-zinc-900/60 border border-zinc-800/50 rounded-2xl" />
-            ))}
-          </div>
+      <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
+        <div className="h-3 w-40 animate-pulse rounded bg-white/5" />
+        <div className="mt-10 space-y-8">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-24 w-[70%] animate-pulse rounded bg-white/5" />
+          ))}
         </div>
+        <p className="label-mono mt-10 text-[var(--text-dim)]">LOADING CONSTRUCTORS…</p>
       </div>
     )
   }
 
-  if (sortedTeams.length === 0) {
+  // Bundle order when standings exist; driver-data grouping otherwise.
+  const teams = bundle?.teamStandings.length
+    ? bundle.teamStandings.map((t) => ({
+        name: t.teamName,
+        colour: `#${t.teamColour || 'F5F5F3'}`,
+        points: Math.floor(t.points) as number | null,
+        position: t.position as number | null,
+        wins: t.wins,
+      }))
+    : [...new Set(drivers.map((d) => d.team_name))].sort().map((name) => ({
+        name,
+        colour: `#${drivers.find((d) => d.team_name === name)?.team_colour || 'F5F5F3'}`,
+        points: null,
+        position: null,
+        wins: 0,
+      }))
+
+  const asOf = bundle ? bundleAsOf(bundle) : null
+
+  if (teams.length === 0) {
     return (
-      <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-        <EmptyState title="No constructor data" message="Constructor information is not yet available for the 2026 season." />
+      <div className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
+        {!apiBlocked && <p className="label-mono text-[var(--text-dim)]">NO CONSTRUCTOR DATA YET</p>}
       </div>
     )
   }
 
   return (
-    <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-      {/* Header */}
-      <div className="mb-10">
-        <p className="text-[11px] font-bold text-red-500 tracking-[0.3em] uppercase mb-3">2026 Season</p>
-        <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-zinc-100">2026 Constructors</h1>
-        <p className="text-zinc-500 text-sm mt-2">{sortedTeams.length} teams · click a card to view profile</p>
-      </div>
+    <div className="relative overflow-x-clip px-6 pb-28 pt-20 md:px-14">
+      <FadeUp>
+        <p className="label-mono flex flex-wrap gap-x-4 text-[var(--text-dim)]">
+          CONSTRUCTORS&rsquo; CHAMPIONSHIP{bundle?.seasonYear ? ` — ${bundle.seasonYear}` : ''}
+          {asOf && <span>AS OF {asOf}</span>}
+          {apiBlocked && !bundle && (
+            <span className="flex items-center gap-2 text-[var(--accent)]">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none" />
+              LIVE SESSION — DATA PAUSED
+            </span>
+          )}
+        </p>
+      </FadeUp>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {sortedTeams.map((teamName) => {
-          const teamDrivers = byTeam[teamName].sort((a, b) => a.driver_number - b.driver_number)
-          const colours = TEAM_COLOURS[teamName] ?? { bright: '#ffffff', dark: '#333333' }
-          const carUrl = TEAM_CARS[teamName]
-          const logoUrl = TEAM_LOGOS[teamName]
-          const { bright, dark } = colours
-
+      <div className="mt-12">
+        {teams.map((team) => {
+          const teamDrivers = drivers
+            .filter((d) => d.team_name === team.name)
+            .sort((a, b) => a.driver_number - b.driver_number)
           return (
-            <Link
-              key={teamName}
-              href={`/teams/${teamToSlug(teamName)}`}
-              className="relative rounded-2xl overflow-hidden min-h-[280px] flex flex-col group cursor-pointer transition-transform duration-200 hover:scale-[1.015] hover:shadow-2xl"
-              style={{ backgroundColor: bright }}
-            >
-              {/* Diagonal dark gradient overlay */}
-              <div
-                className="absolute inset-0 z-0 pointer-events-none"
-                style={{ background: `linear-gradient(315deg, ${dark}00 0%, ${dark} 100%)` }}
-              />
+            <ClipReveal key={team.name}>
+              <TransitionLink
+                href={`/teams/${teamToSlug(team.name)}`}
+                className="group relative block overflow-hidden border-t border-[var(--line)] py-10 md:py-12"
+              >
+                {/* constructors position — outline numeral behind the band */}
+                {team.position !== null && (
+                  <span
+                    aria-hidden
+                    className="outline-numeral pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 leading-none"
+                    style={{ fontSize: 'clamp(7rem, 15vw, 13rem)' }}
+                  >
+                    {pad2(team.position)}
+                  </span>
+                )}
 
-              {/* Content */}
-              <div className="relative z-10 flex flex-col flex-1 p-6">
-                {/* Top row: team name left, logo right */}
-                <div className="flex items-start justify-between gap-3 mb-4">
-                  <h2 className="text-2xl font-black text-white leading-tight">{teamName}</h2>
-                  {logoUrl && (
-                    <div
-                      className="relative h-9 w-24 flex-shrink-0 rounded-lg flex items-center justify-center p-1.5"
-                      style={{ backgroundColor: dark }}
-                    >
-                      <Image
-                        src={logoUrl}
-                        alt={teamName}
-                        fill
-                        className="object-contain p-1.5"
-                        unoptimized
-                      />
-                    </div>
+                {/* the team's colour as a thin leading rule — their accent */}
+                <span
+                  aria-hidden
+                  className="absolute left-0 top-0 h-[2px] w-16 md:w-24"
+                  style={{ backgroundColor: team.colour }}
+                />
+
+                <div className="relative flex flex-wrap items-baseline gap-x-10 gap-y-4">
+                  <h2
+                    className="uppercase leading-[0.9] text-[var(--text)] transition-transform duration-300 group-hover:translate-x-3 motion-reduce:transition-none"
+                    style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(2.6rem, 6.5vw, 6rem)' }}
+                  >
+                    {team.name}
+                  </h2>
+                  {team.points !== null && (
+                    <span className="shrink-0">
+                      <span
+                        className="font-mono tabular-nums text-[var(--text)]"
+                        style={{ fontSize: 'clamp(1.4rem, 2.8vw, 2.4rem)' }}
+                      >
+                        <CountUp value={team.points} />
+                      </span>
+                      <span className="label-mono ml-2 text-[var(--text-dim)]">PTS</span>
+                    </span>
                   )}
                 </div>
 
-                {/* Driver rows */}
-                <div className="flex flex-col gap-2 mb-4">
-                  {teamDrivers.map((driver) => {
-                    const avatarUrl = DRIVER_AVATARS[driver.name_acronym] ?? driver.headshot_url
-                    return (
-                      <div key={driver.driver_number} className="flex items-center gap-3">
-                        <div
-                          className="relative w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2"
-                          style={{ backgroundColor: bright, borderColor: `${dark}80` }}
-                        >
-                          {avatarUrl && (
-                            <Image
-                              src={avatarUrl}
-                              alt={driver.full_name}
-                              fill
-                              className="object-contain object-bottom"
-                              unoptimized
-                            />
-                          )}
-                        </div>
-                        <div>
-                          <span className="text-sm font-normal text-white/70">{driver.first_name} </span>
-                          <span className="text-sm font-black text-white uppercase tracking-wide">{driver.last_name}</span>
-                        </div>
-                      </div>
-                    )
-                  })}
+                <div className="label-mono relative mt-4 flex flex-wrap items-center gap-x-8 gap-y-2 text-[var(--text-dim)]">
+                  {teamDrivers.map((d) => (
+                    <span key={d.driver_number}>
+                      {d.last_name?.toUpperCase()} <span className="opacity-60">#{d.driver_number}</span>
+                    </span>
+                  ))}
+                  {team.wins > 0 && <span>· {team.wins} WIN{team.wins > 1 ? 'S' : ''}</span>}
+                  <span className="opacity-0 transition-opacity duration-300 group-hover:opacity-100 motion-reduce:transition-none">
+                    TEAM →
+                  </span>
                 </div>
-
-                <div className="flex-1" />
-              </div>
-
-              {/* Car image */}
-              {carUrl && (
-                <div className="relative z-10 h-32 w-full overflow-visible">
-                  <div className="absolute bottom-0 left-0 right-0 h-32">
-                    <Image
-                      src={carUrl}
-                      alt={`${teamName} 2026 car`}
-                      fill
-                      className="object-contain object-left-bottom transition-transform duration-300 group-hover:scale-105"
-                      unoptimized
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* View profile arrow */}
-              <div className="absolute top-4 right-4 z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black"
-                  style={{ backgroundColor: bright, color: dark }}
-                >
-                  →
-                </div>
-              </div>
-            </Link>
+              </TransitionLink>
+            </ClipReveal>
           )
         })}
       </div>
