@@ -4,24 +4,26 @@ import { useEffect, useState, useCallback } from 'react'
 import type { Session, Stint, Driver } from '@/lib/openf1'
 import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedStints, getCachedDrivers } from '@/lib/client-cache'
-import SessionPicker from '@/components/SessionPicker'
-import EmptyState from '@/components/EmptyState'
+import SessionHeader from '@/components/session/SessionHeader'
+import { FadeUp } from '@/components/motion/reveals'
+import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
-const COMPOUND_STYLES: Record<string, { text: string; bg: string; border: string; label: string }> = {
-  SOFT:         { text: 'text-red-400',    bg: 'bg-red-950/30',    border: 'border-red-800/40',    label: 'S' },
-  MEDIUM:       { text: 'text-yellow-400', bg: 'bg-yellow-950/30', border: 'border-yellow-800/40', label: 'M' },
-  HARD:         { text: 'text-zinc-200',   bg: 'bg-zinc-800/40',   border: 'border-zinc-600/40',   label: 'H' },
-  INTERMEDIATE: { text: 'text-green-400',  bg: 'bg-green-950/30',  border: 'border-green-800/40',  label: 'I' },
-  WET:          { text: 'text-blue-400',   bg: 'bg-blue-950/30',   border: 'border-blue-800/40',   label: 'W' },
+// Compound colours are the dataset here — the page's only non-mono colour.
+const COMPOUNDS: Record<string, { colour: string; label: string }> = {
+  SOFT: { colour: '#EF4444', label: 'S' },
+  MEDIUM: { colour: '#FACC15', label: 'M' },
+  HARD: { colour: '#F5F5F3', label: 'H' },
+  INTERMEDIATE: { colour: '#4ADE80', label: 'I' },
+  WET: { colour: '#60A5FA', label: 'W' },
 }
 
-function getCompoundStyle(compound: string) {
-  return COMPOUND_STYLES[compound?.toUpperCase()] ?? {
-    text: 'text-zinc-400',
-    bg: 'bg-zinc-900/40',
-    border: 'border-zinc-800/40',
-    label: compound?.[0] ?? '?',
-  }
+function getCompound(compound: string) {
+  return (
+    COMPOUNDS[compound?.toUpperCase()] ?? {
+      colour: 'rgba(245,245,243,0.4)',
+      label: compound?.[0] ?? '?',
+    }
+  )
 }
 
 interface DriverStints {
@@ -38,6 +40,7 @@ export default function StintsPage() {
   const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const apiBlocked = useApiBlocked()
 
   useEffect(() => {
     getCachedSessions()
@@ -83,7 +86,7 @@ export default function StintsPage() {
 
   const driverMap = new Map(drivers.map((d) => [d.driver_number, d]))
 
-  // Group stints by driver, sort by their final position (by last lap_end descending)
+  // Group stints by driver (existing grouping/sorting logic)
   const groupedByDriver: DriverStints[] = []
   const driverNums = [...new Set(stints.map((s) => s.driver_number))]
   for (const num of driverNums) {
@@ -96,148 +99,125 @@ export default function StintsPage() {
       stints: driverStints,
     })
   }
-  // Sort groups by driver number (proxy for grid order)
   groupedByDriver.sort((a, b) => {
     const aMax = Math.max(...a.stints.map((s) => s.lap_end ?? 0))
     const bMax = Math.max(...b.stints.map((s) => s.lap_end ?? 0))
     return bMax - aMax || a.driverNumber - b.driverNumber
   })
 
+  const sessionMaxLap = groupedByDriver.reduce(
+    (max, g) => Math.max(max, ...g.stints.map((s) => s.lap_end ?? 0)),
+    0
+  )
+
   if (loading) {
     return (
-      <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-        <div className="animate-pulse space-y-4">
-          <div className="h-3 w-20 bg-zinc-800 rounded" />
-          <div className="h-10 w-36 bg-zinc-800 rounded" />
-        </div>
+      <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
+        <div className="h-3 w-32 animate-pulse rounded bg-white/5" />
+        <div className="mt-8 h-24 w-[55%] animate-pulse rounded bg-white/5" />
+        <p className="label-mono mt-8 text-[var(--text-dim)]">LOADING SESSIONS…</p>
       </div>
     )
   }
 
   return (
-    <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-      {/* Header */}
-      <div className="mb-8">
-        <p className="text-[11px] font-bold text-red-500 tracking-[0.3em] uppercase mb-3">
-          2026 Season
-        </p>
-        <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-zinc-100">
-          Tyre Stints
-        </h1>
-        <p className="text-zinc-500 text-sm mt-2">
-          Compound strategy and tyre usage per driver
-        </p>
-      </div>
+    <div className="relative overflow-x-clip px-6 pb-28 pt-20 md:px-14">
+      <SessionHeader
+        ghost="TYRE"
+        kicker="TYRES &amp; STINTS"
+        sessions={sessions}
+        selectedKey={selectedKey}
+        onSelect={setSelectedKey}
+      />
 
-      {/* Compound legend */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        {Object.entries(COMPOUND_STYLES).map(([compound, style]) => (
-          <span
-            key={compound}
-            className={`px-2.5 py-1 rounded-md border text-[10px] font-black tracking-widest uppercase ${style.text} ${style.bg} ${style.border}`}
-          >
-            {compound}
+      {/* compound key — the dataset's colours, mono glyphs */}
+      <div className="label-mono mt-8 flex flex-wrap gap-x-8 gap-y-2 text-[var(--text-dim)]">
+        {Object.entries(COMPOUNDS).map(([name, c]) => (
+          <span key={name} className="flex items-center gap-2">
+            <span className="font-mono" style={{ color: c.colour }}>
+              {c.label}
+            </span>
+            {name}
           </span>
         ))}
       </div>
 
-      {/* Session picker */}
-      <div className="mb-8 max-w-sm">
-        <SessionPicker
-          sessions={sessions}
-          selectedKey={selectedKey}
-          onSelect={setSelectedKey}
-          label="Select Session"
-        />
-      </div>
-
-      {error && (
-        <div className="mb-6 px-4 py-3 bg-red-950/30 border border-red-800/40 rounded-lg text-red-400 text-sm">
-          {error}
-        </div>
-      )}
+      {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
 
       {fetching ? (
-        <div className="space-y-3 animate-pulse">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-20 bg-zinc-900/60 border border-zinc-800/50 rounded-xl" />
+        <div className="mt-16 space-y-5">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-10 w-[70%] animate-pulse rounded bg-white/5" />
           ))}
         </div>
       ) : stints.length === 0 ? (
-        <EmptyState
-          title="No stint data"
-          message={
-            selectedKey
-              ? 'No tyre stint data recorded for this session.'
-              : 'Select a session to view tyre stints.'
-          }
-        />
+        !apiBlocked && (
+          <p className="label-mono mt-16 text-[var(--text-dim)]">
+            {selectedKey ? 'NO STINT DATA FOR THIS SESSION' : 'SELECT A SESSION'}
+          </p>
+        )
       ) : (
-        <div className="space-y-px border border-zinc-800/50 rounded-xl overflow-hidden">
-          {groupedByDriver.map(({ driver, driverNumber, stints: driverStints }) => {
-            const teamColor = driver?.team_colour ? `#${driver.team_colour}` : '#52525b'
-            const totalLaps = Math.max(...driverStints.map((s) => s.lap_end ?? 0))
+        <div className="mt-14">
+          <FadeUp>
+            <p className="label-mono text-[var(--text-dim)]">
+              STRATEGY — {String(groupedByDriver.length).padStart(2, '0')} DRIVERS · {sessionMaxLap}{' '}
+              LAPS
+            </p>
+          </FadeUp>
+          <div className="mt-6">
+            {groupedByDriver.map(({ driver, driverNumber, stints: driverStints }) => {
+              const totalLaps = Math.max(...driverStints.map((s) => s.lap_end ?? 0))
+              return (
+                <div
+                  key={driverNumber}
+                  className="flex items-center gap-5 border-t border-[var(--line)] py-3 md:gap-8"
+                >
+                  <span className="label-mono flex w-24 shrink-0 items-center gap-2 text-[var(--text)]">
+                    <span
+                      aria-hidden
+                      className="inline-block h-[2px] w-3"
+                      style={{ backgroundColor: `#${driver?.team_colour ?? '444'}` }}
+                    />
+                    {driver?.name_acronym ?? `#${driverNumber}`}
+                  </span>
 
-            return (
-              <div
-                key={driverNumber}
-                className="flex items-center gap-4 px-4 py-3 bg-zinc-900/40 hover:bg-zinc-800/20 transition-colors"
-              >
-                {/* Driver */}
-                <div className="w-32 flex-shrink-0 flex items-center gap-2">
-                  <div
-                    className="w-0.5 h-5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: teamColor }}
-                  />
-                  <div>
-                    <p className="text-xs font-black tracking-wider uppercase text-zinc-200">
-                      {driver?.name_acronym ?? `#${driverNumber}`}
-                    </p>
-                    <p className="text-[10px] text-zinc-600">
-                      #{driverNumber}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Stints */}
-                <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
-                  {driverStints.map((stint) => {
-                    const style = getCompoundStyle(stint.compound)
-                    const laps = (stint.lap_end ?? stint.lap_start) - stint.lap_start + 1
-                    return (
-                      <div
-                        key={stint.stint_number}
-                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border ${style.bg} ${style.border}`}
-                        title={`${stint.compound} — Laps ${stint.lap_start}–${stint.lap_end ?? '?'} (${laps} laps, age ${stint.tyre_age_at_start})`}
-                      >
-                        <span className={`text-[11px] font-black tracking-wider ${style.text}`}>
-                          {style.label}
-                        </span>
-                        <span className="text-[10px] text-zinc-500 tabular-nums">
-                          {stint.lap_start}–{stint.lap_end ?? '?'}
-                        </span>
-                        <span className="text-[10px] text-zinc-700 tabular-nums">
-                          ({laps}L)
-                        </span>
-                        {stint.tyre_age_at_start > 0 && (
-                          <span className="text-[9px] text-zinc-700 tabular-nums">
-                            +{stint.tyre_age_at_start}
+                  {/* proportional stint track — compound-colour segments */}
+                  <div className="flex h-7 min-w-0 flex-1 items-stretch gap-px">
+                    {driverStints.map((stint) => {
+                      const c = getCompound(stint.compound)
+                      const laps = (stint.lap_end ?? stint.lap_start) - stint.lap_start + 1
+                      const width = sessionMaxLap > 0 ? (laps / sessionMaxLap) * 100 : 0
+                      return (
+                        <div
+                          key={stint.stint_number}
+                          className="label-mono flex items-center gap-1.5 overflow-hidden px-2"
+                          style={{
+                            width: `${Math.max(width, 4)}%`,
+                            backgroundColor: `${c.colour}14`,
+                            boxShadow: `inset 0 1px 0 ${c.colour}55, inset 0 -1px 0 ${c.colour}22`,
+                          }}
+                          title={`${stint.compound} — laps ${stint.lap_start}–${stint.lap_end ?? '?'}${
+                            stint.tyre_age_at_start > 0 ? ` (used +${stint.tyre_age_at_start})` : ''
+                          }`}
+                        >
+                          <span className="font-mono" style={{ color: c.colour }}>
+                            {c.label}
                           </span>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
+                          <span className="hidden whitespace-nowrap tabular-nums text-[var(--text-dim)] lg:inline">
+                            {laps}L{stint.tyre_age_at_start > 0 ? ` +${stint.tyre_age_at_start}` : ''}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
 
-                {/* Total laps */}
-                <div className="flex-shrink-0 text-right">
-                  <span className="text-[11px] text-zinc-600 tabular-nums">
-                    {totalLaps} laps
+                  <span className="label-mono w-16 shrink-0 text-right tabular-nums text-[var(--text-dim)]">
+                    {totalLaps} L
                   </span>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
       )}
     </div>

@@ -2,18 +2,21 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import Link from 'next/link'
 import Image from 'next/image'
-import { ArrowLeft } from '@phosphor-icons/react'
-import type { Driver } from '@/lib/openf1'
+import type { Driver, Meeting } from '@/lib/openf1'
 import { getCachedLatestDrivers } from '@/lib/client-cache'
+import { getRaceMeetings } from '@/lib/openf1'
+import { fetchSeasonData, bundleAsOf, type SeasonBundle } from '@/lib/season-data'
 import { DRIVER_PHOTOS, CAREER_STATS, DRIVER_NATIONALITIES } from '@/lib/driver-data'
+import { ClipReveal, CountUp, FadeUp } from '@/components/motion/reveals'
+import { TransitionLink } from '@/components/motion/TransitionProvider'
 
-function darkenHex(hex: string): string {
-  const r = parseInt(hex.slice(0, 2), 16)
-  const g = parseInt(hex.slice(2, 4), 16)
-  const b = parseInt(hex.slice(4, 6), 16)
-  return `rgb(${Math.round(r * 0.18)}, ${Math.round(g * 0.18)}, ${Math.round(b * 0.18)})`
+interface SeasonRecordRow {
+  round: number
+  circuit: string
+  position: number | null
+  points: number
+  out: boolean
 }
 
 export default function DriverPage() {
@@ -22,6 +25,7 @@ export default function DriverPage() {
   const [driver, setDriver] = useState<Driver | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  const [bundle, setBundle] = useState<SeasonBundle | null>(null)
 
   useEffect(() => {
     getCachedLatestDrivers().then((drivers) => {
@@ -31,206 +35,306 @@ export default function DriverPage() {
     }).finally(() => setLoading(false))
   }, [acronym])
 
+  // Season record + stats from the server bundle — no client pipelines.
+  useEffect(() => {
+    let alive = true
+    fetchSeasonData().then((b) => {
+      if (alive && b) setBundle(b)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <div className="animate-pulse space-y-4 w-full max-w-2xl px-8">
-          <div className="h-3 w-20 bg-zinc-800 rounded" />
-          <div className="h-12 w-64 bg-zinc-800 rounded" />
-        </div>
+      <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
+        <div className="h-3 w-32 animate-pulse rounded bg-white/5" />
+        <div className="mt-8 h-40 w-[60%] animate-pulse rounded bg-white/5" />
       </div>
     )
   }
 
   if (notFound || !driver) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center gap-4">
-        <p className="text-zinc-500 text-sm">Driver not found</p>
-        <Link href="/drivers" className="text-red-500 text-sm font-bold hover:text-red-400 transition-colors">
-          ← Back to Drivers
-        </Link>
+      <div className="flex min-h-[calc(100dvh-4rem)] flex-col items-start justify-center gap-6 px-6 md:px-14">
+        <p className="label-mono text-[var(--text-dim)]">DRIVER NOT FOUND</p>
+        <TransitionLink
+          href="/drivers"
+          className="label-mono text-[var(--text)] transition-colors hover:text-[var(--accent)]"
+        >
+          ← THE GRID
+        </TransitionLink>
       </div>
     )
   }
 
   const photo = DRIVER_PHOTOS[acronym] ?? driver.headshot_url
-  const stats = CAREER_STATS[acronym]
-  const nationality = DRIVER_NATIONALITIES[acronym] ?? ''
-  const teamColor = `#${driver.team_colour}`
-  const darkBg = darkenHex(driver.team_colour)
+  const career = CAREER_STATS[acronym]
+  const nationality = DRIVER_NATIONALITIES[acronym] ?? driver.country_code ?? ''
+  const teamColor = `#${driver.team_colour || 'F5F5F3'}`
 
-  const statItems = stats ? [
-    { label: 'Grands Prix', value: stats.grandsPrix },
-    { label: 'World Titles', value: stats.championships },
-    { label: 'Wins', value: stats.wins },
-    { label: 'Podiums', value: stats.podiums },
-    { label: 'Pole Positions', value: stats.poles },
-    { label: 'Points', value: stats.points },
-  ] : []
+  // ── bundle joins ──
+  const standing = bundle?.driverStandings.find((d) => d.driverNumber === driver.driver_number)
+  const asOf = bundle ? bundleAsOf(bundle) : null
+
+  let record: SeasonRecordRow[] = []
+  if (bundle) {
+    const ordered: Meeting[] = getRaceMeetings(bundle.meetings).sort(
+      (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime()
+    )
+    record = ordered
+      .map((m, i) => {
+        const rows = bundle.resultsByRound[m.meeting_key]
+        if (!rows) return null
+        const mine = rows.find((r) => r.d === driver.driver_number)
+        if (!mine) return null
+        return {
+          round: i + 1,
+          circuit: m.circuit_short_name,
+          position: mine.p,
+          points: mine.pts,
+          out: Boolean(mine.out),
+        }
+      })
+      .filter((r): r is SeasonRecordRow => r !== null)
+  }
+  const bestFinish = record.reduce<number | null>(
+    (best, r) => (r.position !== null && !r.out && (best === null || r.position < best) ? r.position : best),
+    null
+  )
 
   return (
-    <div className="min-h-screen bg-zinc-950">
-
-      {/* Hero */}
-      <div className="relative overflow-hidden" style={{ backgroundColor: darkBg, minHeight: 480 }}>
-        {/* Team colour top bar */}
-        <div className="absolute top-0 left-0 right-0 h-1 z-20" style={{ backgroundColor: teamColor }} />
-
-        {/* Subtle radial glow behind driver */}
-        <div
-          className="absolute inset-0 z-0"
-          style={{
-            background: `radial-gradient(ellipse 60% 80% at 80% 50%, ${teamColor}22, transparent 70%)`,
-          }}
-        />
-
-        {/* Driver image */}
+    <div className="overflow-x-clip">
+      {/* ─── hero: arriving from the gallery, same grammar ─── */}
+      <section className="relative flex min-h-[calc(100dvh-4rem)] flex-col justify-end overflow-hidden px-6 pb-16 pt-8 md:px-14">
+        {/* driver photo, dark-treated, behind the number */}
         {photo && (
-          <div className="absolute right-0 top-0 h-full w-[55%] md:w-[45%] z-0">
+          <div aria-hidden className="pointer-events-none absolute right-0 top-0 h-full w-[62%] md:w-[42%]">
             <Image
               src={photo}
-              alt={driver.full_name}
+              alt=""
               fill
-              className="object-contain object-top"
+              className="object-contain object-bottom opacity-40"
               unoptimized
               priority
+            />
+            <div
+              className="absolute inset-0"
+              style={{ background: 'linear-gradient(to top, var(--bg) 4%, transparent 45%)' }}
             />
           </div>
         )}
 
-        {/* Left gradient so text stays readable */}
-        <div
-          className="absolute inset-0 z-10 pointer-events-none"
+        {/* the race number — massive, team-colour outline (gallery grammar) */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute right-[2vw] top-1/2 -translate-y-1/2 leading-none"
           style={{
-            background: `linear-gradient(to right, ${darkBg} 42%, ${darkBg}cc 58%, ${darkBg}44 75%, transparent 90%)`,
+            fontFamily: 'var(--font-display)',
+            fontSize: 'clamp(14rem, 30vw, 26rem)',
+            color: 'transparent',
+            WebkitTextStroke: `2px ${teamColor}`,
+            opacity: 0.55,
           }}
-        />
-        {/* Bottom fade into page */}
-        <div className="absolute bottom-0 left-0 right-0 h-32 z-10 pointer-events-none"
-          style={{ background: `linear-gradient(to bottom, transparent, #09090b)` }} />
+        >
+          {driver.driver_number}
+        </span>
 
-        {/* Content */}
-        <div className="relative z-20 max-w-[1400px] mx-auto px-6 md:px-12 pt-10 pb-16">
-          {/* Back link */}
-          <Link
-            href="/drivers"
-            className="inline-flex items-center gap-2 text-[11px] font-bold tracking-[0.25em] uppercase text-zinc-500 hover:text-zinc-300 transition-colors mb-10"
-          >
-            <ArrowLeft size={14} />
-            All Drivers
-          </Link>
+        <TransitionLink
+          href="/drivers"
+          className="label-mono absolute left-6 top-8 text-[var(--text-dim)] transition-colors hover:text-[var(--accent)] md:left-14"
+        >
+          ← THE GRID
+        </TransitionLink>
 
-          {/* Number watermark */}
-          <div
-            className="absolute right-[44%] top-8 font-black tabular-nums leading-none select-none pointer-events-none z-0"
-            style={{ fontSize: 'clamp(10rem, 22vw, 20rem)', color: 'rgba(255,255,255,0.04)' }}
+        <div className="relative">
+          <p className="label-mono mb-3 text-[var(--text-dim)]">{driver.first_name?.toUpperCase()}</p>
+          <h1
+            className="uppercase leading-[0.85] text-[var(--text)]"
+            style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(4rem, 11vw, 11rem)' }}
           >
-            {driver.driver_number}
+            {driver.last_name}
+          </h1>
+          <div className="label-mono mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-[var(--text-dim)]">
+            <span className="flex items-center gap-2">
+              <span aria-hidden className="inline-block h-[2px] w-3" style={{ backgroundColor: teamColor }} />
+              {driver.team_name?.toUpperCase()}
+            </span>
+            {nationality && <span>{nationality.toUpperCase()}</span>}
+            <span>#{driver.driver_number}</span>
+            {standing && <span className="text-[var(--text)]">CHAMPIONSHIP P{standing.position}</span>}
           </div>
+        </div>
+      </section>
 
-          {/* Driver name */}
-          <div className="relative z-10">
-            <p className="text-[11px] font-bold tracking-[0.35em] uppercase mb-1" style={{ color: teamColor }}>
-              {driver.team_name}
+      {/* ─── season stats: asymmetric numerals, not a card grid ─── */}
+      {standing && (
+        <section className="border-t border-[var(--line)] px-6 py-20 md:px-14 md:py-24">
+          <FadeUp>
+            <p className="label-mono mb-12 flex flex-wrap gap-x-4 text-[var(--text-dim)]">
+              THIS SEASON{asOf && <span>AS OF {asOf}</span>}
             </p>
-            <h1
-              className="font-black tracking-tighter text-white leading-[0.85] mb-2"
-              style={{ fontSize: 'clamp(3rem, 8vw, 8rem)' }}
-            >
-              {driver.first_name}
-              <br />
-              {driver.last_name}
-            </h1>
-            <div className="flex items-center gap-3 mt-4">
+          </FadeUp>
+          <div className="flex flex-wrap items-baseline gap-x-16 gap-y-10 md:gap-x-24">
+            <div>
               <span
-                className="text-[11px] font-black tracking-[0.3em] uppercase px-3 py-1.5 rounded-full border"
-                style={{ color: teamColor, borderColor: `${teamColor}40`, backgroundColor: `${teamColor}15` }}
+                className="font-mono tabular-nums leading-none text-[var(--text)]"
+                style={{ fontSize: 'clamp(4.5rem, 10vw, 9rem)' }}
               >
-                #{driver.driver_number}
+                <CountUp value={Math.floor(standing.points)} />
               </span>
-              {nationality && (
-                <span className="text-[11px] font-bold tracking-[0.25em] uppercase text-zinc-500">
-                  {nationality}
-                </span>
-              )}
+              <p className="label-mono mt-3 text-[var(--text-dim)]">POINTS</p>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats grid */}
-      {stats && (
-        <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-10">
-          <p className="text-[11px] font-bold text-zinc-500 tracking-[0.3em] uppercase mb-5">
-            Career Statistics
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {statItems.map(({ label, value }) => (
-              <div
-                key={label}
-                className="rounded-xl border border-zinc-800/50 bg-zinc-900/40 px-5 py-4 text-center"
+            <div>
+              <span
+                className="font-mono tabular-nums leading-none text-[var(--text)]"
+                style={{ fontSize: 'clamp(2.6rem, 5.5vw, 5rem)' }}
               >
-                <p
-                  className="text-3xl font-black tabular-nums leading-none"
-                  style={{ color: value > 0 ? teamColor : 'rgba(255,255,255,0.25)' }}
+                <CountUp value={standing.wins} />
+              </span>
+              <p className="label-mono mt-3 text-[var(--text-dim)]">WINS</p>
+            </div>
+            <div>
+              <span
+                className="font-mono tabular-nums leading-none text-[var(--text)]"
+                style={{ fontSize: 'clamp(2.6rem, 5.5vw, 5rem)' }}
+              >
+                <CountUp value={standing.podiums} />
+              </span>
+              <p className="label-mono mt-3 text-[var(--text-dim)]">PODIUMS</p>
+            </div>
+            {bestFinish !== null && (
+              <div>
+                <span
+                  className="font-mono tabular-nums leading-none"
+                  style={{
+                    fontSize: 'clamp(1.9rem, 4vw, 3.4rem)',
+                    color: bestFinish === 1 ? 'var(--accent)' : 'var(--text)',
+                  }}
                 >
-                  {value}
-                </p>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-600 mt-2">
-                  {label}
-                </p>
+                  P{bestFinish}
+                </span>
+                <p className="label-mono mt-3 text-[var(--text-dim)]">BEST FINISH</p>
               </div>
-            ))}
+            )}
           </div>
-        </div>
+        </section>
       )}
 
-      {/* Divider */}
-      <div className="max-w-[1400px] mx-auto px-6 md:px-12">
-        <div className="h-px bg-zinc-800/50" />
-      </div>
-
-      {/* About section — placeholder for per-driver customization */}
-      <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-10">
-        <p className="text-[11px] font-bold text-zinc-500 tracking-[0.3em] uppercase mb-5">
-          About
-        </p>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="space-y-4">
-            <p className="text-zinc-400 text-sm leading-relaxed">
-              {driver.full_name} is competing in the 2026 Formula 1 World Championship with {driver.team_name}.
+      {/* ─── season record: one typographic row per grand prix ─── */}
+      {record.length > 0 && (
+        <section className="border-t border-[var(--line)] px-6 py-20 md:px-14 md:py-24">
+          <FadeUp>
+            <p className="label-mono mb-10 text-[var(--text-dim)]">
+              SEASON RECORD — {String(record.length).padStart(2, '0')} ROUNDS
             </p>
-          </div>
-          <div className="rounded-xl border border-zinc-800/50 bg-zinc-900/40 p-5">
-            <p className="text-[10px] font-bold text-zinc-600 tracking-[0.25em] uppercase mb-4">Driver Info</p>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-zinc-500">Number</span>
-                <span className="text-sm font-bold text-zinc-200">#{driver.driver_number}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-zinc-500">Team</span>
-                <span className="text-sm font-bold text-zinc-200">{driver.team_name}</span>
-              </div>
-              {nationality && (
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-zinc-500">Nationality</span>
-                  <span className="text-sm font-bold text-zinc-200">{nationality}</span>
-                </div>
-              )}
-              {stats && (
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-zinc-500">Championships</span>
-                  <span className="text-sm font-bold" style={{ color: stats.championships > 0 ? teamColor : undefined }}>
-                    {stats.championships > 0 ? `${stats.championships}× World Champion` : '—'}
+          </FadeUp>
+          <div>
+            {record.map((r) => (
+              <ClipReveal key={r.round}>
+                <div
+                  className="flex items-baseline gap-5 border-t border-[var(--line)] py-3 md:gap-8"
+                  style={r.out ? { opacity: 0.35 } : undefined}
+                >
+                  <span
+                    className="outline-numeral w-12 shrink-0 leading-none"
+                    style={{ fontFamily: 'var(--font-display)', fontSize: '1.6rem' }}
+                  >
+                    {String(r.round).padStart(2, '0')}
+                  </span>
+                  <p
+                    className={`min-w-0 flex-1 truncate uppercase leading-none text-[var(--text)] ${
+                      r.out ? 'line-through decoration-1' : ''
+                    }`}
+                    style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.4rem, 2.4vw, 2rem)' }}
+                  >
+                    {r.circuit}
+                  </p>
+                  <span
+                    className="label-mono w-14 shrink-0 text-right tabular-nums"
+                    style={{
+                      color: r.out
+                        ? 'var(--text-dim)'
+                        : r.position === 1
+                        ? 'var(--accent)'
+                        : 'var(--text)',
+                    }}
+                  >
+                    {r.out ? 'DNF' : r.position !== null ? `P${r.position}` : '—'}
+                  </span>
+                  <span className="label-mono w-20 shrink-0 text-right tabular-nums text-[var(--text-dim)]">
+                    {r.points > 0 ? `+${Math.floor(r.points)} PTS` : '—'}
                   </span>
                 </div>
-              )}
+              </ClipReveal>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ─── career + info: kept content, mono treatment ─── */}
+      <section className="border-t border-[var(--line)] px-6 py-20 md:px-14 md:py-24">
+        <div className="grid grid-cols-1 gap-16 md:grid-cols-2">
+          {career && (
+            <div>
+              <FadeUp>
+                <p className="label-mono mb-8 text-[var(--text-dim)]">CAREER</p>
+              </FadeUp>
+              <div>
+                {[
+                  ['GRANDS PRIX', career.grandsPrix],
+                  ['WORLD TITLES', career.championships],
+                  ['WINS', career.wins],
+                  ['PODIUMS', career.podiums],
+                  ['POLE POSITIONS', career.poles],
+                  ['CAREER POINTS', career.points],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="label-mono flex items-baseline justify-between border-t border-[var(--line)] py-3"
+                  >
+                    <span className="text-[var(--text-dim)]">{label}</span>
+                    <span
+                      className="font-mono text-base tabular-nums"
+                      style={{ color: (value as number) > 0 ? 'var(--text)' : 'var(--text-dim)' }}
+                    >
+                      {value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div>
+            <FadeUp>
+              <p className="label-mono mb-8 text-[var(--text-dim)]">DRIVER</p>
+            </FadeUp>
+            <p className="max-w-md text-sm leading-relaxed text-[var(--text-dim)]">
+              {driver.full_name} is competing in the {bundle?.seasonYear ?? 2026} Formula 1 World
+              Championship with {driver.team_name}.
+            </p>
+            <div className="mt-8">
+              {[
+                ['NUMBER', `#${driver.driver_number}`],
+                ['TEAM', driver.team_name],
+                ...(nationality ? [['NATIONALITY', nationality.toUpperCase()]] : []),
+                ...(career && career.championships > 0
+                  ? [['WORLD CHAMPION', `${career.championships}×`]]
+                  : []),
+              ].map(([label, value]) => (
+                <div
+                  key={label as string}
+                  className="label-mono flex items-baseline justify-between border-t border-[var(--line)] py-3"
+                >
+                  <span className="text-[var(--text-dim)]">{label}</span>
+                  <span className="text-[var(--text)]">{value}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
-      </div>
-
+      </section>
     </div>
   )
 }
