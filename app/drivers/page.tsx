@@ -7,6 +7,8 @@ import { useGSAP } from '@gsap/react'
 import type { Driver } from '@/lib/openf1'
 import { getCachedLatestDrivers } from '@/lib/client-cache'
 import { fetchSeasonData } from '@/lib/season-data'
+import { driverImage } from '@/lib/media-manifest'
+import TreatedImage from '@/components/media/TreatedImage'
 import { TransitionLink } from '@/components/motion/TransitionProvider'
 import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
@@ -183,12 +185,23 @@ export default function DriversPage() {
           {ordered.map((d, i) => {
             const teamColor = `#${d.team_colour || 'F5F5F3'}`
             const pts = points?.get(d.driver_number)
+            const photo = driverImage(d.name_acronym)
             return (
               <TransitionLink
                 key={d.driver_number}
                 href={`/drivers/${d.name_acronym.toLowerCase()}`}
                 className="group relative flex min-h-[72vh] w-full shrink-0 flex-col justify-end overflow-hidden border-t border-[var(--line)] px-6 pb-16 pt-10 md:min-h-[calc(100dvh-11rem)] md:w-screen md:border-l md:border-t-0 md:px-14 motion-reduce:md:w-full motion-reduce:md:border-l-0 motion-reduce:md:border-t"
               >
+                {/* headshot — dark-treated atmosphere; the number paints above it */}
+                {photo && (
+                  <TreatedImage
+                    src={photo}
+                    treatment="mono"
+                    sizes="(min-width: 768px) 36vw, 72vw"
+                    className="pointer-events-none absolute bottom-0 right-0 h-[58%] w-[72%] md:right-[8vw] md:h-[76%] md:w-[36vw] md:max-w-[560px]"
+                  />
+                )}
+
                 {/* the race number — massive, outlined in the team's color.
                     Team colors are the dataset here; red stays scarce. */}
                 <span

@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import Image from 'next/image'
 import type { Driver, Meeting } from '@/lib/openf1'
 import { getCachedLatestDrivers } from '@/lib/client-cache'
 import { getRaceMeetings } from '@/lib/openf1'
 import { fetchSeasonData, bundleAsOf, type SeasonBundle } from '@/lib/season-data'
 import { DRIVER_PHOTOS, CAREER_STATS, DRIVER_NATIONALITIES } from '@/lib/driver-data'
+import { teamToSlug } from '@/lib/team-data'
+import { driverImage, carImage } from '@/lib/media-manifest'
+import TreatedImage from '@/components/media/TreatedImage'
 import { ClipReveal, CountUp, FadeUp } from '@/components/motion/reveals'
 import { TransitionLink } from '@/components/motion/TransitionProvider'
 
@@ -69,7 +71,9 @@ export default function DriverPage() {
     )
   }
 
-  const photo = DRIVER_PHOTOS[acronym] ?? driver.headshot_url
+  // Local fetched asset first; curated/openf1 remote URLs as fallback.
+  const photo = driverImage(acronym) ?? DRIVER_PHOTOS[acronym] ?? driver.headshot_url
+  const car = driver.team_name ? carImage(teamToSlug(driver.team_name)) : null
   const career = CAREER_STATS[acronym]
   const nationality = DRIVER_NATIONALITIES[acronym] ?? driver.country_code ?? ''
   const teamColor = `#${driver.team_colour || 'F5F5F3'}`
@@ -110,20 +114,13 @@ export default function DriverPage() {
       <section className="relative flex min-h-[calc(100dvh-4rem)] flex-col justify-end overflow-hidden px-6 pb-16 pt-8 md:px-14">
         {/* driver photo, dark-treated, behind the number */}
         {photo && (
-          <div aria-hidden className="pointer-events-none absolute right-0 top-0 h-full w-[62%] md:w-[42%]">
-            <Image
-              src={photo}
-              alt=""
-              fill
-              className="object-contain object-bottom opacity-40"
-              unoptimized
-              priority
-            />
-            <div
-              className="absolute inset-0"
-              style={{ background: 'linear-gradient(to top, var(--bg) 4%, transparent 45%)' }}
-            />
-          </div>
+          <TreatedImage
+            src={photo}
+            treatment="mono"
+            priority
+            sizes="(min-width: 768px) 42vw, 62vw"
+            className="pointer-events-none absolute right-0 top-0 h-full w-[62%] md:w-[42%]"
+          />
         )}
 
         {/* the race number — massive, team-colour outline (gallery grammar) */}
@@ -269,6 +266,32 @@ export default function DriverPage() {
                 </div>
               </ClipReveal>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* ─── the machine: car render, team colour kept at low saturation ─── */}
+      {car && (
+        <section className="border-t border-[var(--line)] px-6 py-20 md:px-14 md:py-24">
+          <FadeUp>
+            <p className="label-mono mb-10 text-[var(--text-dim)]">
+              THE CAR — {driver.team_name?.toUpperCase()}
+            </p>
+          </FadeUp>
+          <div className="relative max-w-5xl">
+            <span
+              aria-hidden
+              className="absolute -top-4 left-0 h-[2px] w-16 md:w-24"
+              style={{ backgroundColor: teamColor }}
+            />
+            <TreatedImage
+              src={car}
+              treatment="team"
+              aspect="21/9"
+              position="center"
+              sizes="(min-width: 768px) 70vw, 100vw"
+              className="w-full"
+            />
           </div>
         </section>
       )}
