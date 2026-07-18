@@ -4,8 +4,9 @@ import { useEffect, useState, useCallback } from 'react'
 import type { Session, PitStop, Driver } from '@/lib/openf1'
 import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedPitStops, getCachedDrivers } from '@/lib/client-cache'
-import SessionPicker from '@/components/SessionPicker'
-import EmptyState from '@/components/EmptyState'
+import SessionHeader from '@/components/session/SessionHeader'
+import { FadeUp } from '@/components/motion/reveals'
+import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
 function formatPitDuration(seconds: number | null): string {
   if (seconds === null || seconds === undefined) return '—'
@@ -20,6 +21,7 @@ export default function PitStopsPage() {
   const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const apiBlocked = useApiBlocked()
 
   useEffect(() => {
     getCachedSessions()
@@ -58,7 +60,6 @@ export default function PitStopsPage() {
 
   const driverMap = new Map(drivers.map((d) => [d.driver_number, d]))
 
-  // Stats
   const validStops = pitStops.filter((p) => p.pit_duration !== null)
   const fastestStop = validStops.reduce<PitStop | null>((best, p) => {
     if (!best) return p
@@ -69,7 +70,6 @@ export default function PitStopsPage() {
       ? validStops.reduce((sum, p) => sum + (p.pit_duration ?? 0), 0) / validStops.length
       : null
 
-  // Stops per driver
   const stopsPerDriver = pitStops.reduce<Record<number, number>>((acc, p) => {
     acc[p.driver_number] = (acc[p.driver_number] ?? 0) + 1
     return acc
@@ -77,162 +77,128 @@ export default function PitStopsPage() {
 
   if (loading) {
     return (
-      <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-        <div className="animate-pulse space-y-4">
-          <div className="h-3 w-20 bg-zinc-800 rounded" />
-          <div className="h-10 w-48 bg-zinc-800 rounded" />
-        </div>
+      <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
+        <div className="h-3 w-32 animate-pulse rounded bg-white/5" />
+        <div className="mt-8 h-24 w-[55%] animate-pulse rounded bg-white/5" />
+        <p className="label-mono mt-8 text-[var(--text-dim)]">LOADING SESSIONS…</p>
       </div>
     )
   }
 
   return (
-    <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-      {/* Header */}
-      <div className="mb-8">
-        <p className="text-[11px] font-bold text-red-500 tracking-[0.3em] uppercase mb-3">
-          2026 Season
-        </p>
-        <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-zinc-100">
-          Pit Stops
-        </h1>
-      </div>
+    <div className="relative overflow-x-clip px-6 pb-28 pt-20 md:px-14">
+      <SessionHeader
+        ghost="PIT"
+        kicker="PIT STOPS"
+        sessions={sessions}
+        selectedKey={selectedKey}
+        onSelect={setSelectedKey}
+      />
 
-      {/* Session picker */}
-      <div className="mb-8 max-w-sm">
-        <SessionPicker
-          sessions={sessions}
-          selectedKey={selectedKey}
-          onSelect={setSelectedKey}
-          label="Select Race Session"
-        />
-      </div>
-
-      {error && (
-        <div className="mb-6 px-4 py-3 bg-red-950/30 border border-red-800/40 rounded-lg text-red-400 text-sm">
-          {error}
-        </div>
-      )}
+      {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
 
       {fetching ? (
-        <div className="space-y-4 animate-pulse">
-          <div className="grid grid-cols-3 gap-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-20 bg-zinc-900/60 border border-zinc-800/50 rounded-xl" />
-            ))}
-          </div>
-          <div className="h-64 bg-zinc-900/60 border border-zinc-800/50 rounded-xl" />
+        <div className="mt-16 space-y-5">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-14 w-[55%] animate-pulse rounded bg-white/5" />
+          ))}
         </div>
       ) : pitStops.length === 0 ? (
-        <EmptyState
-          title="No pit stop data"
-          message={selectedKey ? 'No pit stops recorded for this session.' : 'Select a race session to view pit stop data.'}
-        />
+        !apiBlocked && (
+          <p className="label-mono mt-16 text-[var(--text-dim)]">
+            {selectedKey ? 'NO PIT STOPS RECORDED' : 'SELECT A RACE SESSION'}
+          </p>
+        )
       ) : (
         <>
-          {/* Stats strip */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-            <div className="border border-zinc-800/50 bg-zinc-900/40 rounded-xl p-5">
-              <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-zinc-600 mb-1">
-                Total Stops
-              </p>
-              <p className="text-3xl font-black text-zinc-100">{pitStops.length}</p>
-            </div>
-            <div className="border border-zinc-800/50 bg-zinc-900/40 rounded-xl p-5">
-              <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-zinc-600 mb-1">
-                Fastest Stop
-              </p>
-              <p className="text-3xl font-black text-zinc-100 tabular-nums">
-                {fastestStop ? formatPitDuration(fastestStop.pit_duration) : '—'}
-              </p>
-              {fastestStop && (
-                <p className="text-[11px] text-zinc-600 mt-1">
-                  {driverMap.get(fastestStop.driver_number)?.name_acronym ?? `#${fastestStop.driver_number}`}
+          {/* ─── the stationary time IS the drama ─── */}
+          <div className="mt-16 flex flex-wrap items-baseline gap-x-20 gap-y-10">
+            {fastestStop && (
+              <FadeUp>
+                <p className="label-mono flex items-center gap-2.5 text-[var(--accent)]">
+                  FASTEST STOP
+                  <span aria-hidden className="inline-block h-[2px] w-8 bg-[var(--accent)]" />
                 </p>
-              )}
-            </div>
-            <div className="border border-zinc-800/50 bg-zinc-900/40 rounded-xl p-5">
-              <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-zinc-600 mb-1">
-                Average Stop
-              </p>
-              <p className="text-3xl font-black text-zinc-100 tabular-nums">
+                <p
+                  className="mt-3 font-mono tabular-nums leading-none text-[var(--text)]"
+                  style={{ fontSize: 'clamp(4rem, 10vw, 9rem)' }}
+                >
+                  {formatPitDuration(fastestStop.pit_duration)}
+                </p>
+                <p className="label-mono mt-4 flex items-center gap-2 text-[var(--text-dim)]">
+                  <span
+                    aria-hidden
+                    className="inline-block h-[2px] w-3"
+                    style={{
+                      backgroundColor: `#${driverMap.get(fastestStop.driver_number)?.team_colour ?? '444'}`,
+                    }}
+                  />
+                  {driverMap.get(fastestStop.driver_number)?.name_acronym ?? `#${fastestStop.driver_number}`}
+                  <span>· LAP {fastestStop.lap_number ?? '—'}</span>
+                </p>
+              </FadeUp>
+            )}
+            <FadeUp delay={0.1}>
+              <p
+                className="font-mono tabular-nums leading-none text-[var(--text)]"
+                style={{ fontSize: 'clamp(2.2rem, 5vw, 4.2rem)' }}
+              >
                 {avgDuration !== null ? formatPitDuration(avgDuration) : '—'}
               </p>
-            </div>
+              <p className="label-mono mt-3 text-[var(--text-dim)]">AVERAGE</p>
+            </FadeUp>
+            <FadeUp delay={0.18}>
+              <p
+                className="font-mono tabular-nums leading-none text-[var(--text)]"
+                style={{ fontSize: 'clamp(2.2rem, 5vw, 4.2rem)' }}
+              >
+                {pitStops.length}
+              </p>
+              <p className="label-mono mt-3 text-[var(--text-dim)]">TOTAL STOPS</p>
+            </FadeUp>
           </div>
 
-          {/* Pit stops table */}
-          <div className="border border-zinc-800/50 bg-zinc-900/40 rounded-xl overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-zinc-800/40">
-                  <th className="px-5 py-3 text-left text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                    Driver
-                  </th>
-                  <th className="px-5 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                    Lap
-                  </th>
-                  <th className="px-5 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                    Duration
-                  </th>
-                  <th className="px-5 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase hidden md:table-cell">
-                    Stop #
-                  </th>
-                  <th className="px-5 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase hidden md:table-cell">
-                    Total Stops
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800/40">
-                {pitStops.map((stop, idx) => {
-                  const driver = driverMap.get(stop.driver_number)
-                  const isFastest = fastestStop && stop === fastestStop
-                  return (
-                    <tr key={idx} className="hover:bg-zinc-800/20 transition-colors">
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-2.5">
-                          {driver && (
-                            <div
-                              className="w-0.5 h-5 rounded-full flex-shrink-0"
-                              style={{ backgroundColor: `#${driver.team_colour}` }}
-                            />
-                          )}
-                          <div>
-                            <p className="text-sm text-zinc-200 font-medium">
-                              {driver?.full_name ?? `#${stop.driver_number}`}
-                            </p>
-                            <p className="text-[10px] text-zinc-600">
-                              {driver?.team_name}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3.5 text-sm text-zinc-400 text-right tabular-nums">
-                        {stop.lap_number ?? '—'}
-                      </td>
-                      <td className="px-5 py-3.5 text-right">
-                        <span
-                          className={`text-sm font-bold tabular-nums ${isFastest ? 'text-purple-400' : 'text-zinc-300'}`}
-                        >
-                          {formatPitDuration(stop.pit_duration)}
-                        </span>
-                        {isFastest && (
-                          <span className="ml-1.5 text-[9px] font-bold tracking-wider text-purple-500 uppercase">
-                            Fastest
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3.5 text-sm text-zinc-500 text-right tabular-nums hidden md:table-cell">
-                        —
-                      </td>
-                      <td className="px-5 py-3.5 text-sm text-zinc-500 text-right tabular-nums hidden md:table-cell">
-                        {stopsPerDriver[stop.driver_number] ?? 1}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+          {/* ─── every stop ─── */}
+          <div className="mt-20">
+            <FadeUp>
+              <p className="label-mono text-[var(--text-dim)]">EVERY STOP — IN LAP ORDER</p>
+            </FadeUp>
+            <div className="mt-6">
+              {pitStops.map((stop, idx) => {
+                const driver = driverMap.get(stop.driver_number)
+                const isFastest = fastestStop !== null && stop === fastestStop
+                return (
+                  <div
+                    key={idx}
+                    className="label-mono flex items-baseline gap-5 border-t border-[var(--line)] py-3 md:gap-8"
+                  >
+                    <span className="w-14 shrink-0 tabular-nums text-[var(--text-dim)]">
+                      L{stop.lap_number ?? '—'}
+                    </span>
+                    <span className="flex w-24 shrink-0 items-center gap-2 text-[var(--text)]">
+                      <span
+                        aria-hidden
+                        className="inline-block h-[2px] w-3"
+                        style={{ backgroundColor: `#${driver?.team_colour ?? '444'}` }}
+                      />
+                      {driver?.name_acronym ?? `#${stop.driver_number}`}
+                    </span>
+                    <span className="hidden min-w-0 flex-1 truncate text-[var(--text-dim)] md:block">
+                      {driver?.team_name?.toUpperCase()}
+                    </span>
+                    <span className="hidden w-24 shrink-0 text-right tabular-nums text-[var(--text-dim)] md:block">
+                      STOP {stopsPerDriver[stop.driver_number] > 1 ? `OF ${stopsPerDriver[stop.driver_number]}` : '1'}
+                    </span>
+                    <span
+                      className="ml-auto shrink-0 text-right font-mono text-lg tabular-nums"
+                      style={{ color: isFastest ? 'var(--accent)' : 'var(--text)' }}
+                    >
+                      {formatPitDuration(stop.pit_duration)}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </>
       )}
