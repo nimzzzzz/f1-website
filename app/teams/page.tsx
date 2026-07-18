@@ -5,6 +5,8 @@ import type { Driver } from '@/lib/openf1'
 import { getCachedLatestDrivers } from '@/lib/client-cache'
 import { fetchSeasonData, bundleAsOf, type SeasonBundle } from '@/lib/season-data'
 import { teamToSlug } from '@/lib/team-data'
+import { carImage, teamLogoImage } from '@/lib/media-manifest'
+import TreatedImage from '@/components/media/TreatedImage'
 import { ClipReveal, CountUp, FadeUp } from '@/components/motion/reveals'
 import { TransitionLink } from '@/components/motion/TransitionProvider'
 import { useApiBlocked } from '@/components/shell/useApiBlocked'
@@ -101,12 +103,26 @@ export default function TeamsPage() {
           const teamDrivers = drivers
             .filter((d) => d.team_name === team.name)
             .sort((a, b) => a.driver_number - b.driver_number)
+          const slug = teamToSlug(team.name)
+          const car = carImage(slug)
+          const logo = teamLogoImage(slug)
           return (
             <ClipReveal key={team.name}>
               <TransitionLink
                 href={`/teams/${teamToSlug(team.name)}`}
                 className="group relative block overflow-hidden border-t border-[var(--line)] py-10 md:py-12"
               >
+                {/* the car — low-saturation livery riding the band, under the numeral */}
+                {car && (
+                  <TreatedImage
+                    src={car}
+                    treatment="team"
+                    position="right bottom"
+                    sizes="32vw"
+                    className="pointer-events-none absolute bottom-0 right-[7vw] hidden h-[88%] w-[32vw] max-w-[500px] opacity-90 md:block"
+                  />
+                )}
+
                 {/* constructors position — outline numeral behind the band */}
                 {team.position !== null && (
                   <span
@@ -126,12 +142,24 @@ export default function TeamsPage() {
                 />
 
                 <div className="relative flex flex-wrap items-baseline gap-x-10 gap-y-4">
-                  <h2
-                    className="uppercase leading-[0.9] text-[var(--text)] transition-transform duration-300 group-hover:translate-x-3 motion-reduce:transition-none"
-                    style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(2.6rem, 6.5vw, 6rem)' }}
-                  >
-                    {team.name}
-                  </h2>
+                  <div className="flex items-center gap-4 transition-transform duration-300 group-hover:translate-x-3 motion-reduce:transition-none md:gap-5">
+                    {logo && (
+                      <TreatedImage
+                        src={logo}
+                        treatment="mono"
+                        fade={false}
+                        position="center"
+                        sizes="48px"
+                        className="h-8 w-8 shrink-0 opacity-70 md:h-10 md:w-10"
+                      />
+                    )}
+                    <h2
+                      className="uppercase leading-[0.9] text-[var(--text)]"
+                      style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(2.6rem, 6.5vw, 6rem)' }}
+                    >
+                      {team.name}
+                    </h2>
+                  </div>
                   {team.points !== null && (
                     <span className="shrink-0">
                       <span
