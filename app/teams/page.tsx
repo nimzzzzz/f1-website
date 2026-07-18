@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { getSeasonBundle } from '@/lib/season-data-server'
+import { getSeasonBundleSSR } from '@/lib/season-data-ssr'
 import { bundleAsOf } from '@/lib/season-data'
 import LiveSessionNotice from '@/components/LiveSessionNotice'
 import TeamsBands, { type BandTeam } from './TeamsBands'
@@ -25,7 +25,7 @@ function Skeleton() {
 }
 
 async function Bands() {
-  const bundle = await getSeasonBundle()
+  const bundle = await getSeasonBundleSSR()
 
   // Cold cache during a live-session lockout: the honest state, server-side.
   if (!bundle) {

@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { getSeasonBundle } from '@/lib/season-data-server'
+import { getSeasonBundleSSR } from '@/lib/season-data-ssr'
 import LiveSessionNotice from '@/components/LiveSessionNotice'
 import DriversGallery, { type GalleryDriver } from './DriversGallery'
 
@@ -23,7 +23,7 @@ function Skeleton() {
 }
 
 async function Gallery() {
-  const bundle = await getSeasonBundle()
+  const bundle = await getSeasonBundleSSR()
 
   // Cold cache during a live-session lockout: the honest state, server-side.
   if (!bundle) {

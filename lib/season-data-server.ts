@@ -254,19 +254,9 @@ async function computeSeasonData(): Promise<SeasonBundle> {
 }
 
 // v3: driverStandings gained firstName + countryCode (SSR gallery identity)
+// NOTE: only the API route may call this. Pages go through
+// lib/season-data-ssr (HTTP to the route) — on Vercel, cache entries
+// written here are not reliably visible across functions.
 export const getCachedSeasonData = unstable_cache(computeSeasonData, ['season-data-v3'], {
   revalidate: 300,
 })
-
-// Page-facing entry: the cached bundle, or null when no complete bundle has
-// EVER been cached (cold start during a live-session lockout) — callers
-// render the honest blocked state. Never throws.
-export async function getSeasonBundle(): Promise<SeasonBundle | null> {
-  // Local verification hook for the cold-cache lockout path (unset in prod).
-  if (process.env.SIMULATE_SEASON_BLOCKED === '1') return null
-  try {
-    return await getCachedSeasonData()
-  } catch {
-    return null
-  }
-}
