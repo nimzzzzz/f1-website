@@ -197,6 +197,7 @@ export default function DriversPage() {
                   <TreatedImage
                     src={photo}
                     treatment="mono"
+                    priority={i === 0}
                     sizes="(min-width: 768px) 36vw, 72vw"
                     className="pointer-events-none absolute bottom-0 right-0 h-[58%] w-[72%] md:right-[8vw] md:h-[76%] md:w-[36vw] md:max-w-[560px]"
                   />
