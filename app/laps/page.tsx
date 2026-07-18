@@ -5,15 +5,9 @@ import type { Session, Lap, Driver } from '@/lib/openf1'
 import { getCachedSessions } from '@/lib/client-cache'
 import { formatDuration } from '@/lib/openf1'
 import { getCachedLaps, getCachedDrivers } from '@/lib/client-cache'
-import SessionPicker from '@/components/SessionPicker'
-import EmptyState from '@/components/EmptyState'
-import ShaderBackground from '@/components/ui/animated-shader-hero'
-
-
-interface FastestLap {
-  lap: Lap
-  driver: Driver | undefined
-}
+import SessionHeader from '@/components/session/SessionHeader'
+import { FadeUp } from '@/components/motion/reveals'
+import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
 export default function LapsPage() {
   const [sessions, setSessions] = useState<Session[]>([])
@@ -24,6 +18,7 @@ export default function LapsPage() {
   const [fetchingLaps, setFetchingLaps] = useState(false)
   const [filterDriver, setFilterDriver] = useState<number | 'all'>('all')
   const [error, setError] = useState<string | null>(null)
+  const apiBlocked = useApiBlocked()
 
   useEffect(() => {
     getCachedSessions()
@@ -67,7 +62,6 @@ export default function LapsPage() {
       ? validLaps
       : validLaps.filter((l) => l.driver_number === filterDriver)
 
-  // Fastest laps overall
   const sortedByTime = [...validLaps].sort(
     (a, b) => (a.lap_duration ?? Infinity) - (b.lap_duration ?? Infinity)
   )
@@ -78,270 +72,187 @@ export default function LapsPage() {
 
   if (loading) {
     return (
-      <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-        <div className="animate-pulse space-y-4">
-          <div className="h-3 w-20 bg-zinc-800 rounded" />
-          <div className="h-10 w-48 bg-zinc-800 rounded" />
-        </div>
+      <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
+        <div className="h-3 w-32 animate-pulse rounded bg-white/5" />
+        <div className="mt-8 h-24 w-[55%] animate-pulse rounded bg-white/5" />
+        <p className="label-mono mt-8 text-[var(--text-dim)]">LOADING SESSIONS…</p>
       </div>
     )
   }
 
+  const tick = (d: Driver | undefined) => (
+    <span className="flex items-center gap-2">
+      <span
+        aria-hidden
+        className="inline-block h-[2px] w-3"
+        style={{ backgroundColor: `#${d?.team_colour ?? '444'}` }}
+      />
+      {d?.name_acronym ?? '—'}
+    </span>
+  )
+
   return (
-    <div className="relative min-h-screen">
-      {/* Animated shader background */}
-      <ShaderBackground opacity={0.85} />
-      {/* Dark overlay so content stays readable */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/50 to-black/80 pointer-events-none" />
+    <div className="relative overflow-x-clip px-6 pb-28 pt-20 md:px-14">
+      <SessionHeader
+        ghost="LAPS"
+        kicker="LAP TIMES"
+        sessions={sessions}
+        selectedKey={selectedKey}
+        onSelect={setSelectedKey}
+      />
 
-    <div className="relative z-10 py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-
-      {/* Header */}
-      <div className="mb-8">
-        <p className="text-[11px] font-bold text-red-500 tracking-[0.3em] uppercase mb-3">
-          2026 Season
-        </p>
-        <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-zinc-100">
-          Lap Times
-        </h1>
-      </div>
-
-      {/* Session picker */}
-      <div className="mb-8 max-w-sm">
-        <SessionPicker
-          sessions={sessions}
-          selectedKey={selectedKey}
-          onSelect={setSelectedKey}
-          label="Select Session"
-        />
-      </div>
-
-      {error && (
-        <div className="mb-6 px-4 py-3 bg-red-950/30 border border-red-800/40 rounded-lg text-red-400 text-sm">
-          {error}
-        </div>
-      )}
+      {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
 
       {fetchingLaps ? (
-        <div className="space-y-4 animate-pulse">
-          <div className="h-24 bg-zinc-900/60 border border-zinc-800/50 rounded-xl" />
-          <div className="h-48 bg-zinc-900/60 border border-zinc-800/50 rounded-xl" />
+        <div className="mt-16 space-y-5">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-14 w-[55%] animate-pulse rounded bg-white/5" />
+          ))}
         </div>
       ) : laps.length === 0 && selectedKey ? (
-        <EmptyState title="No lap data" message="No lap times recorded for this session yet." />
+        !apiBlocked && (
+          <p className="label-mono mt-16 text-[var(--text-dim)]">NO LAP DATA FOR THIS SESSION</p>
+        )
       ) : (
         <>
-          {/* Fastest lap highlight */}
+          {/* ─── the fastest lap — the page's one accent moment ─── */}
           {overallFastest && (
-            <div className="border border-zinc-800/50 bg-zinc-900/40 rounded-xl p-5 mb-6">
-              <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-zinc-600 mb-2">
-                Fastest Lap
-              </p>
-              <div className="flex items-center gap-4">
-                <span className="text-2xl font-black tracking-tighter text-purple-400 tabular-nums">
-                  {formatDuration(overallFastest.lap_duration!)}
-                </span>
-                <div>
-                  <p className="text-sm font-bold text-zinc-200">
-                    {driverMap.get(overallFastest.driver_number)?.full_name ?? `#${overallFastest.driver_number}`}
-                  </p>
-                  <p className="text-[11px] text-zinc-600">
-                    Lap {overallFastest.lap_number} ·{' '}
-                    {driverMap.get(overallFastest.driver_number)?.team_name}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Top 5 fastest */}
-          {top5.length > 0 && (
-            <div className="mb-8">
-              <p className="text-[11px] font-bold text-zinc-500 tracking-[0.3em] uppercase mb-4">
-                Top 5 Fastest Laps
-              </p>
-              <div className="border border-zinc-800/50 bg-zinc-900/40 rounded-xl overflow-hidden">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-zinc-800/40">
-                      <th className="px-5 py-3 text-left text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase w-10">
-                        #
-                      </th>
-                      <th className="px-5 py-3 text-left text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                        Driver
-                      </th>
-                      <th className="px-5 py-3 text-left text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                        Lap
-                      </th>
-                      <th className="px-5 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                        Time
-                      </th>
-                      <th className="px-5 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase hidden lg:table-cell">
-                        S1
-                      </th>
-                      <th className="px-5 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase hidden lg:table-cell">
-                        S2
-                      </th>
-                      <th className="px-5 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase hidden lg:table-cell">
-                        S3
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800/40">
-                    {top5.map((lap, idx) => {
-                      const driver = driverMap.get(lap.driver_number)
-                      return (
-                        <tr key={`${lap.driver_number}-${lap.lap_number}`} className="hover:bg-zinc-800/20 transition-colors">
-                          <td className="px-5 py-3 text-sm font-black text-zinc-500 tabular-nums">
-                            {idx + 1}
-                          </td>
-                          <td className="px-5 py-3">
-                            <div className="flex items-center gap-2">
-                              {driver && (
-                                <div
-                                  className="w-0.5 h-4 rounded-full"
-                                  style={{ backgroundColor: `#${driver.team_colour}` }}
-                                />
-                              )}
-                              <span className="text-sm text-zinc-300 font-medium">
-                                {driver?.full_name ?? `#${lap.driver_number}`}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-5 py-3 text-sm text-zinc-400 tabular-nums">
-                            {lap.lap_number}
-                          </td>
-                          <td className="px-5 py-3 text-right">
-                            <span className={`text-sm font-black tabular-nums ${idx === 0 ? 'text-purple-400' : 'text-zinc-300'}`}>
-                              {formatDuration(lap.lap_duration!)}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3 text-right text-sm text-zinc-500 tabular-nums hidden lg:table-cell">
-                            {lap.duration_sector_1 != null ? formatDuration(lap.duration_sector_1) : '—'}
-                          </td>
-                          <td className="px-5 py-3 text-right text-sm text-zinc-500 tabular-nums hidden lg:table-cell">
-                            {lap.duration_sector_2 != null ? formatDuration(lap.duration_sector_2) : '—'}
-                          </td>
-                          <td className="px-5 py-3 text-right text-sm text-zinc-500 tabular-nums hidden lg:table-cell">
-                            {lap.duration_sector_3 != null ? formatDuration(lap.duration_sector_3) : '—'}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Filter by driver */}
-          {drivers.length > 0 && validLaps.length > 0 && (
-            <div>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-                <p className="text-[11px] font-bold text-zinc-500 tracking-[0.3em] uppercase">
-                  All Laps ({filteredLaps.length})
+            <FadeUp className="mt-16">
+              <div className="border-t border-[var(--line)] pt-8">
+                <p className="label-mono flex items-center gap-2.5 text-[var(--accent)]">
+                  FASTEST LAP
+                  <span aria-hidden className="inline-block h-[2px] w-8 bg-[var(--accent)]" />
                 </p>
-                <div className="relative max-w-[200px]">
-                  <select
-                    value={filterDriver}
-                    onChange={(e) =>
-                      setFilterDriver(e.target.value === 'all' ? 'all' : Number(e.target.value))
-                    }
-                    className="w-full appearance-none bg-zinc-900 border border-zinc-800/50 rounded-lg px-3 py-2 pr-8 text-xs text-zinc-300 focus:outline-none"
+                <p
+                  className="mt-3 font-mono tabular-nums leading-none text-[var(--text)]"
+                  style={{ fontSize: 'clamp(3rem, 8vw, 7.5rem)' }}
+                >
+                  {formatDuration(overallFastest.lap_duration!)}
+                </p>
+                <p className="label-mono mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-[var(--text-dim)]">
+                  {tick(driverMap.get(overallFastest.driver_number))}
+                  <span>LAP {overallFastest.lap_number}</span>
+                  <span>{driverMap.get(overallFastest.driver_number)?.team_name?.toUpperCase()}</span>
+                </p>
+              </div>
+            </FadeUp>
+          )}
+
+          {/* ─── top 5 ─── */}
+          {top5.length > 0 && (
+            <div className="mt-20">
+              <FadeUp>
+                <p className="label-mono text-[var(--text-dim)]">TOP 5 FASTEST</p>
+              </FadeUp>
+              <div className="mt-6">
+                {top5.map((lap, idx) => {
+                  const driver = driverMap.get(lap.driver_number)
+                  return (
+                    <div
+                      key={`${lap.driver_number}-${lap.lap_number}`}
+                      className="label-mono flex items-baseline gap-5 border-t border-[var(--line)] py-3 md:gap-8"
+                    >
+                      <span className="w-6 shrink-0 tabular-nums text-[var(--text-dim)]">
+                        {idx + 1}
+                      </span>
+                      <span className="w-20 shrink-0 text-[var(--text)]">{tick(driver)}</span>
+                      <span className="hidden flex-1 text-[var(--text-dim)] md:block">
+                        {driver?.team_name?.toUpperCase()} · LAP {lap.lap_number}
+                      </span>
+                      <span className="hidden w-24 shrink-0 text-right tabular-nums text-[var(--text-dim)] lg:block">
+                        {lap.duration_sector_1 != null ? formatDuration(lap.duration_sector_1) : '—'}
+                      </span>
+                      <span className="hidden w-24 shrink-0 text-right tabular-nums text-[var(--text-dim)] lg:block">
+                        {lap.duration_sector_2 != null ? formatDuration(lap.duration_sector_2) : '—'}
+                      </span>
+                      <span className="hidden w-24 shrink-0 text-right tabular-nums text-[var(--text-dim)] lg:block">
+                        {lap.duration_sector_3 != null ? formatDuration(lap.duration_sector_3) : '—'}
+                      </span>
+                      <span
+                        className="ml-auto shrink-0 text-right font-mono text-base tabular-nums"
+                        style={{ color: idx === 0 ? 'var(--accent)' : 'var(--text)' }}
+                      >
+                        {formatDuration(lap.lap_duration!)}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ─── all laps ─── */}
+          {drivers.length > 0 && validLaps.length > 0 && (
+            <div className="mt-20">
+              <div className="flex flex-wrap items-baseline justify-between gap-4">
+                <FadeUp>
+                  <p className="label-mono text-[var(--text-dim)]">
+                    ALL LAPS — {filteredLaps.length}
+                  </p>
+                </FadeUp>
+                {/* driver filter, menu grammar */}
+                <div className="flex max-w-full flex-wrap gap-x-4 gap-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setFilterDriver('all')}
+                    className={`label-mono transition-colors hover:text-[var(--accent)] ${
+                      filterDriver === 'all' ? 'text-[var(--text)]' : 'text-[var(--text-dim)]'
+                    }`}
                   >
-                    <option value="all">All Drivers</option>
-                    {drivers.map((d) => (
-                      <option key={d.driver_number} value={d.driver_number}>
-                        {d.name_acronym} — #{d.driver_number}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500">
-                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 4.5L6 8.5L10 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </div>
+                    ALL
+                  </button>
+                  {drivers.map((d) => (
+                    <button
+                      key={d.driver_number}
+                      type="button"
+                      onClick={() => setFilterDriver(d.driver_number)}
+                      className={`label-mono transition-colors hover:text-[var(--accent)] ${
+                        filterDriver === d.driver_number ? 'text-[var(--text)]' : 'text-[var(--text-dim)]'
+                      }`}
+                    >
+                      {d.name_acronym}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              <div className="border border-zinc-800/50 bg-zinc-900/40 rounded-xl overflow-hidden">
-                <div className="max-h-[480px] overflow-y-auto">
-                  <table className="w-full">
-                    <thead className="sticky top-0 bg-zinc-900 z-10">
-                      <tr className="border-b border-zinc-800/40">
-                        <th className="px-4 py-3 text-left text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                          Driver
-                        </th>
-                        <th className="px-4 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                          Lap
-                        </th>
-                        <th className="px-4 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                          Time
-                        </th>
-                        <th className="px-4 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase hidden md:table-cell">
-                          S1
-                        </th>
-                        <th className="px-4 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase hidden md:table-cell">
-                          S2
-                        </th>
-                        <th className="px-4 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase hidden md:table-cell">
-                          S3
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-800/40">
-                      {filteredLaps.slice(0, 200).map((lap) => {
-                        const driver = driverMap.get(lap.driver_number)
-                        return (
-                          <tr
-                            key={`${lap.driver_number}-${lap.lap_number}`}
-                            className="hover:bg-zinc-800/20 transition-colors"
-                          >
-                            <td className="px-4 py-2.5">
-                              <div className="flex items-center gap-2">
-                                {driver && (
-                                  <div
-                                    className="w-0.5 h-4 rounded-full flex-shrink-0"
-                                    style={{ backgroundColor: `#${driver.team_colour}` }}
-                                  />
-                                )}
-                                <span className="text-xs text-zinc-400 font-medium">
-                                  {driver?.name_acronym ?? `#${lap.driver_number}`}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-2.5 text-xs text-zinc-500 text-right tabular-nums">
-                              {lap.lap_number}
-                            </td>
-                            <td className="px-4 py-2.5 text-right text-xs font-bold text-zinc-300 tabular-nums">
-                              {formatDuration(lap.lap_duration!)}
-                            </td>
-                            <td className="px-4 py-2.5 text-right text-xs text-zinc-600 tabular-nums hidden md:table-cell">
-                              {lap.duration_sector_1 != null ? formatDuration(lap.duration_sector_1) : '—'}
-                            </td>
-                            <td className="px-4 py-2.5 text-right text-xs text-zinc-600 tabular-nums hidden md:table-cell">
-                              {lap.duration_sector_2 != null ? formatDuration(lap.duration_sector_2) : '—'}
-                            </td>
-                            <td className="px-4 py-2.5 text-right text-xs text-zinc-600 tabular-nums hidden md:table-cell">
-                              {lap.duration_sector_3 != null ? formatDuration(lap.duration_sector_3) : '—'}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+              <div className="mt-6 max-h-[60vh] overflow-y-auto pr-2 [scrollbar-width:thin]">
+                {filteredLaps.slice(0, 200).map((lap) => {
+                  const driver = driverMap.get(lap.driver_number)
+                  return (
+                    <div
+                      key={`${lap.driver_number}-${lap.lap_number}`}
+                      className="label-mono flex items-baseline gap-5 border-t border-[var(--line)] py-2.5 md:gap-8"
+                    >
+                      <span className="w-20 shrink-0 text-[var(--text)]">{tick(driver)}</span>
+                      <span className="w-14 shrink-0 tabular-nums text-[var(--text-dim)]">
+                        L{lap.lap_number}
+                      </span>
+                      <span className="hidden w-24 shrink-0 text-right tabular-nums text-[var(--text-dim)] md:block">
+                        {lap.duration_sector_1 != null ? formatDuration(lap.duration_sector_1) : '—'}
+                      </span>
+                      <span className="hidden w-24 shrink-0 text-right tabular-nums text-[var(--text-dim)] md:block">
+                        {lap.duration_sector_2 != null ? formatDuration(lap.duration_sector_2) : '—'}
+                      </span>
+                      <span className="hidden w-24 shrink-0 text-right tabular-nums text-[var(--text-dim)] md:block">
+                        {lap.duration_sector_3 != null ? formatDuration(lap.duration_sector_3) : '—'}
+                      </span>
+                      <span className="ml-auto shrink-0 text-right tabular-nums text-[var(--text)]">
+                        {formatDuration(lap.lap_duration!)}
+                      </span>
+                    </div>
+                  )
+                })}
                 {filteredLaps.length > 200 && (
-                  <div className="px-4 py-2 border-t border-zinc-800/40 text-[11px] text-zinc-600">
-                    Showing first 200 of {filteredLaps.length} laps
-                  </div>
+                  <p className="label-mono border-t border-[var(--line)] py-3 text-[var(--text-dim)]">
+                    SHOWING FIRST 200 OF {filteredLaps.length}
+                  </p>
                 )}
               </div>
             </div>
           )}
         </>
       )}
-    </div>
     </div>
   )
 }
