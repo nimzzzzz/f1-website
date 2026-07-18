@@ -2,6 +2,8 @@
 
 import { ClipReveal, CountUp, FadeUp } from '@/components/motion/reveals'
 import { TransitionLink } from '@/components/motion/TransitionProvider'
+import { driverImage } from '@/lib/media-manifest'
+import TreatedImage from '@/components/media/TreatedImage'
 
 export interface FightRow {
   position: number
@@ -9,6 +11,7 @@ export interface FightRow {
   fullName: string
   points: number
   wins: number
+  acronym?: string
 }
 
 // Shared row frame so the ghost and the real content occupy identical
@@ -18,11 +21,13 @@ function Row({
   ghost,
   name,
   points,
+  acronym = null,
 }: {
   numeral: number
   ghost: boolean
   name: string
   points: number | null
+  acronym?: string | null
 }) {
   return (
     <div className="flex items-baseline gap-5 border-t border-[var(--line)] py-2 md:gap-10">
@@ -42,6 +47,18 @@ function Row({
       >
         {numeral}
       </span>
+      {/* headshot chip — same fixed box in ghost and live rows, so the
+          swap never moves the layout; face crop via cover-from-top */}
+      <TreatedImage
+        src={acronym ? driverImage(acronym) : null}
+        alt=""
+        treatment="mono"
+        fit="cover"
+        position="top"
+        fade={false}
+        sizes="96px"
+        className="hidden h-16 w-16 shrink-0 self-end sm:block md:h-24 md:w-24"
+      />
       <div className="min-w-0 flex-1">
         <p
           className="truncate uppercase leading-[0.95]"
@@ -108,7 +125,13 @@ export default function FightSection({
         {rows
           ? rows.map((row, i) => (
               <ClipReveal key={row.position} delay={i * 0.08}>
-                <Row numeral={row.position} ghost={false} name={row.surname} points={row.points} />
+                <Row
+                  numeral={row.position}
+                  ghost={false}
+                  name={row.surname}
+                  points={row.points}
+                  acronym={row.acronym ?? null}
+                />
               </ClipReveal>
             ))
           : [1, 2, 3].map((n) => (

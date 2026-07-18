@@ -7,6 +7,8 @@ import { useGSAP } from '@gsap/react'
 import type { Meeting, Session } from '@/lib/openf1'
 import { getCachedMeetings, getCachedSessions, getCachedDrivers, getCachedSessionResult } from '@/lib/client-cache'
 import { getCurrentMeeting, getNextMeeting, CANCELLED_COUNTRIES, fetchAllSessionResults } from '@/lib/openf1'
+import { circuitImage } from '@/lib/media-manifest'
+import TreatedImage from '@/components/media/TreatedImage'
 import { FadeUp } from '@/components/motion/reveals'
 import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
@@ -245,6 +247,19 @@ export default function SchedulePage() {
                       : 'md:col-start-1 md:flex md:flex-col md:items-end md:pr-20 md:text-right'
                   }`}
                 >
+                  {circuitImage(m.country_name) && (
+                    <div className={right ? '' : 'md:flex md:justify-end'} style={{ opacity: dim }}>
+                      <TreatedImage
+                        src={circuitImage(m.country_name)}
+                        treatment="line"
+                        fade={false}
+                        position={right ? 'left center' : 'right center'}
+                        sizes="120px"
+                        className="mb-4 h-14 w-24 md:h-16 md:w-28"
+                      />
+                    </div>
+                  )}
+
                   <span
                     aria-label={`Round ${i + 1}`}
                     className={isNext ? 'block leading-[0.85]' : 'outline-numeral block leading-[0.85]'}
