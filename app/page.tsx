@@ -119,6 +119,7 @@ export default function HomePage() {
         fullName: d.fullName,
         points: d.points,
         wins: d.wins,
+        acronym: d.nameAcronym,
       }))
       if (top3.length > 0) setFight(top3)
 

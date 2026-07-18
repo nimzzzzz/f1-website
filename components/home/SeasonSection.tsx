@@ -5,6 +5,8 @@ import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useGSAP } from '@gsap/react'
 import type { Meeting } from '@/lib/openf1'
+import { circuitImage } from '@/lib/media-manifest'
+import TreatedImage from '@/components/media/TreatedImage'
 import { FadeUp } from '@/components/motion/reveals'
 
 gsap.registerPlugin(ScrollTrigger, useGSAP)
@@ -196,6 +198,7 @@ export default function SeasonSection({
             <div className="flex items-end">
               {rounds.map(({ meeting, isPast, isNext, isCancelled }, i) => {
                 const winner = !isCancelled && isPast ? winners[meeting.meeting_key] : undefined
+                const art = circuitImage(meeting.country_name)
                 // Dim lives on the sub-elements (not the container) so the
                 // winner record can exceed it and the tip focus can brighten
                 // everything independently.
@@ -208,6 +211,20 @@ export default function SeasonSection({
                     className="shrink-0 pb-5 pr-[7vw]"
                     style={{ transformOrigin: 'left bottom' }}
                   >
+                    {/* circuit line art — fixed box so it never shifts the
+                        measured strip; joins the dim/focus system */}
+                    {art && (
+                      <div data-dim-el style={{ opacity: dim }}>
+                        <TreatedImage
+                          src={art}
+                          treatment="line"
+                          fade={false}
+                          position="left center"
+                          sizes="96px"
+                          className="mb-2.5 h-12 w-20 md:h-14 md:w-24"
+                        />
+                      </div>
+                    )}
                     <span
                       aria-label={`Round ${i + 1}`}
                       data-dim-el
