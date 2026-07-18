@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import type { Session, Position, Driver } from '@/lib/openf1'
 import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedPositions, getCachedDrivers } from '@/lib/client-cache'
-import SessionPicker from '@/components/SessionPicker'
-import EmptyState from '@/components/EmptyState'
+import SessionHeader from '@/components/session/SessionHeader'
+import { FadeUp } from '@/components/motion/reveals'
+import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
 interface DriverPosition {
   driverNumber: number
@@ -19,9 +20,14 @@ export default function PositionsPage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [selectedKey, setSelectedKey] = useState<number | null>(null)
   const [driverPositions, setDriverPositions] = useState<DriverPosition[]>([])
+  const [rawPositions, setRawPositions] = useState<Position[]>([])
+  const [driverList, setDriverList] = useState<Driver[]>([])
   const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // scrub through the session's position timeline (1 = final classification)
+  const [scrub, setScrub] = useState(1)
+  const apiBlocked = useApiBlocked()
 
   useEffect(() => {
     getCachedSessions()
@@ -45,6 +51,9 @@ export default function PositionsPage() {
         getCachedPositions(sessionKey),
         getCachedDrivers(sessionKey),
       ])
+      setRawPositions(positions)
+      setDriverList(drivers)
+      setScrub(1)
 
       const driverMap = new Map(drivers.map((d) => [d.driver_number, d]))
 
@@ -91,145 +100,154 @@ export default function PositionsPage() {
     if (selectedKey) fetchData(selectedKey)
   }, [selectedKey, fetchData])
 
+  // Rows at the scrub point, derived from the already-fetched timeline.
+  const { rows: scrubRows, scrubClock } = useMemo(() => {
+    if (scrub >= 1 || rawPositions.length === 0) {
+      return { rows: driverPositions, scrubClock: null as string | null }
+    }
+    const times = rawPositions.map((p) => new Date(p.date).getTime())
+    const t0 = Math.min(...times)
+    const t1 = Math.max(...times)
+    const at = t0 + scrub * (t1 - t0)
+    const driverMap = new Map(driverList.map((d) => [d.driver_number, d]))
+
+    const asc = [...rawPositions].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    )
+    const startPositions = new Map<number, number>()
+    const atPositions = new Map<number, number>()
+    for (const p of asc) {
+      if (!startPositions.has(p.driver_number)) startPositions.set(p.driver_number, p.position)
+      if (new Date(p.date).getTime() <= at) atPositions.set(p.driver_number, p.position)
+    }
+    const rows: DriverPosition[] = []
+    startPositions.forEach((startPos, driverNum) => {
+      const cur = atPositions.get(driverNum) ?? startPos
+      rows.push({
+        driverNumber: driverNum,
+        driver: driverMap.get(driverNum),
+        currentPosition: cur,
+        startPosition: startPos,
+        positionChange: startPos - cur,
+      })
+    })
+    rows.sort((a, b) => a.currentPosition - b.currentPosition)
+    const clock = new Date(at).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+    return { rows, scrubClock: clock }
+  }, [scrub, rawPositions, driverPositions, driverList])
+
   if (loading) {
     return (
-      <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-        <div className="animate-pulse space-y-4">
-          <div className="h-3 w-20 bg-zinc-800 rounded" />
-          <div className="h-10 w-48 bg-zinc-800 rounded" />
-        </div>
+      <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
+        <div className="h-3 w-32 animate-pulse rounded bg-white/5" />
+        <div className="mt-8 h-24 w-[55%] animate-pulse rounded bg-white/5" />
+        <p className="label-mono mt-8 text-[var(--text-dim)]">LOADING SESSIONS…</p>
       </div>
     )
   }
 
   return (
-    <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-      {/* Header */}
-      <div className="mb-8">
-        <p className="text-[11px] font-bold text-red-500 tracking-[0.3em] uppercase mb-3">
-          2026 Season
-        </p>
-        <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-zinc-100">
-          Positions
-        </h1>
-      </div>
+    <div className="relative overflow-x-clip px-6 pb-28 pt-20 md:px-14">
+      <SessionHeader
+        ghost="POS"
+        kicker="POSITIONS"
+        sessions={sessions}
+        selectedKey={selectedKey}
+        onSelect={setSelectedKey}
+      />
 
-      {/* Session picker */}
-      <div className="mb-8 max-w-sm">
-        <SessionPicker
-          sessions={sessions}
-          selectedKey={selectedKey}
-          onSelect={setSelectedKey}
-          label="Select Race Session"
-        />
-      </div>
-
-      {error && (
-        <div className="mb-6 px-4 py-3 bg-red-950/30 border border-red-800/40 rounded-lg text-red-400 text-sm">
-          {error}
-        </div>
-      )}
+      {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
 
       {fetching ? (
-        <div className="border border-zinc-800/50 bg-zinc-900/40 rounded-xl overflow-hidden animate-pulse">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <div key={i} className="h-12 border-b border-zinc-800/40 last:border-0" />
+        <div className="mt-16 space-y-5">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-12 w-[55%] animate-pulse rounded bg-white/5" />
           ))}
         </div>
       ) : driverPositions.length === 0 ? (
-        <EmptyState
-          title="No position data"
-          message={selectedKey ? 'Position data not yet available for this session.' : 'Select a race session to view positions.'}
-        />
+        !apiBlocked && (
+          <p className="label-mono mt-16 text-[var(--text-dim)]">
+            {selectedKey ? 'NO POSITION DATA FOR THIS SESSION' : 'SELECT A RACE SESSION'}
+          </p>
+        )
       ) : (
-        <div className="border border-zinc-800/50 bg-zinc-900/40 rounded-xl overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-zinc-800/40">
-                <th className="px-5 py-3 text-left text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase w-12">
-                  Pos
-                </th>
-                <th className="px-5 py-3 text-left text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                  Driver
-                </th>
-                <th className="px-5 py-3 text-left text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase hidden md:table-cell">
-                  Team
-                </th>
-                <th className="px-5 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                  Start
-                </th>
-                <th className="px-5 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                  Change
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800/40">
-              {driverPositions.map((row) => {
-                const gained = row.positionChange !== null && row.positionChange > 0
-                const lost = row.positionChange !== null && row.positionChange < 0
-                return (
-                  <tr
-                    key={row.driverNumber}
-                    className="hover:bg-zinc-800/20 transition-colors"
+        <>
+          {/* ─── the scrubber: replay the session on a red rail ─── */}
+          <FadeUp className="mt-14">
+            <div className="border-t border-[var(--line)] pt-8">
+              <div className="label-mono flex items-baseline justify-between gap-6 text-[var(--text-dim)]">
+                <span>SESSION SCRUB</span>
+                <span className="tabular-nums">
+                  {scrub >= 1 ? 'FINAL CLASSIFICATION' : scrubClock ?? '—'}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={1000}
+                value={Math.round(scrub * 1000)}
+                onChange={(e) => setScrub(Number(e.target.value) / 1000)}
+                aria-label="Scrub through session positions"
+                className="mt-4 h-[2px] w-full cursor-pointer appearance-none rounded-none bg-[var(--line)]"
+                style={{ accentColor: 'var(--accent)' }}
+              />
+            </div>
+          </FadeUp>
+
+          {/* ─── the order at the scrub point ─── */}
+          <div className="mt-10">
+            {scrubRows.map((row) => {
+              const gained = row.positionChange !== null && row.positionChange > 0
+              const lost = row.positionChange !== null && row.positionChange < 0
+              return (
+                <div
+                  key={row.driverNumber}
+                  className="flex items-baseline gap-5 border-t border-[var(--line)] py-3 md:gap-8"
+                >
+                  <span
+                    className="label-mono w-10 shrink-0 tabular-nums"
+                    style={{ color: row.currentPosition === 1 ? 'var(--accent)' : 'var(--text)' }}
                   >
-                    <td className="px-5 py-3.5 text-sm font-black tabular-nums">
-                      <span
-                        className={
-                          row.currentPosition === 1
-                            ? 'text-yellow-400'
-                            : row.currentPosition === 2
-                            ? 'text-zinc-300'
-                            : row.currentPosition === 3
-                            ? 'text-amber-600'
-                            : 'text-zinc-400'
-                        }
-                      >
-                        {row.currentPosition}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2.5">
-                        {row.driver && (
-                          <div
-                            className="w-0.5 h-5 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: `#${row.driver.team_colour}` }}
-                          />
-                        )}
-                        <div>
-                          <p className="text-sm text-zinc-200 font-medium">
-                            {row.driver?.full_name ?? `#${row.driverNumber}`}
-                          </p>
-                          <p className="text-[10px] text-zinc-600">
-                            #{row.driverNumber} · {row.driver?.name_acronym}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5 text-sm text-zinc-400 hidden md:table-cell">
-                      {row.driver?.team_name ?? '—'}
-                    </td>
-                    <td className="px-5 py-3.5 text-sm text-zinc-500 text-right tabular-nums">
-                      {row.startPosition ?? '—'}
-                    </td>
-                    <td className="px-5 py-3.5 text-right tabular-nums">
-                      {row.positionChange === null ? (
-                        <span className="text-zinc-600 text-sm">—</span>
-                      ) : row.positionChange === 0 ? (
-                        <span className="text-zinc-600 text-sm">—</span>
-                      ) : (
-                        <span
-                          className={`text-sm font-bold ${gained ? 'text-green-500' : 'text-red-500'}`}
-                        >
-                          {gained ? '+' : ''}{row.positionChange}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                    P{row.currentPosition}
+                  </span>
+                  <span className="label-mono flex w-24 shrink-0 items-center gap-2 text-[var(--text)]">
+                    <span
+                      aria-hidden
+                      className="inline-block h-[2px] w-3"
+                      style={{ backgroundColor: `#${row.driver?.team_colour ?? '444'}` }}
+                    />
+                    {row.driver?.name_acronym ?? `#${row.driverNumber}`}
+                  </span>
+                  <span
+                    className="hidden min-w-0 flex-1 truncate uppercase leading-none text-[var(--text)] md:block"
+                    style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem' }}
+                  >
+                    {row.driver?.last_name ?? ''}
+                  </span>
+                  <span className="label-mono hidden shrink-0 text-[var(--text-dim)] lg:block">
+                    {row.driver?.team_name?.toUpperCase()}
+                  </span>
+                  <span className="label-mono w-16 shrink-0 text-right tabular-nums text-[var(--text-dim)]">
+                    GRID {row.startPosition ?? '—'}
+                  </span>
+                  <span
+                    className={`label-mono w-12 shrink-0 text-right tabular-nums ${
+                      gained ? 'text-[var(--text)]' : lost ? 'text-[var(--text-dim)]' : 'text-[var(--text-dim)]'
+                    }`}
+                  >
+                    {row.positionChange === null || row.positionChange === 0
+                      ? '—'
+                      : `${gained ? '+' : '−'}${Math.abs(row.positionChange)}`}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </>
       )}
     </div>
   )
