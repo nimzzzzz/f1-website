@@ -32,7 +32,9 @@ interface FetchResult {
   skipped: string[]
 }
 
-async function download(url: string, dest: string): Promise<boolean> {
+// Resolves false on failure, true on success, or the actual saved
+// basename when the content forced a different extension (SVG-as-png).
+async function download(url: string, dest: string): Promise<boolean | string> {
   try {
     const res = await fetch(url, { headers: { 'User-Agent': 'lights-out-site/1.0' } })
     if (!res.ok) {
@@ -43,6 +45,15 @@ async function download(url: string, dest: string): Promise<boolean> {
     if (buf.length < 500) {
       console.log(`  skip (tiny ${buf.length}b): ${url}`)
       return false
+    }
+    // The F1 CDN serves some assets as SVG under .png names — save them
+    // with the real extension or the static server sends the wrong
+    // content-type and the image optimizer rejects them.
+    const head = buf.subarray(0, 300).toString('utf8').trimStart()
+    if ((head.startsWith('<') || head.startsWith('<?xml')) && head.includes('<svg')) {
+      const svgDest = dest.replace(/\.(webp|png|jpe?g|avif)$/i, '.svg')
+      await writeFile(svgDest, buf)
+      return path.basename(svgDest)
     }
     await writeFile(dest, buf)
     return true
@@ -62,11 +73,10 @@ async function fetchCategory(
   const skipped: string[] = []
   const paths: Record<string, string> = {}
   for (const { key, url, file } of entries) {
-    const rel = `/media/${dir}/${file}`
     const good = await download(url, path.join(OUT, dir, file))
     if (good) {
       ok.push(key)
-      paths[key] = rel
+      paths[key] = `/media/${dir}/${typeof good === 'string' ? good : file}`
     } else {
       skipped.push(key)
     }

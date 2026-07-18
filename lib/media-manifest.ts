@@ -49,26 +49,26 @@ export const CAR_IMAGES: Record<string, string> = {
 }
 
 export const TEAM_LOGO_IMAGES: Record<string, string> = {
-  "mclaren": "/media/teams/mclaren-logo.png",
-  "ferrari": "/media/teams/ferrari-logo.png",
-  "scuderia-ferrari": "/media/teams/scuderia-ferrari-logo.png",
-  "red-bull-racing": "/media/teams/red-bull-racing-logo.png",
-  "oracle-red-bull-racing": "/media/teams/oracle-red-bull-racing-logo.png",
-  "mercedes": "/media/teams/mercedes-logo.png",
-  "mercedes-amg-petronas-f1-team": "/media/teams/mercedes-amg-petronas-f1-team-logo.png",
+  "mclaren": "/media/teams/mclaren-logo.svg",
+  "ferrari": "/media/teams/ferrari-logo.svg",
+  "scuderia-ferrari": "/media/teams/scuderia-ferrari-logo.svg",
+  "red-bull-racing": "/media/teams/red-bull-racing-logo.svg",
+  "oracle-red-bull-racing": "/media/teams/oracle-red-bull-racing-logo.svg",
+  "mercedes": "/media/teams/mercedes-logo.svg",
+  "mercedes-amg-petronas-f1-team": "/media/teams/mercedes-amg-petronas-f1-team-logo.svg",
   "aston-martin": "/media/teams/aston-martin-logo.png",
   "aston-martin-aramco-f1-team": "/media/teams/aston-martin-aramco-f1-team-logo.png",
   "alpine": "/media/teams/alpine-logo.png",
   "bwt-alpine-f1-team": "/media/teams/bwt-alpine-f1-team-logo.png",
-  "williams": "/media/teams/williams-logo.png",
-  "williams-racing": "/media/teams/williams-racing-logo.png",
-  "racing-bulls": "/media/teams/racing-bulls-logo.png",
-  "haas-f1-team": "/media/teams/haas-f1-team-logo.png",
-  "haas": "/media/teams/haas-logo.png",
-  "audi": "/media/teams/audi-logo.png",
-  "audi-f1-team": "/media/teams/audi-f1-team-logo.png",
-  "cadillac": "/media/teams/cadillac-logo.png",
-  "cadillac-formula-one-team": "/media/teams/cadillac-formula-one-team-logo.png"
+  "williams": "/media/teams/williams-logo.svg",
+  "williams-racing": "/media/teams/williams-racing-logo.svg",
+  "racing-bulls": "/media/teams/racing-bulls-logo.svg",
+  "haas-f1-team": "/media/teams/haas-f1-team-logo.svg",
+  "haas": "/media/teams/haas-logo.svg",
+  "audi": "/media/teams/audi-logo.svg",
+  "audi-f1-team": "/media/teams/audi-f1-team-logo.svg",
+  "cadillac": "/media/teams/cadillac-logo.svg",
+  "cadillac-formula-one-team": "/media/teams/cadillac-formula-one-team-logo.svg"
 }
 
 // keyed by country_name as it appears in the calendar data

@@ -42,10 +42,18 @@ export default function TreatedImage({
   priority?: boolean
   className?: string
 }) {
+  // The fill Image needs a positioned box. Callers often position the box
+  // themselves (absolute overlays); an inline relative would override their
+  // class, and a `relative` class would conflict — so self-position only
+  // when the caller didn't.
+  const positioned = /(^|\s)(absolute|fixed|sticky)(\s|$)/.test(className)
   return (
     <div
-      className={`relative overflow-hidden ${src ? '' : 'bg-[var(--surface)]'} ${className}`}
-      style={aspect ? { aspectRatio: aspect } : undefined}
+      className={`overflow-hidden ${src ? '' : 'bg-[var(--surface)]'} ${className}`}
+      style={{
+        ...(aspect ? { aspectRatio: aspect } : {}),
+        ...(positioned ? {} : { position: 'relative' as const }),
+      }}
     >
       {src && (
         <>
@@ -55,6 +63,7 @@ export default function TreatedImage({
             fill
             sizes={sizes}
             priority={priority}
+            unoptimized={src.endsWith('.svg')}
             className={fit === 'cover' ? 'object-cover' : 'object-contain'}
             style={{ filter: FILTERS[treatment], objectPosition: position }}
           />
