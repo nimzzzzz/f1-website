@@ -4,8 +4,9 @@ import { useEffect, useState, useCallback } from 'react'
 import type { Session, Weather } from '@/lib/openf1'
 import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedWeather } from '@/lib/client-cache'
-import SessionPicker from '@/components/SessionPicker'
-import EmptyState from '@/components/EmptyState'
+import SessionHeader from '@/components/session/SessionHeader'
+import { FadeUp } from '@/components/motion/reveals'
+import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
 function formatTime(dateStr: string): string {
   return new Date(dateStr).toLocaleTimeString('en-US', {
@@ -23,6 +24,7 @@ export default function WeatherPage() {
   const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const apiBlocked = useApiBlocked()
 
   useEffect(() => {
     getCachedSessions()
@@ -58,7 +60,7 @@ export default function WeatherPage() {
   // Latest reading
   const latest = weatherData[weatherData.length - 1] ?? null
 
-  // Sample for table display (~20 rows)
+  // Sample for the history list (~20 rows)
   const sampled = weatherData.filter((_, i) => {
     if (weatherData.length <= 20) return true
     const step = Math.floor(weatherData.length / 20)
@@ -67,165 +69,127 @@ export default function WeatherPage() {
 
   if (loading) {
     return (
-      <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-        <div className="animate-pulse space-y-4">
-          <div className="h-3 w-20 bg-zinc-800 rounded" />
-          <div className="h-10 w-48 bg-zinc-800 rounded" />
-        </div>
+      <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
+        <div className="h-3 w-32 animate-pulse rounded bg-white/5" />
+        <div className="mt-8 h-24 w-[55%] animate-pulse rounded bg-white/5" />
+        <p className="label-mono mt-8 text-[var(--text-dim)]">LOADING SESSIONS…</p>
       </div>
     )
   }
 
   return (
-    <div className="py-16 md:py-20 max-w-[1400px] mx-auto px-6 md:px-12">
-      {/* Header */}
-      <div className="mb-8">
-        <p className="text-[11px] font-bold text-red-500 tracking-[0.3em] uppercase mb-3">
-          2026 Season
-        </p>
-        <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-zinc-100">
-          Weather
-        </h1>
-      </div>
+    <div className="relative overflow-x-clip px-6 pb-28 pt-20 md:px-14">
+      <SessionHeader
+        ghost="WX"
+        kicker="WEATHER"
+        sessions={sessions}
+        selectedKey={selectedKey}
+        onSelect={setSelectedKey}
+      />
 
-      {/* Session picker */}
-      <div className="mb-8 max-w-sm">
-        <SessionPicker
-          sessions={sessions}
-          selectedKey={selectedKey}
-          onSelect={setSelectedKey}
-          label="Select Session"
-        />
-      </div>
-
-      {error && (
-        <div className="mb-6 px-4 py-3 bg-red-950/30 border border-red-800/40 rounded-lg text-red-400 text-sm">
-          {error}
-        </div>
-      )}
+      {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
 
       {fetching ? (
-        <div className="space-y-4 animate-pulse">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="h-24 bg-zinc-900/60 border border-zinc-800/50 rounded-xl" />
-            ))}
-          </div>
+        <div className="mt-16 flex flex-wrap gap-14">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-24 w-40 animate-pulse rounded bg-white/5" />
+          ))}
         </div>
       ) : weatherData.length === 0 ? (
-        <EmptyState
-          title="No weather data"
-          message={selectedKey ? 'Weather data not recorded for this session.' : 'Select a session to view weather conditions.'}
-        />
+        !apiBlocked && (
+          <p className="label-mono mt-16 text-[var(--text-dim)]">
+            {selectedKey ? 'NO WEATHER DATA FOR THIS SESSION' : 'SELECT A SESSION'}
+          </p>
+        )
       ) : (
         <>
-          {/* Latest reading cards */}
+          {/* ─── current conditions, huge ─── */}
           {latest && (
-            <div className="mb-8">
-              <p className="text-[11px] font-bold text-zinc-500 tracking-[0.3em] uppercase mb-4">
-                Latest Reading — {formatTime(latest.date)}
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                {[
-                  { label: 'Air Temp', value: `${latest.air_temperature.toFixed(1)}°C` },
-                  { label: 'Track Temp', value: `${latest.track_temperature.toFixed(1)}°C` },
-                  { label: 'Humidity', value: `${latest.humidity.toFixed(0)}%` },
-                  { label: 'Wind Speed', value: `${latest.wind_speed.toFixed(1)} m/s` },
-                  {
-                    label: 'Rainfall',
-                    value: latest.rainfall ? 'Yes' : 'No',
-                    highlight: latest.rainfall,
-                  },
-                ].map(({ label, value, highlight }) => (
-                  <div
-                    key={label}
-                    className={[
-                      'border rounded-xl p-5',
-                      highlight
-                        ? 'border-blue-700/40 bg-blue-950/20'
-                        : 'border-zinc-800/50 bg-zinc-900/40',
-                    ].join(' ')}
+            <div className="mt-16">
+              <FadeUp>
+                <p className="label-mono text-[var(--text-dim)]">
+                  FINAL READING — {formatTime(latest.date)}
+                  {latest.rainfall ? <span className="ml-4 text-[#60A5FA]">RAIN</span> : null}
+                </p>
+              </FadeUp>
+              <div className="mt-8 flex flex-wrap items-baseline gap-x-20 gap-y-10">
+                <div>
+                  <p
+                    className="font-mono tabular-nums leading-none text-[var(--text)]"
+                    style={{ fontSize: 'clamp(4rem, 9vw, 8rem)' }}
                   >
-                    <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-zinc-600 mb-1.5">
-                      {label}
-                    </p>
-                    <p
-                      className={`text-2xl font-black tabular-nums ${highlight ? 'text-blue-400' : 'text-zinc-100'}`}
-                    >
-                      {value}
-                    </p>
-                  </div>
-                ))}
+                    {latest.air_temperature.toFixed(1)}°
+                  </p>
+                  <p className="label-mono mt-3 text-[var(--text-dim)]">AIR</p>
+                </div>
+                <div>
+                  <p
+                    className="font-mono tabular-nums leading-none text-[var(--text)]"
+                    style={{ fontSize: 'clamp(4rem, 9vw, 8rem)' }}
+                  >
+                    {latest.track_temperature.toFixed(1)}°
+                  </p>
+                  <p className="label-mono mt-3 text-[var(--text-dim)]">TRACK</p>
+                </div>
+                <div>
+                  <p
+                    className="font-mono tabular-nums leading-none text-[var(--text)]"
+                    style={{ fontSize: 'clamp(2.2rem, 5vw, 4.2rem)' }}
+                  >
+                    {latest.humidity.toFixed(0)}%
+                  </p>
+                  <p className="label-mono mt-3 text-[var(--text-dim)]">HUMIDITY</p>
+                </div>
+                <div>
+                  <p
+                    className="font-mono tabular-nums leading-none text-[var(--text)]"
+                    style={{ fontSize: 'clamp(2.2rem, 5vw, 4.2rem)' }}
+                  >
+                    {latest.wind_speed.toFixed(1)}
+                  </p>
+                  <p className="label-mono mt-3 text-[var(--text-dim)]">WIND M/S</p>
+                </div>
               </div>
             </div>
           )}
 
-          {/* Weather table */}
-          <div>
-            <p className="text-[11px] font-bold text-zinc-500 tracking-[0.3em] uppercase mb-4">
-              Readings Over Session ({sampled.length} samples)
-            </p>
-            <div className="border border-zinc-800/50 bg-zinc-900/40 rounded-xl overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[600px]">
-                  <thead>
-                    <tr className="border-b border-zinc-800/40">
-                      <th className="px-4 py-3 text-left text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                        Time
-                      </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                        Air
-                      </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                        Track
-                      </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                        Humidity
-                      </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                        Wind
-                      </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-bold text-zinc-500 tracking-[0.2em] uppercase">
-                        Rain
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800/40">
-                    {sampled.map((w, idx) => (
-                      <tr
-                        key={idx}
-                        className={[
-                          'hover:bg-zinc-800/20 transition-colors',
-                          w.rainfall ? 'bg-blue-950/10' : '',
-                        ].join(' ')}
-                      >
-                        <td className="px-4 py-2.5 text-xs text-zinc-500 tabular-nums">
-                          {formatTime(w.date)}
-                        </td>
-                        <td className="px-4 py-2.5 text-xs text-zinc-300 text-right tabular-nums">
-                          {w.air_temperature.toFixed(1)}°C
-                        </td>
-                        <td className="px-4 py-2.5 text-xs text-zinc-300 text-right tabular-nums">
-                          {w.track_temperature.toFixed(1)}°C
-                        </td>
-                        <td className="px-4 py-2.5 text-xs text-zinc-400 text-right tabular-nums">
-                          {w.humidity.toFixed(0)}%
-                        </td>
-                        <td className="px-4 py-2.5 text-xs text-zinc-400 text-right tabular-nums">
-                          {w.wind_speed.toFixed(1)} m/s
-                        </td>
-                        <td className="px-4 py-2.5 text-right">
-                          {w.rainfall ? (
-                            <span className="text-blue-400 text-xs font-bold">Yes</span>
-                          ) : (
-                            <span className="text-zinc-700 text-xs">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          {/* ─── readings over the session ─── */}
+          <div className="mt-20">
+            <FadeUp>
+              <p className="label-mono text-[var(--text-dim)]">
+                OVER THE SESSION — {sampled.length} SAMPLES
+              </p>
+            </FadeUp>
+            <div className="mt-6">
+              {sampled.map((w, idx) => (
+                <div
+                  key={idx}
+                  className="label-mono flex items-baseline gap-5 border-t border-[var(--line)] py-2.5 md:gap-8"
+                >
+                  <span className="w-20 shrink-0 tabular-nums text-[var(--text-dim)]">
+                    {formatTime(w.date)}
+                  </span>
+                  <span className="w-16 shrink-0 text-right tabular-nums text-[var(--text)]">
+                    {w.air_temperature.toFixed(1)}°
+                  </span>
+                  <span className="w-16 shrink-0 text-right tabular-nums text-[var(--text)]">
+                    {w.track_temperature.toFixed(1)}°
+                  </span>
+                  <span className="hidden w-16 shrink-0 text-right tabular-nums text-[var(--text-dim)] sm:block">
+                    {w.humidity.toFixed(0)}%
+                  </span>
+                  <span className="hidden w-20 shrink-0 text-right tabular-nums text-[var(--text-dim)] sm:block">
+                    {w.wind_speed.toFixed(1)} M/S
+                  </span>
+                  <span className="ml-auto shrink-0 text-right">
+                    {w.rainfall ? (
+                      <span style={{ color: '#60A5FA' }}>RAIN</span>
+                    ) : (
+                      <span className="text-[var(--text-dim)] opacity-50">—</span>
+                    )}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         </>
