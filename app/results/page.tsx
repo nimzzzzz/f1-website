@@ -6,6 +6,7 @@ import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedDrivers, getCachedPositions, getCachedPitStops, getCachedSessionResult } from '@/lib/client-cache'
 import { ClipReveal, FadeUp } from '@/components/motion/reveals'
 import { useApiBlocked } from '@/components/shell/useApiBlocked'
+import SessionHeader from '@/components/session/SessionHeader'
 
 interface DriverResult {
   position: number
@@ -161,45 +162,14 @@ export default function ResultsPage() {
   return (
     <div className="relative overflow-x-clip px-6 pb-28 pt-20 md:px-14">
       <FadeUp>
-        <div className="flex flex-wrap items-center justify-between gap-6">
-          <p className="label-mono text-[var(--text-dim)]">
-            RESULTS{selectedSession ? ` — ${String(selectedSession.year)}` : ''}
-          </p>
-          {/* session picker — same selection logic, the design language's skin */}
-          <select
-            value={selectedKey ?? ''}
-            onChange={(e) => setSelectedKey(Number(e.target.value))}
-            aria-label="Select session"
-            className="label-mono max-w-full cursor-pointer border border-[var(--line)] bg-transparent px-4 py-3 text-[var(--text)] outline-none transition-colors hover:border-[rgba(245,245,243,0.3)] focus:border-[rgba(245,245,243,0.4)]"
-          >
-            {sessions.map((s) => (
-              <option key={s.session_key} value={s.session_key} className="bg-[#111113] text-[#F5F5F3]">
-                {s.location.toUpperCase()} · {s.session_name.toUpperCase()} ·{' '}
-                {new Date(s.date_start)
-                  .toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                  .toUpperCase()}
-              </option>
-            ))}
-          </select>
-        </div>
+        <SessionHeader
+          ghost="RESULTS"
+          kicker={`RESULTS${selectedSession ? ` — ${String(selectedSession.year)}` : ''}`}
+          sessions={sessions}
+          selectedKey={selectedKey}
+          onSelect={setSelectedKey}
+        />
       </FadeUp>
-
-      {selectedSession && (
-        <FadeUp className="mt-10">
-          <h1
-            className="uppercase leading-[0.9] text-[var(--text)]"
-            style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(2.4rem, 6vw, 5.5rem)' }}
-          >
-            {selectedSession.location} — {selectedSession.session_name}
-          </h1>
-          <p className="label-mono mt-3 text-[var(--text-dim)]">
-            {selectedSession.circuit_short_name.toUpperCase()} ·{' '}
-            {new Date(selectedSession.date_start)
-              .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-              .toUpperCase()}
-          </p>
-        </FadeUp>
-      )}
 
       {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
 
