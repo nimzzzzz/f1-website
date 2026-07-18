@@ -1,194 +1,78 @@
-'use client'
+import { Suspense } from 'react'
+import { getSeasonBundle } from '@/lib/season-data-server'
+import { bundleAsOf } from '@/lib/season-data'
+import LiveSessionNotice from '@/components/LiveSessionNotice'
+import TeamsBands, { type BandTeam } from './TeamsBands'
 
-import { useEffect, useState } from 'react'
-import type { Driver } from '@/lib/openf1'
-import { getCachedLatestDrivers } from '@/lib/client-cache'
-import { fetchSeasonData, bundleAsOf, type SeasonBundle } from '@/lib/season-data'
-import { teamToSlug } from '@/lib/team-data'
-import { carImage, teamLogoImage } from '@/lib/media-manifest'
-import TreatedImage from '@/components/media/TreatedImage'
-import { ClipReveal, CountUp, FadeUp } from '@/components/motion/reveals'
-import { TransitionLink } from '@/components/motion/TransitionProvider'
-import { useApiBlocked } from '@/components/shell/useApiBlocked'
+// Server-rendered: constructor order + rosters come from the cached season
+// bundle, so the top bands (and their imagery) are in the initial HTML.
+// Same cache entry as /api/season-data — stale-while-error inherited.
+export const dynamic = 'force-dynamic'
+export const maxDuration = 30
 
-function deduplicateDrivers(drivers: Driver[]): Driver[] {
-  const map = new Map<number, Driver>()
-  for (const d of drivers) map.set(d.driver_number, d)
-  return Array.from(map.values())
+function Skeleton() {
+  return (
+    <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
+      <div className="h-3 w-40 animate-pulse rounded bg-white/5" />
+      <div className="mt-10 space-y-8">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-24 w-[70%] animate-pulse rounded bg-white/5" />
+        ))}
+      </div>
+      <p className="label-mono mt-10 text-[var(--text-dim)]">LOADING CONSTRUCTORS…</p>
+    </div>
+  )
 }
 
-const pad2 = (n: number) => String(n).padStart(2, '0')
+async function Bands() {
+  const bundle = await getSeasonBundle()
 
-export default function TeamsPage() {
-  const [drivers, setDrivers] = useState<Driver[]>([])
-  const [bundle, setBundle] = useState<SeasonBundle | null>(null)
-  const [loading, setLoading] = useState(true)
-  const apiBlocked = useApiBlocked()
-
-  useEffect(() => {
-    getCachedLatestDrivers()
-      .then((all) => setDrivers(deduplicateDrivers(all)))
-      .finally(() => setLoading(false))
-  }, [])
-
-  // Constructor standings come from the server bundle.
-  useEffect(() => {
-    let alive = true
-    fetchSeasonData().then((b) => {
-      if (alive && b) setBundle(b)
-    })
-    return () => {
-      alive = false
-    }
-  }, [])
-
-  if (loading) {
+  // Cold cache during a live-session lockout: the honest state, server-side.
+  if (!bundle) {
     return (
-      <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
-        <div className="h-3 w-40 animate-pulse rounded bg-white/5" />
-        <div className="mt-10 space-y-8">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 w-[70%] animate-pulse rounded bg-white/5" />
-          ))}
-        </div>
-        <p className="label-mono mt-10 text-[var(--text-dim)]">LOADING CONSTRUCTORS…</p>
+      <div className="flex min-h-[calc(100dvh-4rem)] items-center">
+        <LiveSessionNotice variant="full" />
       </div>
     )
   }
 
-  // Bundle order when standings exist; driver-data grouping otherwise.
-  const teams = bundle?.teamStandings.length
-    ? bundle.teamStandings.map((t) => ({
-        name: t.teamName,
-        colour: `#${t.teamColour || 'F5F5F3'}`,
-        points: Math.floor(t.points) as number | null,
-        position: t.position as number | null,
-        wins: t.wins,
-      }))
-    : [...new Set(drivers.map((d) => d.team_name))].sort().map((name) => ({
-        name,
-        colour: `#${drivers.find((d) => d.team_name === name)?.team_colour || 'F5F5F3'}`,
-        points: null,
-        position: null,
-        wins: 0,
-      }))
-
-  const asOf = bundle ? bundleAsOf(bundle) : null
-
-  if (teams.length === 0) {
+  if (bundle.teamStandings.length === 0) {
     return (
       <div className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
-        {!apiBlocked && <p className="label-mono text-[var(--text-dim)]">NO CONSTRUCTOR DATA YET</p>}
+        <p className="label-mono text-[var(--text-dim)]">NO CONSTRUCTOR DATA YET</p>
       </div>
     )
   }
 
+  // Rosters join from driverStandings (surname + number, sorted by number) —
+  // no separate drivers fetch.
+  const rosterByTeam = new Map<string, { surname: string; driverNumber: number }[]>()
+  for (const d of bundle.driverStandings) {
+    if (!rosterByTeam.has(d.teamName)) rosterByTeam.set(d.teamName, [])
+    rosterByTeam.get(d.teamName)!.push({ surname: d.surname, driverNumber: d.driverNumber })
+  }
+  for (const roster of rosterByTeam.values()) {
+    roster.sort((a, b) => a.driverNumber - b.driverNumber)
+  }
+
+  const teams: BandTeam[] = bundle.teamStandings.map((t) => ({
+    name: t.teamName,
+    colour: `#${t.teamColour || 'F5F5F3'}`,
+    points: Math.floor(t.points),
+    position: t.position,
+    wins: t.wins,
+    drivers: rosterByTeam.get(t.teamName) ?? [],
+  }))
+
+  return <TeamsBands teams={teams} seasonYear={bundle.seasonYear} asOf={bundleAsOf(bundle)} />
+}
+
+export default function TeamsPage() {
+  // Suspense so a rare cold-cache compute streams the skeleton instead of
+  // blanking first paint; the warm path resolves before the first flush.
   return (
-    <div className="relative overflow-x-clip px-6 pb-28 pt-20 md:px-14">
-      <FadeUp>
-        <p className="label-mono flex flex-wrap gap-x-4 text-[var(--text-dim)]">
-          CONSTRUCTORS&rsquo; CHAMPIONSHIP{bundle?.seasonYear ? ` — ${bundle.seasonYear}` : ''}
-          {asOf && <span>AS OF {asOf}</span>}
-          {apiBlocked && !bundle && (
-            <span className="flex items-center gap-2 text-[var(--accent)]">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none" />
-              LIVE SESSION — DATA PAUSED
-            </span>
-          )}
-        </p>
-      </FadeUp>
-
-      <div className="mt-12">
-        {teams.map((team) => {
-          const teamDrivers = drivers
-            .filter((d) => d.team_name === team.name)
-            .sort((a, b) => a.driver_number - b.driver_number)
-          const slug = teamToSlug(team.name)
-          const car = carImage(slug)
-          const logo = teamLogoImage(slug)
-          return (
-            <ClipReveal key={team.name}>
-              <TransitionLink
-                href={`/teams/${teamToSlug(team.name)}`}
-                className="group relative block overflow-hidden border-t border-[var(--line)] py-10 md:py-12"
-              >
-                {/* the car — low-saturation livery riding the band, under the numeral */}
-                {car && (
-                  <TreatedImage
-                    src={car}
-                    treatment="team"
-                    position="right bottom"
-                    sizes="32vw"
-                    className="pointer-events-none absolute bottom-0 right-[7vw] hidden h-[88%] w-[32vw] max-w-[500px] opacity-90 md:block"
-                  />
-                )}
-
-                {/* constructors position — outline numeral behind the band */}
-                {team.position !== null && (
-                  <span
-                    aria-hidden
-                    className="outline-numeral pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 leading-none"
-                    style={{ fontSize: 'clamp(7rem, 15vw, 13rem)' }}
-                  >
-                    {pad2(team.position)}
-                  </span>
-                )}
-
-                {/* the team's colour as a thin leading rule — their accent */}
-                <span
-                  aria-hidden
-                  className="absolute left-0 top-0 h-[2px] w-16 md:w-24"
-                  style={{ backgroundColor: team.colour }}
-                />
-
-                <div className="relative flex flex-wrap items-baseline gap-x-10 gap-y-4">
-                  <div className="flex items-center gap-4 transition-transform duration-300 group-hover:translate-x-3 motion-reduce:transition-none md:gap-5">
-                    {logo && (
-                      <TreatedImage
-                        src={logo}
-                        treatment="mono"
-                        fade={false}
-                        position="center"
-                        sizes="48px"
-                        className="h-8 w-8 shrink-0 opacity-70 md:h-10 md:w-10"
-                      />
-                    )}
-                    <h2
-                      className="uppercase leading-[0.9] text-[var(--text)]"
-                      style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(2.6rem, 6.5vw, 6rem)' }}
-                    >
-                      {team.name}
-                    </h2>
-                  </div>
-                  {team.points !== null && (
-                    <span className="shrink-0">
-                      <span
-                        className="font-mono tabular-nums text-[var(--text)]"
-                        style={{ fontSize: 'clamp(1.4rem, 2.8vw, 2.4rem)' }}
-                      >
-                        <CountUp value={team.points} />
-                      </span>
-                      <span className="label-mono ml-2 text-[var(--text-dim)]">PTS</span>
-                    </span>
-                  )}
-                </div>
-
-                <div className="label-mono relative mt-4 flex flex-wrap items-center gap-x-8 gap-y-2 text-[var(--text-dim)]">
-                  {teamDrivers.map((d) => (
-                    <span key={d.driver_number}>
-                      {d.last_name?.toUpperCase()} <span className="opacity-60">#{d.driver_number}</span>
-                    </span>
-                  ))}
-                  {team.wins > 0 && <span>· {team.wins} WIN{team.wins > 1 ? 'S' : ''}</span>}
-                  <span className="opacity-0 transition-opacity duration-300 group-hover:opacity-100 motion-reduce:transition-none">
-                    TEAM →
-                  </span>
-                </div>
-              </TransitionLink>
-            </ClipReveal>
-          )
-        })}
-      </div>
-    </div>
+    <Suspense fallback={<Skeleton />}>
+      <Bands />
+    </Suspense>
   )
 }

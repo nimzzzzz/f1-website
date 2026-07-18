@@ -48,7 +48,9 @@ function Row({
         {numeral}
       </span>
       {/* headshot chip — same fixed box in ghost and live rows, so the
-          swap never moves the layout; face crop via cover-from-top */}
+          swap never moves the layout; face crop via cover-from-top. Eager so
+          the three chips download while the intro is still on screen (free
+          loading time), rather than popping in when the section reveals. */}
       <TreatedImage
         src={acronym ? driverImage(acronym) : null}
         alt=""
@@ -56,6 +58,7 @@ function Row({
         fit="cover"
         position="top"
         fade={false}
+        eager
         sizes="96px"
         className="hidden h-16 w-16 shrink-0 self-end sm:block md:h-24 md:w-24"
       />

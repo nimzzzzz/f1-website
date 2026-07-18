@@ -7,10 +7,12 @@ export interface BundleDriverStanding {
   position: number
   driverNumber: number
   fullName: string
+  firstName: string
   surname: string
   teamName: string
   teamColour: string
   nameAcronym: string
+  countryCode: string | null
   points: number
   wins: number
   podiums: number

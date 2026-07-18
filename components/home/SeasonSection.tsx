@@ -212,13 +212,17 @@ export default function SeasonSection({
                     style={{ transformOrigin: 'left bottom' }}
                   >
                     {/* circuit line art — fixed box so it never shifts the
-                        measured strip; joins the dim/focus system */}
+                        measured strip; joins the dim/focus system. The first
+                        rounds sit in the strip's opening frame, so eager-load
+                        them during the intro; the rest stay lazy until the
+                        horizontal scroll brings them near. */}
                     {art && (
                       <div data-dim-el style={{ opacity: dim }}>
                         <TreatedImage
                           src={art}
                           treatment="line"
                           fade={false}
+                          eager={i < 6}
                           position="left center"
                           sizes="96px"
                           className="mb-2.5 h-12 w-20 md:h-14 md:w-24"
