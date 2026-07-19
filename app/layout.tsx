@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Outfit, Bebas_Neue, Space_Grotesk, Montserrat } from 'next/font/google'
+import { Outfit, Bebas_Neue, Space_Grotesk } from 'next/font/google'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import './globals.css'
@@ -25,19 +25,12 @@ const bebasNeue = Bebas_Neue({
   display: 'swap',
 })
 
-// Ticker typeface candidates (feat/ticker-type review — variants B and C;
-// variant A reuses --font-display). Small subsets, swap display.
+// The top-bar ticker's own face — technical like the data mono but with
+// drawn letterforms; used nowhere else.
 const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
   weight: ['500'],
-  variable: '--font-ticker-b',
-  display: 'swap',
-})
-
-const montserrat = Montserrat({
-  subsets: ['latin'],
-  weight: ['200', '300'],
-  variable: '--font-ticker-c',
+  variable: '--font-ticker',
   display: 'swap',
 })
 
@@ -51,7 +44,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${outfit.variable} ${bebasNeue.variable} ${spaceGrotesk.variable} ${montserrat.variable} ${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="en" className={`${outfit.variable} ${bebasNeue.variable} ${spaceGrotesk.variable} ${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
         <SessionsPreloader />
         <LenisProvider>
