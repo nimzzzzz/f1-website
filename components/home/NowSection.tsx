@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import type { Meeting, Session } from '@/lib/openf1'
+import NowBackdrop from '@/components/home/NowBackdrop'
 
 interface Props {
   meeting: Meeting
@@ -77,6 +78,10 @@ export default function NowSection({ meeting, sessions, round, totalRounds, isLi
 
   return (
     <section className="relative flex min-h-[calc(100dvh-4rem)] flex-col justify-center overflow-hidden px-6 md:px-14">
+      {/* atmospheric circuit backdrop — photo (or line-art fallback),
+          absolute behind everything; plain NOW if neither exists */}
+      <NowBackdrop circuitShortName={meeting.circuit_short_name} countryName={meeting.country_name} />
+
       {/* oversized dim outline round numeral, asymmetric behind the composition */}
       <span
         aria-hidden
