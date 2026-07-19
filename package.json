@@ -7,8 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "fetch-media": "tsx scripts/fetch-f1-media.ts",
-    "fetch-tracks": "tsx scripts/fetch-track-lines.ts"
+    "fetch-media": "tsx scripts/fetch-f1-media.ts"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
