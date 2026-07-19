@@ -19,6 +19,35 @@ function tickerCountdown(target: Date): string {
   return `${pad(d)}D ${pad(h)}H ${pad(m)}M`
 }
 
+// Ticker typeface candidates under review (?ticker=A|B|C, ?round=full).
+// Default (no param) stays the current label-mono. The data mono elsewhere
+// is untouched — this styles the ticker strip only.
+const TICKER_VARIANTS: Record<string, React.CSSProperties> = {
+  A: {
+    // Bebas — part of the headline system, broadcast
+    fontFamily: 'var(--font-display)',
+    fontSize: '15px',
+    letterSpacing: '0.07em',
+    textTransform: 'uppercase',
+  },
+  B: {
+    // Space Grotesk — technical but drawn, wide-tracked
+    fontFamily: 'var(--font-ticker-b)',
+    fontWeight: 500,
+    fontSize: '11.5px',
+    letterSpacing: '0.26em',
+    textTransform: 'uppercase',
+  },
+  C: {
+    // Montserrat thin — editorial/luxury nav
+    fontFamily: 'var(--font-ticker-c)',
+    fontWeight: 200,
+    fontSize: '11px',
+    letterSpacing: '0.38em',
+    textTransform: 'uppercase',
+  },
+}
+
 export default function TopBar({
   menuOpen,
   onToggleMenu,
@@ -29,12 +58,21 @@ export default function TopBar({
   const race = useNextRace()
   const apiBlocked = useApiBlocked()
   const [now, setNow] = useState(() => Date.now())
+  const [variant, setVariant] = useState<string | null>(null)
+  const [roundFull, setRoundFull] = useState(false)
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [])
   void now // re-render tick for the countdown string
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    const t = q.get('ticker')?.toUpperCase() ?? null
+    if (t && TICKER_VARIANTS[t]) setVariant(t)
+    setRoundFull(q.get('round') === 'full')
+  }, [])
 
   return (
     <header className="fixed inset-x-0 top-0 z-[160] h-16 border-b border-[var(--line)] bg-[rgba(10,10,10,0.6)] backdrop-blur-md">
@@ -49,10 +87,13 @@ export default function TopBar({
         </TransitionLink>
 
         {/* live next-race ticker */}
-        <div className="label-mono absolute left-1/2 hidden -translate-x-1/2 items-center gap-2 text-[var(--text-dim)] md:flex">
+        <div
+          className={`${variant ? '' : 'label-mono'} absolute left-1/2 hidden -translate-x-1/2 items-center gap-2 text-[var(--text-dim)] md:flex`}
+          style={variant ? TICKER_VARIANTS[variant] : undefined}
+        >
           {race ? (
             <>
-              <span>R{pad(race.round)}</span>
+              <span>{roundFull ? `ROUND ${pad(race.round)}` : `R${pad(race.round)}`}</span>
               <span aria-hidden>—</span>
               <span className="text-[var(--text)]">{shortRaceName(race.meeting)}</span>
               <span aria-hidden>—</span>
