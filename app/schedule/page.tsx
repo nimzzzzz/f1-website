@@ -9,6 +9,7 @@ import { getCachedMeetings, getCachedSessions, getCachedDrivers, getCachedSessio
 import { getCurrentMeeting, getNextMeeting, CANCELLED_COUNTRIES, fetchAllSessionResults } from '@/lib/openf1'
 import { circuitImage } from '@/lib/media-manifest'
 import TreatedImage from '@/components/media/TreatedImage'
+import CircuitBackdrop from '@/components/media/CircuitBackdrop'
 import { FadeUp } from '@/components/motion/reveals'
 import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
@@ -209,11 +210,12 @@ export default function SchedulePage() {
 
       {/* ─── the timeline ─── */}
       <div ref={timelineRef} className="relative mt-16">
-        {/* spine + drawing red line */}
-        <div className="absolute bottom-0 left-3 top-0 w-px bg-[var(--line)] md:left-1/2" />
+        {/* spine + drawing red line — z-lifted so they draw OVER the
+            per-round backdrops, never behind them */}
+        <div className="absolute bottom-0 left-3 top-0 z-[5] w-px bg-[var(--line)] md:left-1/2" />
         <div
           ref={lineRef}
-          className="absolute bottom-0 left-3 top-0 w-px origin-top bg-[var(--accent)] md:left-1/2"
+          className="absolute bottom-0 left-3 top-0 z-[5] w-px origin-top bg-[var(--accent)] md:left-1/2"
           style={{ transform: 'scaleY(0)' }}
         />
 
@@ -230,10 +232,23 @@ export default function SchedulePage() {
             )
             return (
               <div key={m.meeting_key} className="relative md:grid md:grid-cols-2 md:gap-x-20">
+                {/* circuit backdrop — same system as the NOW section.
+                    Presence follows the timeline: the next race is the
+                    hero (full presence + lifted grade), upcoming rounds
+                    sit quieter, past/cancelled quieter still. Only the
+                    opening viewport and the next race load eagerly. */}
+                <CircuitBackdrop
+                  circuitShortName={m.circuit_short_name}
+                  countryName={m.country_name}
+                  eager={i < 2 || isNext}
+                  presence={isCancelled ? 0.3 : isPast ? 0.4 : isNext ? 1 : 0.6}
+                  lift={isNext}
+                />
+
                 {/* node on the spine */}
                 <span
                   aria-hidden
-                  className={`absolute left-3 top-4 h-2 w-2 -translate-x-1/2 rounded-full md:left-1/2 ${
+                  className={`absolute left-3 top-4 z-[6] h-2 w-2 -translate-x-1/2 rounded-full md:left-1/2 ${
                     isNext
                       ? 'animate-pulse bg-[var(--accent)] motion-reduce:animate-none'
                       : 'bg-[rgba(245,245,243,0.25)]'
@@ -241,7 +256,7 @@ export default function SchedulePage() {
                 />
 
                 <div
-                  className={`pl-10 md:pl-0 ${
+                  className={`relative pl-10 md:pl-0 ${
                     right
                       ? 'md:col-start-2 md:pl-20'
                       : 'md:col-start-1 md:flex md:flex-col md:items-end md:pr-20 md:text-right'
