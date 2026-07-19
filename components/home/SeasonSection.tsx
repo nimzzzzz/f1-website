@@ -111,12 +111,17 @@ export default function SeasonSection({
 
       if (reduced) {
         // Static, meaningful: tip parked at the next round, counter shows
-        // the season's real completed count.
+        // the season's real completed count. The strip stays a NATIVE
+        // horizontal scroller (no pin, no motion) — starting at round 1
+        // with every round reachable; scrolling it updates the tip as
+        // position feedback, which is not an animation.
         measure()
         const next = measures.find((m) => m.el.dataset.round === 'next')
         setTip(next ? next.left : track.scrollWidth * (completed / Math.max(1, total)))
         counter.textContent = `${pad2(completed)} / ${pad2(total)}`
-        return
+        const onScroll = () => setTip(viewport.scrollLeft + viewport.clientWidth * 0.5)
+        viewport.addEventListener('scroll', onScroll, { passive: true })
+        return () => viewport.removeEventListener('scroll', onScroll)
       }
 
       const mm = gsap.matchMedia()
@@ -124,27 +129,41 @@ export default function SeasonSection({
       mm.add('(min-width: 768px) and (hover: hover)', () => {
         const distance = () => Math.max(0, track.scrollWidth - viewport.clientWidth)
         const anchor = () => viewport.clientWidth * 0.58
-        gsap.fromTo(
-          track,
-          { x: 0 },
-          {
-            x: () => -distance(),
-            ease: 'none',
-            scrollTrigger: {
-              trigger: section,
-              start: 'top top',
-              end: () => `+=${Math.max(window.innerHeight, distance() * 0.55)}`,
-              pin: true,
-              scrub: 0.5,
-              invalidateOnRefresh: true,
-              onUpdate: (st) => setTip(st.progress * distance() + anchor()),
-              onRefresh: (st) => {
-                measure()
-                setTip(st.progress * distance() + anchor())
-              },
+        // The tip follows the track's REAL position, not raw progress —
+        // required because the timeline below is piecewise.
+        const tipFromTrack = () =>
+          setTip(-(gsap.getProperty(track, 'x') as number) + anchor())
+        // Piecewise scrub with an entry RUNWAY: the pin's opening stretch
+        // holds the strip at round 1, absorbing the Lenis momentum a
+        // visitor arrives with — without it, natural scrolling blew
+        // straight past rounds 1–5 and the section "opened" mid-season.
+        // Measured arrival overshoot is ~1.3 viewport heights, so the
+        // runway is sized in viewports, not as a fraction. A short tail
+        // parks round 24 before the unpin.
+        const runwayPx = () => Math.max(window.innerHeight * 1.5, 1250)
+        const scrubPx = () => Math.max(window.innerHeight, distance() * 0.55)
+        const tailPx = () => 350
+        const tl = gsap.timeline({
+          defaults: { ease: 'none' },
+          scrollTrigger: {
+            trigger: section,
+            start: 'top top',
+            end: () => `+=${runwayPx() + scrubPx() + tailPx()}`,
+            pin: true,
+            scrub: 0.5,
+            invalidateOnRefresh: true,
+            onUpdate: tipFromTrack,
+            onRefresh: () => {
+              measure()
+              tipFromTrack()
             },
-          }
-        )
+          },
+        })
+        // durations act as relative weights within the scrubbed timeline
+        tl.set(track, { x: 0 })
+          .to(track, { x: 0, duration: runwayPx() })
+          .to(track, { x: () => -distance(), duration: scrubPx() })
+          .to(track, { x: () => -distance(), duration: tailPx() })
       })
 
       mm.add('(max-width: 767px), (hover: none)', () => {
@@ -192,7 +211,7 @@ export default function SeasonSection({
       <div className="relative z-10 flex flex-1 items-end pb-[12vh]">
         <div
           ref={viewportRef}
-          className="w-full overflow-x-auto md:overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="w-full overflow-x-auto md:overflow-x-hidden motion-reduce:md:overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           <div ref={trackRef} className="relative w-max pb-10 pl-6 pr-[40vw] md:pl-14">
             <div className="flex items-end">
