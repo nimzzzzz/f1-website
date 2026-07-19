@@ -18,7 +18,13 @@ export async function getSeasonBundleSSR(): Promise<SeasonBundle | null> {
     const host = h.get('x-forwarded-host') ?? h.get('host')
     if (!host) return null
     const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
-    const res = await fetch(`${proto}://${host}/api/season-data`, { cache: 'no-store' })
+    // The snapshot route serves statically (ISR), so this resolves in
+    // milliseconds — the timeout is a hard bound so a pathological edge
+    // case can never hold a page's Suspense open indefinitely.
+    const res = await fetch(`${proto}://${host}/api/season-data`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(4000),
+    })
     if (!res.ok) return null
     const body = (await res.json()) as SeasonDataResponse
     return body.blocked ? null : body

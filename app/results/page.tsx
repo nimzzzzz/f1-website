@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import type { Session, Driver, Position, SessionResult } from '@/lib/openf1'
+import { asNum } from '@/lib/format'
 import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedDrivers, getCachedPositions, getCachedPitStops, getCachedSessionResult } from '@/lib/client-cache'
 import { ClipReveal, FadeUp } from '@/components/motion/reveals'
@@ -31,8 +32,9 @@ const surname = (fullName: string) => {
   return (parts[parts.length - 1] ?? fullName).toUpperCase()
 }
 
-function formatWinnerTime(duration: SessionResult['duration'] | null): string | null {
-  if (typeof duration !== 'number' || !isFinite(duration)) return null
+function formatWinnerTime(rawDuration: SessionResult['duration'] | null): string | null {
+  const duration = asNum(rawDuration)
+  if (duration === null) return null
   const h = Math.floor(duration / 3600)
   const m = Math.floor((duration % 3600) / 60)
   const s = (duration % 60).toFixed(3).padStart(6, '0')
@@ -47,10 +49,11 @@ function gapLabel(r: SessionResult | undefined): string {
   const gap = r.gap_to_leader
   if (gap === null || gap === undefined) return '—'
   if (Array.isArray(gap)) {
-    const laps = gap[0] ?? 1
+    const laps = asNum(gap[0]) ?? 1
     return `+${laps} LAP${laps > 1 ? 'S' : ''}`
   }
-  return `+${gap.toFixed(3)}S`
+  const n = asNum(gap)
+  return n === null ? '—' : `+${n.toFixed(3)}S`
 }
 
 const isOut = (r: SessionResult | undefined) => Boolean(r && (r.dnf || r.dns || r.dsq))
