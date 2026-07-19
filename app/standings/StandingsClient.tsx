@@ -85,8 +85,8 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
 
       <div className="relative z-10 px-6 pb-28 pt-20 md:px-14">
         <FadeUp>
-          <p className="label-mono text-[var(--text-dim)]">
-            DRIVERS&rsquo; CHAMPIONSHIP{seasonYear !== null ? ` — ${seasonYear}` : ''} · AFTER{' '}
+          <p className="strip-header text-[var(--text-dim)]">
+            DRIVERS&rsquo; CHAMPIONSHIP{seasonYear !== null ? ` — ${seasonYear}` : ''} — AFTER{' '}
             {String(completedRaces).padStart(2, '0')} ROUND{completedRaces !== 1 ? 'S' : ''}
             {asOf && <span className="ml-4">AS OF {asOf}</span>}
           </p>

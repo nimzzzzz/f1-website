@@ -158,7 +158,7 @@ export default function DriverPage() {
 
         <TransitionLink
           href="/drivers"
-          className="label-mono absolute left-6 top-8 text-[var(--text-dim)] transition-colors hover:text-[var(--accent)] md:left-14"
+          className="strip-header absolute left-6 top-8 text-[var(--text-dim)] transition-colors hover:text-[var(--accent)] md:left-14"
         >
           ← THE GRID
         </TransitionLink>

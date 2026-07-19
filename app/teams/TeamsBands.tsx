@@ -31,7 +31,7 @@ export default function TeamsBands({
   return (
     <div className="relative overflow-x-clip px-6 pb-28 pt-20 md:px-14">
       <FadeUp>
-        <p className="label-mono flex flex-wrap gap-x-4 text-[var(--text-dim)]">
+        <p className="strip-header flex flex-wrap gap-x-4 text-[var(--text-dim)]">
           CONSTRUCTORS&rsquo; CHAMPIONSHIP{seasonYear ? ` — ${seasonYear}` : ''}
           {asOf && <span>AS OF {asOf}</span>}
         </p>

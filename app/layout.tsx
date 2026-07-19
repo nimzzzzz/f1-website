@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Outfit, Bebas_Neue, Space_Grotesk } from 'next/font/google'
+import { Outfit, Bebas_Neue, Space_Grotesk, Syne } from 'next/font/google'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import './globals.css'
@@ -34,6 +34,15 @@ const spaceGrotesk = Space_Grotesk({
   display: 'swap',
 })
 
+// Section headers site-wide (THE FIGHT, LAST TIME OUT, …) — a distinct
+// premium display voice between the mono data labels and Bebas headlines.
+const syne = Syne({
+  subsets: ['latin'],
+  weight: ['700', '800'],
+  variable: '--font-section',
+  display: 'swap',
+})
+
 export const metadata: Metadata = {
   title: 'LIGHTS OUT — F1 2026',
   description:
@@ -44,7 +53,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${outfit.variable} ${bebasNeue.variable} ${spaceGrotesk.variable} ${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="en" className={`${outfit.variable} ${bebasNeue.variable} ${spaceGrotesk.variable} ${syne.variable} ${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
         <SessionsPreloader />
         <LenisProvider>
