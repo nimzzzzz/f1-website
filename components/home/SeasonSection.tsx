@@ -132,80 +132,130 @@ export default function SeasonSection({
         const anchor = () => viewport.clientWidth * 0.58
         // Classic pinned-index choreography, no dead zone:
         //   Phase A (short) — the strip holds while the TIP travels from
-        //     round 1's left edge to its holding station: the line draws,
-        //     the counter ticks up from 01, focus sweeps the early rounds.
-        //     Scroll response is immediate — something moves on the very
-        //     first wheel tick.
+        //     round 1's left edge to its holding station.
         //   Phase B — the tip holds station and the strip scrubs beneath
         //     it through to round 24; a tiny tail parks the final round.
-        // Arrival momentum is arrested by the onEnter snap below, so
-        // inertia can never pre-consume rounds.
+        //
+        // Rendering is DECOUPLED from raw scroll: ScrollTrigger only pins
+        // and reports progress; a single smoothed scalar (renderPx) drives
+        // the track, tip, line, counter, and focus. On downward entry the
+        // rendered value is CLAMPED at 0 while the arrival momentum dies —
+        // the section holds perfectly still at 01/24 — and the scroll
+        // position is then rebased to the pin start in ONE invisible step
+        // (visuals are clamped, so nothing on screen moves). Zero rendered
+        // backward correction at any arrival speed, no re-park window to
+        // fight the user's deliberate input.
         const tipTravelPx = () => Math.round(window.innerHeight * 0.35)
         const scrubPx = () => Math.max(window.innerHeight, distance() * 0.55)
         const tailPx = () => 150
+        const totalPx = () => tipTravelPx() + scrubPx() + tailPx()
         const tipStart = () => (measures[0]?.left ?? 0) + 17
-        let arrested = false
-        let arrestUntil = 0
+
+        // render pipeline: smoothed px → track x + tip position
+        const render = (px: number) => {
+          const clamped = Math.max(0, Math.min(px, totalPx()))
+          if (clamped <= tipTravelPx()) {
+            gsap.set(track, { x: 0 })
+            const t = tipTravelPx() === 0 ? 1 : clamped / tipTravelPx()
+            setTip(tipStart() + (anchor() - tipStart()) * t)
+          } else {
+            const scrubT = Math.min(1, (clamped - tipTravelPx()) / scrubPx())
+            gsap.set(track, { x: -distance() * scrubT })
+            setTip(distance() * scrubT + anchor())
+          }
+        }
+        const smooth = { px: 0 }
+        const pxTo = gsap.quickTo(smooth, 'px', {
+          duration: 0.45,
+          ease: 'power3.out',
+          onUpdate: () => render(smooth.px),
+        })
+
+        // Deterministic entry, no inference: on downward entry the scroll
+        // parks one pixel inside the pin (killing Lenis's target), the
+        // RENDER clamps at 0 for a fixed 220ms so any trailing wheel
+        // momentum can't move the strip, then ONE more invisible park
+        // rebases to a true zero and everything maps 1:1. The clamp only
+        // ever holds at 0 — a rendered backward step is structurally
+        // impossible — and 220ms is below scrolling-intent perception.
+        let phase: 'idle' | 'arriving' | 'active' = 'idle'
+        // QA trace of entry choreography (tiny, string-only; read via
+        // window.__seasonTrace when diagnosing arrival behavior)
+        const tracePhase = (why: string) => {
+          const w = window as unknown as { __seasonTrace?: string[] }
+          w.__seasonTrace = (w.__seasonTrace ?? []).concat(
+            `${Math.round(performance.now())} ${phase} ${why} y=${Math.round(window.scrollY)}`
+          )
+        }
+        let clampUntil = 0
         const park = (st: ScrollTrigger) => {
           const lenis = getLenis()
           if (lenis) lenis.scrollTo(st.start + 1, { immediate: true, force: true })
           else window.scrollTo(0, st.start + 1)
         }
-        const computeTip = (progress: number) => {
-          const total = tipTravelPx() + scrubPx() + tailPx()
-          const px = progress * total
-          if (px <= tipTravelPx()) {
-            const t = tipTravelPx() === 0 ? 1 : px / tipTravelPx()
-            setTip(tipStart() + (anchor() - tipStart()) * t)
-          } else {
-            setTip(-(gsap.getProperty(track, 'x') as number) + anchor())
-          }
+        const goLive = (st: ScrollTrigger) => {
+          phase = 'active'
+          tracePhase('goLive')
+          park(st) // rendered state is 0, so this cannot move pixels
+          gsap.set(smooth, { px: 0 })
+          render(0)
         }
-        const tl = gsap.timeline({
-          defaults: { ease: 'none' },
-          scrollTrigger: {
-            trigger: section,
-            start: 'top top',
-            end: () => `+=${tipTravelPx() + scrubPx() + tailPx()}`,
-            pin: true,
-            scrub: 0.5,
-            invalidateOnRefresh: true,
-            onUpdate: (st) => {
-              // during the brief arrest window, trailing flick momentum
-              // (wheel events still landing after entry) gets re-parked;
-              // a deliberate scrub after settling is past the window
-              if (performance.now() < arrestUntil && st.progress * (tipTravelPx() + scrubPx() + tailPx()) > 40) {
-                park(st)
+
+        ScrollTrigger.create({
+          trigger: section,
+          start: 'top top',
+          end: () => `+=${totalPx()}`,
+          pin: true,
+          invalidateOnRefresh: true,
+          onEnter: (st) => {
+            tracePhase('onEnter fired')
+            if (phase !== 'idle') return
+            phase = 'arriving'
+            clampUntil = performance.now() + 220
+            park(st)
+            tracePhase('parked on enter')
+            // guarantee the handoff even if scroll goes quiet (no
+            // onUpdate) before the window ends
+            setTimeout(() => {
+              if (phase === 'arriving') goLive(st)
+            }, 240)
+          },
+          onLeaveBack: () => {
+            tracePhase('leaveBack')
+            phase = 'idle'
+            pxTo(0)
+          },
+          onEnterBack: () => {
+            phase = 'active'
+          },
+          onUpdate: (st) => {
+            if (phase === 'arriving') {
+              if (performance.now() < clampUntil) {
+                render(0)
                 return
               }
-              computeTip(st.progress)
-            },
-            onRefresh: (st) => {
-              measure()
-              computeTip(st.progress)
-            },
-            // Arrest arrival inertia per downward entry: park the page
-            // scroll just inside the pin (exactly AT start would re-arm
-            // onEnter and eat every wheel) and hold a short window so a
-            // flick's trailing momentum can't pre-consume rounds either.
-            onEnter: (st) => {
-              if (arrested) return
-              arrested = true
-              arrestUntil = performance.now() + 350
-              park(st)
-            },
-            onLeaveBack: () => {
-              arrested = false
-              arrestUntil = 0
-            },
+              goLive(st)
+              return
+            }
+            if (phase === 'idle') {
+              // ScrollTrigger fires an update during initialization at
+              // progress≈0 — promoting to active there skips the entry
+              // arrest entirely. Only a genuine mid-pin restore counts.
+              if (st.progress < 0.02) {
+                render(0)
+                return
+              }
+              phase = 'active'
+            }
+            pxTo(st.progress * totalPx())
+          },
+          onRefresh: (st) => {
+            measure()
+            if (phase === 'arriving') render(0)
+            else render(st.progress * totalPx())
           },
         })
-        // durations act as relative weights within the scrubbed timeline;
-        // Phase A is an empty spacer (only the tip moves, via computeTip)
-        tl.set(track, { x: 0 })
-          .to({}, { duration: tipTravelPx() })
-          .to(track, { x: () => -distance(), duration: scrubPx() })
-          .to({}, { duration: tailPx() })
+        render(0)
       })
 
       mm.add('(max-width: 767px), (hover: none)', () => {
