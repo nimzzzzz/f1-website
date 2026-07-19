@@ -24,10 +24,17 @@ function Skeleton() {
 async function Gallery() {
   const bundle = await getSeasonBundleSSR()
 
-  // No bundle from any source (cold cache during a lockout) — hold the
-  // skeleton rather than a notice; the edge-cached bundle makes this rare.
+  // Truly nothing to show (deploy built mid-lockout, first revalidation
+  // pending, or the snapshot fetch timed out). Honest and present — never
+  // an infinite skeleton; a refresh lands the snapshot within minutes.
   if (!bundle) {
-    return <Skeleton />
+    return (
+      <div className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
+        <p className="label-mono text-[var(--text-dim)]">
+          STANDINGS DATA IS WARMING UP — REFRESH IN A MOMENT
+        </p>
+      </div>
+    )
   }
 
   // Genuine pre-season (complete bundle, no completed races yet).

@@ -2,14 +2,15 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import type { Session, PitStop, Driver } from '@/lib/openf1'
+import { asNum } from '@/lib/format'
 import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedPitStops, getCachedDrivers } from '@/lib/client-cache'
 import SessionHeader from '@/components/session/SessionHeader'
 import { FadeUp } from '@/components/motion/reveals'
 
 function formatPitDuration(seconds: number | null): string {
-  if (seconds === null || seconds === undefined) return '—'
-  return `${seconds.toFixed(2)}s`
+  const n = asNum(seconds)
+  return n === null ? '—' : `${n.toFixed(2)}s`
 }
 
 export default function PitStopsPage() {

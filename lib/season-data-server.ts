@@ -66,6 +66,14 @@ async function fetchResultsPaced(sessions: Session[]) {
   return out
 }
 
+// openf1 numeric fields can arrive as strings after post-session data
+// reprocessing — coerce before any number method (a string in .toFixed
+// crashed /results on race day; here it would fail a revalidation).
+const asNum = (v: unknown): number | null => {
+  const n = typeof v === 'string' ? parseFloat(v) : (v as number)
+  return typeof n === 'number' && Number.isFinite(n) ? n : null
+}
+
 function gapLabel(r: SessionResult): string {
   if (r.dnf) return 'DNF'
   if (r.dns) return 'DNS'
@@ -73,14 +81,16 @@ function gapLabel(r: SessionResult): string {
   const gap = r.gap_to_leader
   if (gap === null || gap === undefined) return '—'
   if (Array.isArray(gap)) {
-    const laps = gap[0] ?? 1
+    const laps = asNum(gap[0]) ?? 1
     return `+${laps} LAP${laps > 1 ? 'S' : ''}`
   }
-  return `+${gap.toFixed(3)}S`
+  const n = asNum(gap)
+  return n === null ? '—' : `+${n.toFixed(3)}S`
 }
 
-function winnerTime(duration: SessionResult['duration']): string | null {
-  if (typeof duration !== 'number' || !isFinite(duration)) return null
+function winnerTime(rawDuration: SessionResult['duration']): string | null {
+  const duration = asNum(rawDuration)
+  if (duration === null) return null
   const h = Math.floor(duration / 3600)
   const m = Math.floor((duration % 3600) / 60)
   const s = (duration % 60).toFixed(3).padStart(6, '0')

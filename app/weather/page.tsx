@@ -7,6 +7,13 @@ import { getCachedWeather } from '@/lib/client-cache'
 import SessionHeader from '@/components/session/SessionHeader'
 import { FadeUp } from '@/components/motion/reveals'
 
+import { asNum } from '@/lib/format'
+
+const fmt = (v: unknown, digits: number) => {
+  const n = asNum(v)
+  return n === null ? '—' : n.toFixed(digits)
+}
+
 function formatTime(dateStr: string): string {
   return new Date(dateStr).toLocaleTimeString('en-US', {
     hour: '2-digit',
@@ -116,7 +123,7 @@ export default function WeatherPage() {
                     className="font-mono tabular-nums leading-none text-[var(--text)]"
                     style={{ fontSize: 'clamp(4rem, 9vw, 8rem)' }}
                   >
-                    {latest.air_temperature.toFixed(1)}°
+                    {fmt(latest.air_temperature, 1)}°
                   </p>
                   <p className="label-mono mt-3 text-[var(--text-dim)]">AIR</p>
                 </div>
@@ -125,7 +132,7 @@ export default function WeatherPage() {
                     className="font-mono tabular-nums leading-none text-[var(--text)]"
                     style={{ fontSize: 'clamp(4rem, 9vw, 8rem)' }}
                   >
-                    {latest.track_temperature.toFixed(1)}°
+                    {fmt(latest.track_temperature, 1)}°
                   </p>
                   <p className="label-mono mt-3 text-[var(--text-dim)]">TRACK</p>
                 </div>
@@ -134,7 +141,7 @@ export default function WeatherPage() {
                     className="font-mono tabular-nums leading-none text-[var(--text)]"
                     style={{ fontSize: 'clamp(2.2rem, 5vw, 4.2rem)' }}
                   >
-                    {latest.humidity.toFixed(0)}%
+                    {fmt(latest.humidity, 0)}%
                   </p>
                   <p className="label-mono mt-3 text-[var(--text-dim)]">HUMIDITY</p>
                 </div>
@@ -143,7 +150,7 @@ export default function WeatherPage() {
                     className="font-mono tabular-nums leading-none text-[var(--text)]"
                     style={{ fontSize: 'clamp(2.2rem, 5vw, 4.2rem)' }}
                   >
-                    {latest.wind_speed.toFixed(1)}
+                    {fmt(latest.wind_speed, 1)}
                   </p>
                   <p className="label-mono mt-3 text-[var(--text-dim)]">WIND M/S</p>
                 </div>
@@ -168,16 +175,16 @@ export default function WeatherPage() {
                     {formatTime(w.date)}
                   </span>
                   <span className="w-16 shrink-0 text-right tabular-nums text-[var(--text)]">
-                    {w.air_temperature.toFixed(1)}°
+                    {fmt(w.air_temperature, 1)}°
                   </span>
                   <span className="w-16 shrink-0 text-right tabular-nums text-[var(--text)]">
-                    {w.track_temperature.toFixed(1)}°
+                    {fmt(w.track_temperature, 1)}°
                   </span>
                   <span className="hidden w-16 shrink-0 text-right tabular-nums text-[var(--text-dim)] sm:block">
-                    {w.humidity.toFixed(0)}%
+                    {fmt(w.humidity, 0)}%
                   </span>
                   <span className="hidden w-20 shrink-0 text-right tabular-nums text-[var(--text-dim)] sm:block">
-                    {w.wind_speed.toFixed(1)} M/S
+                    {fmt(w.wind_speed, 1)} M/S
                   </span>
                   <span className="ml-auto shrink-0 text-right">
                     {w.rainfall ? (
