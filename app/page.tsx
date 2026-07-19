@@ -97,7 +97,13 @@ export default function HomePage() {
   // Phase 1: fetch meetings + sessions, then show the page immediately
   useEffect(() => {
     Promise.all([getCachedMeetings(), getCachedSessions()])
-      .then(([m, s]) => { setMeetings(m); setSessions(s); setLoading(false) })
+      .then(([m, s]) => {
+        // fresh data wins; an empty (locked-out) result never clobbers
+        // calendar state the bundle fallback may already have filled
+        setMeetings((cur) => (m.length > 0 ? m : cur))
+        setSessions((cur) => (s.length > 0 ? s : cur))
+        setLoading(false)
+      })
       .catch(() => setLoading(false))
   }, [])
 
@@ -109,10 +115,15 @@ export default function HomePage() {
 
   // Phase 2: one server-computed bundle replaces the client-side
   // multi-fetch standings pipeline (fight, last race, season winners).
+  // The bundle's calendar also backstops the direct openf1 fetch: during
+  // live-session 401 lockouts the meetings/sessions state stays populated
+  // from durable data, so NOW (and its countdown) keep working.
   useEffect(() => {
     let alive = true
     fetchSeasonData().then((bundle) => {
       if (!alive || !bundle) return
+      setMeetings((cur) => (cur.length > 0 ? cur : bundle.meetings))
+      setSessions((cur) => (cur.length > 0 ? cur : bundle.sessions))
       const top3: FightRow[] = bundle.driverStandings.slice(0, 3).map((d) => ({
         position: d.position,
         surname: d.surname,
@@ -179,12 +190,6 @@ export default function HomePage() {
   const targetMeeting = currentMeeting ?? nextMeeting
   const isLiveWeekend = currentMeeting !== null
 
-  const raceSession = targetMeeting
-    ? sessions.find(
-        (s) => s.meeting_key === targetMeeting.meeting_key && s.session_name === 'Race'
-      ) ?? null
-    : null
-
   const roundNumber = targetMeeting
     ? raceMeetings.findIndex((m) => m.meeting_key === targetMeeting.meeting_key) + 1
     : null
@@ -212,7 +217,7 @@ export default function HomePage() {
             {targetMeeting && roundNumber !== null ? (
               <NowSection
                 meeting={targetMeeting}
-                raceSession={raceSession}
+                sessions={sessions}
                 round={roundNumber}
                 totalRounds={raceMeetings.length}
                 isLive={isLiveWeekend}
