@@ -74,7 +74,9 @@ export default function TopBar({
                   LIVE
                 </span>
               ) : race.raceStart ? (
-                <span className="tabular-nums">{tickerCountdown(race.raceStart)}</span>
+                <span suppressHydrationWarning className="tabular-nums">
+                  {tickerCountdown(race.raceStart)}
+                </span>
               ) : null}
             </>
           ) : (

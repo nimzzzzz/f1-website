@@ -181,7 +181,10 @@ export default function NowSection({ meeting, sessions, round, totalRounds, isLi
                     </span>
                   )}
                   <div>
+                    {/* time-derived text: SSR and hydration legitimately
+                        differ by a second — suppress the mismatch warning */}
                     <div
+                      suppressHydrationWarning
                       className="font-mono tabular-nums leading-none text-[var(--text)]"
                       style={{ fontSize: 'clamp(2.6rem, 7vw, 6rem)' }}
                     >
