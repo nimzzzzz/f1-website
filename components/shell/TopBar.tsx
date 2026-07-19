@@ -19,6 +19,17 @@ function tickerCountdown(target: Date): string {
   return `${pad(d)}D ${pad(h)}H ${pad(m)}M`
 }
 
+// The ticker's own face: Space Grotesk, wide-tracked uppercase — technical
+// like the data mono but with drawn letterforms. Ticker strip only; the
+// data mono everywhere else is untouched.
+const TICKER_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--font-ticker)',
+  fontWeight: 500,
+  fontSize: '11.5px',
+  letterSpacing: '0.26em',
+  textTransform: 'uppercase',
+}
+
 export default function TopBar({
   menuOpen,
   onToggleMenu,
@@ -49,10 +60,13 @@ export default function TopBar({
         </TransitionLink>
 
         {/* live next-race ticker */}
-        <div className="label-mono absolute left-1/2 hidden -translate-x-1/2 items-center gap-2 text-[var(--text-dim)] md:flex">
+        <div
+          className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-2 text-[var(--text-dim)] md:flex"
+          style={TICKER_STYLE}
+        >
           {race ? (
             <>
-              <span>R{pad(race.round)}</span>
+              <span>ROUND {pad(race.round)}</span>
               <span aria-hidden>—</span>
               <span className="text-[var(--text)]">{shortRaceName(race.meeting)}</span>
               <span aria-hidden>—</span>

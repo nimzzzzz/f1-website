@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Outfit, Bebas_Neue } from 'next/font/google'
+import { Outfit, Bebas_Neue, Space_Grotesk } from 'next/font/google'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import './globals.css'
@@ -25,6 +25,15 @@ const bebasNeue = Bebas_Neue({
   display: 'swap',
 })
 
+// The top-bar ticker's own face — technical like the data mono but with
+// drawn letterforms; used nowhere else.
+const spaceGrotesk = Space_Grotesk({
+  subsets: ['latin'],
+  weight: ['500'],
+  variable: '--font-ticker',
+  display: 'swap',
+})
+
 export const metadata: Metadata = {
   title: 'LIGHTS OUT — F1 2026',
   description:
@@ -35,7 +44,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${outfit.variable} ${bebasNeue.variable} ${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="en" className={`${outfit.variable} ${bebasNeue.variable} ${spaceGrotesk.variable} ${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
         <SessionsPreloader />
         <LenisProvider>
