@@ -5,7 +5,6 @@ import type { Session, Driver, Position, SessionResult } from '@/lib/openf1'
 import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedDrivers, getCachedPositions, getCachedPitStops, getCachedSessionResult } from '@/lib/client-cache'
 import { ClipReveal, FadeUp } from '@/components/motion/reveals'
-import { useApiBlocked } from '@/components/shell/useApiBlocked'
 import SessionHeader from '@/components/session/SessionHeader'
 
 interface DriverResult {
@@ -67,7 +66,6 @@ export default function ResultsPage() {
   // Gap/time/status enrichment per driver — same cached fetcher family,
   // fetched alongside (not inside) the untouched fetchResults flow.
   const [resultDetail, setResultDetail] = useState<Map<number, SessionResult> | null>(null)
-  const apiBlocked = useApiBlocked()
 
   useEffect(() => {
     getCachedSessions()
@@ -180,7 +178,7 @@ export default function ResultsPage() {
           ))}
         </div>
       ) : results.length === 0 ? (
-        !apiBlocked && (
+        (
           <p className="label-mono mt-16 text-[var(--text-dim)]">
             {selectedKey ? 'NO POSITION DATA FOR THIS SESSION' : 'SELECT A SESSION'}
           </p>

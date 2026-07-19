@@ -15,12 +15,10 @@ export interface PodiumRow {
 export default function LastRaceSection({
   raceLabel,
   podium,
-  blocked = false,
   asOf = null,
 }: {
   raceLabel: string | null
   podium: PodiumRow[] | null
-  blocked?: boolean
   asOf?: string | null
 }) {
   const winner = podium?.find((p) => p.position === 1)
@@ -31,13 +29,7 @@ export default function LastRaceSection({
       <FadeUp>
         <p className="label-mono mb-12 flex flex-wrap items-center gap-x-4 gap-y-2 text-[var(--text-dim)]">
           LAST TIME OUT — {raceLabel ?? '——'}
-          {blocked && (
-            <span className="flex items-center gap-2 text-[var(--accent)]">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none" />
-              LIVE SESSION — DATA PAUSED
-            </span>
-          )}
-          {!blocked && podium && asOf && <span>AS OF {asOf}</span>}
+          {podium && asOf && <span>AS OF {asOf}</span>}
         </p>
       </FadeUp>
 

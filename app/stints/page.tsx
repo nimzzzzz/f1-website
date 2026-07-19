@@ -6,7 +6,6 @@ import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedStints, getCachedDrivers } from '@/lib/client-cache'
 import SessionHeader from '@/components/session/SessionHeader'
 import { FadeUp } from '@/components/motion/reveals'
-import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
 // Compound colours are the dataset here — the page's only non-mono colour.
 const COMPOUNDS: Record<string, { colour: string; label: string }> = {
@@ -40,7 +39,6 @@ export default function StintsPage() {
   const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const apiBlocked = useApiBlocked()
 
   useEffect(() => {
     getCachedSessions()
@@ -151,7 +149,7 @@ export default function StintsPage() {
           ))}
         </div>
       ) : stints.length === 0 ? (
-        !apiBlocked && (
+        (
           <p className="label-mono mt-16 text-[var(--text-dim)]">
             {selectedKey ? 'NO STINT DATA FOR THIS SESSION' : 'SELECT A SESSION'}
           </p>

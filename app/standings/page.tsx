@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { fetchSeasonData, bundleAsOf } from '@/lib/season-data'
 import type { BundleDriverStanding, BundleTeamStanding } from '@/lib/season-data'
 import { ClipReveal, CountUp, FadeUp } from '@/components/motion/reveals'
-import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
 // Divider between consecutive tower rows carrying the points gap — the
 // hairline is data here, not decoration.
@@ -28,7 +27,6 @@ export default function StandingsPage() {
   const [completedRaces, setCompletedRaces] = useState(0)
   const [seasonYear, setSeasonYear] = useState<number | null>(null)
   const [asOf, setAsOf] = useState<string | null>(null)
-  const apiBlocked = useApiBlocked()
 
   // One server-computed bundle replaces the ~20-request client pipeline.
   useEffect(() => {
@@ -91,7 +89,7 @@ export default function StandingsPage() {
         {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
 
         {driverStandings.length === 0 ? (
-          !apiBlocked && (
+          (
             <p className="label-mono mt-16 text-[var(--text-dim)]">
               NO STANDINGS YET — DATA ARRIVES AS THE SEASON RUNS
             </p>

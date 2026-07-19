@@ -7,7 +7,6 @@ import { formatDuration } from '@/lib/openf1'
 import { getCachedLaps, getCachedDrivers } from '@/lib/client-cache'
 import SessionHeader from '@/components/session/SessionHeader'
 import { FadeUp } from '@/components/motion/reveals'
-import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
 export default function LapsPage() {
   const [sessions, setSessions] = useState<Session[]>([])
@@ -18,7 +17,6 @@ export default function LapsPage() {
   const [fetchingLaps, setFetchingLaps] = useState(false)
   const [filterDriver, setFilterDriver] = useState<number | 'all'>('all')
   const [error, setError] = useState<string | null>(null)
-  const apiBlocked = useApiBlocked()
 
   useEffect(() => {
     getCachedSessions()
@@ -110,7 +108,7 @@ export default function LapsPage() {
           ))}
         </div>
       ) : laps.length === 0 && selectedKey ? (
-        !apiBlocked && (
+        (
           <p className="label-mono mt-16 text-[var(--text-dim)]">NO LAP DATA FOR THIS SESSION</p>
         )
       ) : (

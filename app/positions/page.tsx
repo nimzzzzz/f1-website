@@ -6,7 +6,6 @@ import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedPositions, getCachedDrivers } from '@/lib/client-cache'
 import SessionHeader from '@/components/session/SessionHeader'
 import { FadeUp } from '@/components/motion/reveals'
-import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
 interface DriverPosition {
   driverNumber: number
@@ -27,7 +26,6 @@ export default function PositionsPage() {
   const [error, setError] = useState<string | null>(null)
   // scrub through the session's position timeline (1 = final classification)
   const [scrub, setScrub] = useState(1)
-  const apiBlocked = useApiBlocked()
 
   useEffect(() => {
     getCachedSessions()
@@ -169,7 +167,7 @@ export default function PositionsPage() {
           ))}
         </div>
       ) : driverPositions.length === 0 ? (
-        !apiBlocked && (
+        (
           <p className="label-mono mt-16 text-[var(--text-dim)]">
             {selectedKey ? 'NO POSITION DATA FOR THIS SESSION' : 'SELECT A RACE SESSION'}
           </p>

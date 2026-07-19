@@ -1,7 +1,6 @@
 import { Suspense } from 'react'
 import { getSeasonBundleSSR } from '@/lib/season-data-ssr'
 import { bundleAsOf } from '@/lib/season-data'
-import LiveSessionNotice from '@/components/LiveSessionNotice'
 import TeamsBands, { type BandTeam } from './TeamsBands'
 
 // Server-rendered: constructor order + rosters come from the cached season
@@ -27,13 +26,10 @@ function Skeleton() {
 async function Bands() {
   const bundle = await getSeasonBundleSSR()
 
-  // Cold cache during a live-session lockout: the honest state, server-side.
+  // No bundle from any source (cold cache during a lockout) — hold the
+  // skeleton rather than a notice; the edge-cached bundle makes this rare.
   if (!bundle) {
-    return (
-      <div className="flex min-h-[calc(100dvh-4rem)] items-center">
-        <LiveSessionNotice variant="full" />
-      </div>
-    )
+    return <Skeleton />
   }
 
   if (bundle.teamStandings.length === 0) {
