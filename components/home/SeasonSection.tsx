@@ -7,6 +7,7 @@ import { useGSAP } from '@gsap/react'
 import type { Meeting } from '@/lib/openf1'
 import { circuitImage } from '@/lib/media-manifest'
 import TreatedImage from '@/components/media/TreatedImage'
+import { getLenis } from '@/lib/lenis-store'
 import { FadeUp } from '@/components/motion/reveals'
 
 gsap.registerPlugin(ScrollTrigger, useGSAP)
@@ -129,49 +130,158 @@ export default function SeasonSection({
       mm.add('(min-width: 768px) and (hover: hover)', () => {
         const distance = () => Math.max(0, track.scrollWidth - viewport.clientWidth)
         const anchor = () => viewport.clientWidth * 0.58
-        // The tip follows the track's REAL position, not raw progress —
-        // required because the timeline below is piecewise.
-        const tipFromTrack = () =>
-          setTip(-(gsap.getProperty(track, 'x') as number) + anchor())
-        // Piecewise scrub with an entry RUNWAY: the pin's opening stretch
-        // holds the strip at round 1, absorbing the Lenis momentum a
-        // visitor arrives with — without it, natural scrolling blew
-        // straight past rounds 1–5 and the section "opened" mid-season.
-        // Measured arrival overshoot is ~1.3 viewport heights, so the
-        // runway is sized in viewports, not as a fraction. A short tail
-        // parks round 24 before the unpin.
-        const runwayPx = () => Math.max(window.innerHeight * 1.5, 1250)
+        // Classic pinned-index choreography, no dead zone:
+        //   Phase A (short) — the strip holds while the TIP travels from
+        //     round 1's left edge to its holding station.
+        //   Phase B — the tip holds station and the strip scrubs beneath
+        //     it through to round 24; a tiny tail parks the final round.
+        //
+        // Rendering is DECOUPLED from raw scroll: ScrollTrigger only pins
+        // and reports progress; a single smoothed scalar (renderPx) drives
+        // the track, tip, line, counter, and focus. On downward entry the
+        // rendered value is CLAMPED at 0 while the arrival momentum dies —
+        // the section holds perfectly still at 01/24 — and the scroll
+        // position is then rebased to the pin start in ONE invisible step
+        // (visuals are clamped, so nothing on screen moves). Zero rendered
+        // backward correction at any arrival speed, no re-park window to
+        // fight the user's deliberate input.
+        const tipTravelPx = () => Math.round(window.innerHeight * 0.35)
         const scrubPx = () => Math.max(window.innerHeight, distance() * 0.55)
-        const tailPx = () => 350
-        const tl = gsap.timeline({
-          defaults: { ease: 'none' },
-          scrollTrigger: {
-            trigger: section,
-            start: 'top top',
-            end: () => `+=${runwayPx() + scrubPx() + tailPx()}`,
-            pin: true,
-            scrub: 0.5,
-            invalidateOnRefresh: true,
-            onUpdate: tipFromTrack,
-            onRefresh: () => {
-              measure()
-              tipFromTrack()
-            },
+        const tailPx = () => 150
+        const totalPx = () => tipTravelPx() + scrubPx() + tailPx()
+        const tipStart = () => (measures[0]?.left ?? 0) + 17
+
+        // render pipeline: smoothed px → track x + tip position
+        const render = (px: number) => {
+          const clamped = Math.max(0, Math.min(px, totalPx()))
+          if (clamped <= tipTravelPx()) {
+            gsap.set(track, { x: 0 })
+            const t = tipTravelPx() === 0 ? 1 : clamped / tipTravelPx()
+            setTip(tipStart() + (anchor() - tipStart()) * t)
+          } else {
+            const scrubT = Math.min(1, (clamped - tipTravelPx()) / scrubPx())
+            gsap.set(track, { x: -distance() * scrubT })
+            setTip(distance() * scrubT + anchor())
+          }
+        }
+        const smooth = { px: 0 }
+        const pxTo = gsap.quickTo(smooth, 'px', {
+          duration: 0.45,
+          ease: 'power3.out',
+          onUpdate: () => render(smooth.px),
+        })
+
+        // Deterministic entry, no inference: on downward entry the scroll
+        // parks one pixel inside the pin (killing Lenis's target), the
+        // RENDER clamps at 0 for a fixed 220ms so any trailing wheel
+        // momentum can't move the strip, then ONE more invisible park
+        // rebases to a true zero and everything maps 1:1. The clamp only
+        // ever holds at 0 — a rendered backward step is structurally
+        // impossible — and 220ms is below scrolling-intent perception.
+        let phase: 'idle' | 'arriving' | 'active' = 'idle'
+        // QA trace of entry choreography (tiny, string-only; read via
+        // window.__seasonTrace when diagnosing arrival behavior)
+        const tracePhase = (why: string) => {
+          const w = window as unknown as { __seasonTrace?: string[] }
+          w.__seasonTrace = (w.__seasonTrace ?? []).concat(
+            `${Math.round(performance.now())} ${phase} ${why} y=${Math.round(window.scrollY)}`
+          )
+        }
+        let clampUntil = 0
+        const park = (st: ScrollTrigger) => {
+          const lenis = getLenis()
+          if (lenis) lenis.scrollTo(st.start + 1, { immediate: true, force: true })
+          else window.scrollTo(0, st.start + 1)
+        }
+        const goLive = (st: ScrollTrigger) => {
+          phase = 'active'
+          tracePhase('goLive')
+          park(st) // rendered state is 0, so this cannot move pixels
+          gsap.set(smooth, { px: 0 })
+          render(0)
+        }
+
+        ScrollTrigger.create({
+          trigger: section,
+          start: 'top top',
+          end: () => `+=${totalPx()}`,
+          pin: true,
+          invalidateOnRefresh: true,
+          onEnter: (st) => {
+            tracePhase('onEnter fired')
+            if (phase !== 'idle') return
+            phase = 'arriving'
+            clampUntil = performance.now() + 220
+            park(st)
+            tracePhase('parked on enter')
+            // guarantee the handoff even if scroll goes quiet (no
+            // onUpdate) before the window ends
+            setTimeout(() => {
+              if (phase === 'arriving') goLive(st)
+            }, 240)
+          },
+          onLeaveBack: () => {
+            tracePhase('leaveBack')
+            phase = 'idle'
+            pxTo(0)
+          },
+          onEnterBack: () => {
+            phase = 'active'
+          },
+          onUpdate: (st) => {
+            if (phase === 'arriving') {
+              if (performance.now() < clampUntil) {
+                render(0)
+                return
+              }
+              goLive(st)
+              return
+            }
+            if (phase === 'idle') {
+              // ScrollTrigger fires an update during initialization at
+              // progress≈0 — promoting to active there skips the entry
+              // arrest entirely. Only a genuine mid-pin restore counts.
+              if (st.progress < 0.02) {
+                render(0)
+                return
+              }
+              phase = 'active'
+            }
+            pxTo(st.progress * totalPx())
+          },
+          onRefresh: (st) => {
+            measure()
+            if (phase === 'arriving') render(0)
+            else render(st.progress * totalPx())
           },
         })
-        // durations act as relative weights within the scrubbed timeline
-        tl.set(track, { x: 0 })
-          .to(track, { x: 0, duration: runwayPx() })
-          .to(track, { x: () => -distance(), duration: scrubPx() })
-          .to(track, { x: () => -distance(), duration: tailPx() })
+        render(0)
       })
 
       mm.add('(max-width: 767px), (hover: none)', () => {
+        // Same start semantics as desktop: at rest the tip sits on round 1
+        // (counter 01), then travels to its mid-screen station over the
+        // first half-viewport of strip scroll and rides there.
         const anchor = () => viewport.clientWidth * 0.5
-        const onScroll = () => setTip(viewport.scrollLeft + anchor())
-        onScroll()
-        viewport.addEventListener('scroll', onScroll, { passive: true })
-        return () => viewport.removeEventListener('scroll', onScroll)
+        const mobileTip = () => {
+          const sl = viewport.scrollLeft
+          const start = (measures[0]?.left ?? 0) + 17
+          const ramp = anchor()
+          if (sl < ramp) {
+            setTip(start + sl * ((ramp + anchor() - start) / ramp))
+          } else {
+            setTip(sl + anchor())
+          }
+        }
+        mobileTip()
+        // re-sync once fonts/layout settle — the first call can run before
+        // the strip's final metrics exist
+        document.fonts?.ready.then(() => {
+          measure()
+          mobileTip()
+        })
+        viewport.addEventListener('scroll', mobileTip, { passive: true })
+        return () => viewport.removeEventListener('scroll', mobileTip)
       })
 
       return () => mm.revert()
