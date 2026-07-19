@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { TransitionLink } from '@/components/motion/TransitionProvider'
 import { useNextRace, shortRaceName } from './useNextRace'
-import { useApiBlocked } from './useApiBlocked'
 
 function pad(n: number) {
   return String(n).padStart(2, '0')
@@ -38,7 +37,6 @@ export default function TopBar({
   onToggleMenu: () => void
 }) {
   const race = useNextRace()
-  const apiBlocked = useApiBlocked()
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -79,11 +77,6 @@ export default function TopBar({
                 <span className="tabular-nums">{tickerCountdown(race.raceStart)}</span>
               ) : null}
             </>
-          ) : apiBlocked ? (
-            <span className="flex items-center gap-2 text-[var(--accent)]">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none" />
-              LIVE SESSION IN PROGRESS
-            </span>
           ) : (
             <span aria-hidden>—</span>
           )}

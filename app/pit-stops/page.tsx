@@ -6,7 +6,6 @@ import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedPitStops, getCachedDrivers } from '@/lib/client-cache'
 import SessionHeader from '@/components/session/SessionHeader'
 import { FadeUp } from '@/components/motion/reveals'
-import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
 function formatPitDuration(seconds: number | null): string {
   if (seconds === null || seconds === undefined) return '—'
@@ -21,7 +20,6 @@ export default function PitStopsPage() {
   const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const apiBlocked = useApiBlocked()
 
   useEffect(() => {
     getCachedSessions()
@@ -104,7 +102,7 @@ export default function PitStopsPage() {
           ))}
         </div>
       ) : pitStops.length === 0 ? (
-        !apiBlocked && (
+        (
           <p className="label-mono mt-16 text-[var(--text-dim)]">
             {selectedKey ? 'NO PIT STOPS RECORDED' : 'SELECT A RACE SESSION'}
           </p>

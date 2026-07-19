@@ -98,14 +98,12 @@ function Row({
 
 // Section 2 — "THE FIGHT". The frame renders immediately — ghost numerals
 // at full scale hold the layout — and real rows replace it in place when
-// the standings math lands. `blocked` marks the live-session lockout.
+// the standings math lands.
 export default function FightSection({
   rows,
-  blocked = false,
   asOf = null,
 }: {
   rows: FightRow[] | null
-  blocked?: boolean
   asOf?: string | null
 }) {
   return (
@@ -113,13 +111,7 @@ export default function FightSection({
       <FadeUp>
         <p className="label-mono mb-12 flex flex-wrap items-center gap-x-4 gap-y-2 text-[var(--text-dim)]">
           THE FIGHT — DRIVERS&rsquo; CHAMPIONSHIP
-          {blocked && (
-            <span className="flex items-center gap-2 text-[var(--accent)]">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none" />
-              LIVE SESSION — DATA PAUSED
-            </span>
-          )}
-          {!blocked && rows && asOf && <span>AS OF {asOf}</span>}
+          {rows && asOf && <span>AS OF {asOf}</span>}
         </p>
       </FadeUp>
 

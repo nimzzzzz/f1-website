@@ -11,7 +11,6 @@ import { circuitImage } from '@/lib/media-manifest'
 import TreatedImage from '@/components/media/TreatedImage'
 import CircuitBackdrop from '@/components/media/CircuitBackdrop'
 import { FadeUp } from '@/components/motion/reveals'
-import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
 gsap.registerPlugin(ScrollTrigger, useGSAP)
 
@@ -61,7 +60,6 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true)
   // meeting_key → winner surname (same cached fetchers as the home index)
   const [winners, setWinners] = useState<Record<number, string>>({})
-  const apiBlocked = useApiBlocked()
 
   const timelineRef = useRef<HTMLDivElement>(null)
   const lineRef = useRef<HTMLDivElement>(null)
@@ -181,7 +179,7 @@ export default function SchedulePage() {
   if (meetings.length === 0) {
     return (
       <div className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
-        {!apiBlocked && <p className="label-mono text-[var(--text-dim)]">NO SCHEDULE DATA YET</p>}
+        {<p className="label-mono text-[var(--text-dim)]">NO SCHEDULE DATA YET</p>}
       </div>
     )
   }

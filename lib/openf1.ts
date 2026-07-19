@@ -1,4 +1,9 @@
-const BASE = 'https://api.openf1.org/v1'
+// Browser fetches go through our caching proxy (/api/openf1/*), which
+// serves last-known data through openf1's live-session 401 lockouts and
+// rate limits; server-side code (the season bundle compute) talks to
+// openf1 directly.
+const BASE =
+  typeof window !== 'undefined' ? '/api/openf1' : 'https://api.openf1.org/v1'
 
 // ─── TypeScript Interfaces ───────────────────────────────────────────────────
 
@@ -222,7 +227,11 @@ async function apiFetch<T>(
   params: Record<string, string | number> = {},
   options: RequestInit = {}
 ): Promise<T[]> {
-  const url = new URL(`${BASE}${path}`)
+  // BASE is relative in the browser (the proxy) — anchor it to the origin
+  const url = new URL(
+    `${BASE}${path}`,
+    typeof window !== 'undefined' ? window.location.origin : undefined
+  )
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)))
   try {
     const res = await fetch(url.toString(), options)

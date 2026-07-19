@@ -15,8 +15,6 @@ import {
 } from '@/lib/openf1'
 import { fetchSeasonData, bundleAsOf } from '@/lib/season-data'
 import IntroSequence, { type RevealMode } from '@/components/IntroSequence'
-import LiveSessionNotice from '@/components/LiveSessionNotice'
-import { useApiBlocked } from '@/components/shell/useApiBlocked'
 import NowSection from '@/components/home/NowSection'
 import FightSection, { type FightRow } from '@/components/home/FightSection'
 import LastRaceSection, { type PodiumRow } from '@/components/home/LastRaceSection'
@@ -81,11 +79,6 @@ export default function HomePage() {
   // runs in parallel behind it.
   const [introActive, setIntroActive] = useState(true)
   const [reveal, setReveal] = useState<'hidden' | RevealMode>('hidden')
-  // Live-session lockout (openf1 401s) vs genuine off-season: when meetings
-  // come back empty, hold a short grace window so the async 401 probe can
-  // classify the failure before we commit to showing either state.
-  const apiBlocked = useApiBlocked()
-  const [classifyGraceOver, setClassifyGraceOver] = useState(false)
 
   const handleIntroReveal = useCallback((mode: RevealMode) => setReveal(mode), [])
   const handleIntroDone = useCallback(() => {
@@ -106,12 +99,6 @@ export default function HomePage() {
       })
       .catch(() => setLoading(false))
   }, [])
-
-  useEffect(() => {
-    if (loading || meetings.length > 0) return
-    const t = setTimeout(() => setClassifyGraceOver(true), 1800)
-    return () => clearTimeout(t)
-  }, [loading, meetings])
 
   // Phase 2: one server-computed bundle replaces the client-side
   // multi-fetch standings pipeline (fight, last race, season winners).
@@ -201,6 +188,13 @@ export default function HomePage() {
     isCancelled: CANCELLED_COUNTRIES.has(m.country_name),
   }))
 
+  // "Season complete" only when it is VERIFIABLY over: a loaded calendar
+  // whose every race has finished. An empty calendar (lockout, 429,
+  // network) must never be mislabeled as the season ending.
+  const seasonGenuinelyOver =
+    raceMeetings.length > 0 &&
+    raceMeetings.every((m) => new Date(m.date_end).getTime() < Date.now())
+
   const seasonYear = raceMeetings[0]?.year ?? null
 
   return (
@@ -222,9 +216,7 @@ export default function HomePage() {
                 totalRounds={raceMeetings.length}
                 isLive={isLiveWeekend}
               />
-            ) : apiBlocked ? (
-              <LiveSessionNotice variant="full" />
-            ) : meetings.length > 0 || classifyGraceOver ? (
+            ) : seasonGenuinelyOver ? (
               <section className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
                 <h1
                   className="uppercase text-[var(--text)]"
@@ -238,6 +230,9 @@ export default function HomePage() {
                 </h1>
               </section>
             ) : (
+              // no calendar from any source yet (fresh deploy mid-lockout,
+              // rate-limited first load) — hold the skeleton; never a
+              // notice, never a false "season complete"
               skeleton
             )}
           </Reveal>
@@ -248,13 +243,12 @@ export default function HomePage() {
           {targetMeeting && (
             <>
               <Reveal order={1} state={reveal}>
-                <FightSection rows={fight} blocked={apiBlocked && !fight} asOf={asOf} />
+                <FightSection rows={fight} asOf={asOf} />
               </Reveal>
               <Reveal order={2} state={reveal}>
                 <LastRaceSection
                   raceLabel={lastRace?.label ?? null}
                   podium={lastRace?.podium ?? null}
-                  blocked={apiBlocked && !lastRace}
                   asOf={asOf}
                 />
               </Reveal>

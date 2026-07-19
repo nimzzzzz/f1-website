@@ -1,6 +1,5 @@
 import { Suspense } from 'react'
 import { getSeasonBundleSSR } from '@/lib/season-data-ssr'
-import LiveSessionNotice from '@/components/LiveSessionNotice'
 import DriversGallery, { type GalleryDriver } from './DriversGallery'
 
 // Server-rendered: championship identity comes straight from the cached
@@ -25,13 +24,10 @@ function Skeleton() {
 async function Gallery() {
   const bundle = await getSeasonBundleSSR()
 
-  // Cold cache during a live-session lockout: the honest state, server-side.
+  // No bundle from any source (cold cache during a lockout) — hold the
+  // skeleton rather than a notice; the edge-cached bundle makes this rare.
   if (!bundle) {
-    return (
-      <div className="flex min-h-[calc(100dvh-4rem)] items-center">
-        <LiveSessionNotice variant="full" />
-      </div>
-    )
+    return <Skeleton />
   }
 
   // Genuine pre-season (complete bundle, no completed races yet).

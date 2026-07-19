@@ -6,7 +6,6 @@ import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedRaceControl } from '@/lib/client-cache'
 import SessionHeader from '@/components/session/SessionHeader'
 import { FadeUp } from '@/components/motion/reveals'
-import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
 // Flag colours are the dataset here (like compounds on /stints).
 const FLAG_COLOURS: Record<string, string> = {
@@ -47,7 +46,6 @@ export default function RaceControlPage() {
   const [fetching, setFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [filterCat, setFilterCat] = useState<string>('All')
-  const apiBlocked = useApiBlocked()
 
   useEffect(() => {
     getCachedSessions()
@@ -134,7 +132,7 @@ export default function RaceControlPage() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        !apiBlocked && (
+        (
           <p className="label-mono mt-16 text-[var(--text-dim)]">
             {selectedKey ? 'NO MESSAGES FOR THIS FILTER' : 'SELECT A SESSION'}
           </p>

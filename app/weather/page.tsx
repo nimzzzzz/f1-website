@@ -6,7 +6,6 @@ import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedWeather } from '@/lib/client-cache'
 import SessionHeader from '@/components/session/SessionHeader'
 import { FadeUp } from '@/components/motion/reveals'
-import { useApiBlocked } from '@/components/shell/useApiBlocked'
 
 function formatTime(dateStr: string): string {
   return new Date(dateStr).toLocaleTimeString('en-US', {
@@ -24,7 +23,6 @@ export default function WeatherPage() {
   const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const apiBlocked = useApiBlocked()
 
   useEffect(() => {
     getCachedSessions()
@@ -96,7 +94,7 @@ export default function WeatherPage() {
           ))}
         </div>
       ) : weatherData.length === 0 ? (
-        !apiBlocked && (
+        (
           <p className="label-mono mt-16 text-[var(--text-dim)]">
             {selectedKey ? 'NO WEATHER DATA FOR THIS SESSION' : 'SELECT A SESSION'}
           </p>
