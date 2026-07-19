@@ -6,16 +6,19 @@ import Image from 'next/image'
 // with a dim surface placeholder (zero CLS, no broken images), the site's
 // dark treatment baked in, and a bottom fade into the background.
 //
-// mono — default: grayscale, sits as atmosphere behind type
-// team — keeps colour at reduced saturation where team colour IS the data
-// line — circuit carbon icons inverted to thin dim line art on black
+// mono     — default: grayscale, sits as atmosphere behind type
+// team     — keeps colour at reduced saturation where team colour IS the data
+// line     — circuit carbon icons inverted to thin dim line art on black
+// backdrop — full-bleed photography sunk deep into the black: near-mono,
+//            heavily darkened so display type stays fully legible on top
 
-export type Treatment = 'mono' | 'team' | 'line'
+export type Treatment = 'mono' | 'team' | 'line' | 'backdrop'
 
 const FILTERS: Record<Treatment, string> = {
   mono: 'grayscale(0.85) contrast(1.05) brightness(0.9)',
   team: 'saturate(0.75) contrast(1.03) brightness(0.92)',
   line: 'invert(1) brightness(1.65) opacity(0.75)',
+  backdrop: 'grayscale(0.85) contrast(1.1) brightness(0.38)',
 }
 
 export default function TreatedImage({
