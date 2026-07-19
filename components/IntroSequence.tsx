@@ -21,8 +21,12 @@ interface Props {
 const CUES = {
   kicker: 0.3, // "<year> SEASON" kicker fades in
   lights: [0.8, 1.6, 2.25, 3.05], // each start light ignites
-  out: 5.45, // all lights dark — the LIGHTS OUT moment
-  gone: 6.9, // car fully out of frame; empty wet-track hold begins
+  // Re-derived for the re-cut clip (frames 94-128 of the static all-lit
+  // hold removed; all-lit -> out is now ~0.9s): first dark frame at
+  // 3.958s, car out of frame at 5.44s. Duration 6.583s; the UI handoff
+  // stays duration-relative and needs no change.
+  out: 3.96, // all lights dark — the LIGHTS OUT moment
+  gone: 5.44, // car fully out of frame; empty wet-track hold begins
 } as const
 
 type BeatPhase = 'idle' | 'grid' | 'out' | 'gone'
