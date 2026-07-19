@@ -1,13 +1,30 @@
-import { unstable_cache } from 'next/cache'
-import type { Session, SessionResult } from '@/lib/openf1'
-import {
-  getMeetings,
-  getAllSessions,
-  getDrivers,
-  getSessionResult,
-  CANCELLED_COUNTRIES,
-} from '@/lib/openf1'
+import type { Driver, Meeting, Session, SessionResult } from '@/lib/openf1'
+import { CANCELLED_COUNTRIES } from '@/lib/openf1'
 import type { SeasonBundle } from '@/lib/season-data'
+
+// Compute-local openf1 fetcher. The bundle route is STATIC (ISR): its
+// inner fetches must be revalidate-tagged — a no-store fetch would force
+// the route dynamic, and an untagged fetch would freeze at build time.
+// 60s freshness means every background revalidation reads fresh data.
+async function of1<T>(query: string): Promise<T[]> {
+  try {
+    const res = await fetch(`https://api.openf1.org/v1/${query}`, {
+      headers: { 'User-Agent': 'lights-out-site/1.0' },
+      next: { revalidate: 60 },
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return Array.isArray(data) ? data : []
+  } catch {
+    return []
+  }
+}
+
+const getMeetings = () => of1<Meeting>('meetings?year=2026')
+const getAllSessions = () => of1<Session>('sessions?year=2026')
+const getDrivers = (sessionKey: number) => of1<Driver>(`drivers?session_key=${sessionKey}`)
+const getSessionResult = (sessionKey: number) =>
+  of1<SessionResult>(`session_result?session_key=${sessionKey}`)
 
 // Server-computed season bundle: the standings pipeline runs ONCE here
 // (cached 300s via unstable_cache, backed by Vercel's durable data cache)
@@ -253,10 +270,19 @@ async function computeSeasonData(): Promise<SeasonBundle> {
   }
 }
 
-// v3: driverStandings gained firstName + countryCode (SSR gallery identity)
-// NOTE: only the API route may call this. Pages go through
-// lib/season-data-ssr (HTTP to the route) — on Vercel, cache entries
-// written here are not reliably visible across functions.
-export const getCachedSeasonData = unstable_cache(computeSeasonData, ['season-data-v3'], {
-  revalidate: 300,
-})
+// The route that serves this is STATIC with ISR (revalidate: 300): the
+// bundle is generated at build time and refreshed in the background — a
+// user request NEVER runs this compute inline. On a revalidation failure
+// we THROW so Next keeps serving the last good snapshot; at build time
+// (openf1 may be locked or flaky) we never throw — a blocked placeholder
+// ships and the first background revalidation replaces it.
+export async function buildSeasonSnapshot(): Promise<SeasonBundle | { blocked: true }> {
+  try {
+    return await computeSeasonData()
+  } catch (err) {
+    if (process.env.NEXT_PHASE === 'phase-production-build') {
+      return { blocked: true }
+    }
+    throw err
+  }
+}

@@ -1,27 +1,22 @@
-import { getCachedSeasonData } from '@/lib/season-data-server'
+import { buildSeasonSnapshot } from '@/lib/season-data-server'
 
-// HTTP shell over the shared cached bundle (lib/season-data-server) — the
-// same cache entry the server-rendered /drivers and /teams pages read.
-
-// Cold computes fetch ~17 result sets; paced batches keep openf1's burst
-// limiter happy but need headroom beyond the default function budget.
-export const maxDuration = 30
+// STATIC with ISR: the season bundle is generated at build time and
+// refreshed in the background every 5 minutes. Serving is instant — the
+// snapshot comes out of the Full Route Cache like a static file, globally,
+// and NO user request ever runs the ~15s openf1 compute inline. A failed
+// background revalidation throws upstream, which keeps the last good
+// snapshot serving (stale-while-error); openf1 lockouts therefore never
+// blank anything, they just pause freshness.
+export const dynamic = 'force-static'
+export const revalidate = 300
+// Background revalidations fetch ~17 paced result sets.
+export const maxDuration = 60
 
 export async function GET() {
-  try {
-    const bundle = await getCachedSeasonData()
-    return Response.json(bundle, {
-      headers: {
-        // CDN shield: serve from edge for 5 min, stale-while-revalidate 1h
-        'Cache-Control': 's-maxage=300, stale-while-revalidate=3600',
-      },
-    })
-  } catch {
-    // No complete bundle has EVER been cached (cold start during a live
-    // session) — report honestly; consumers fall back to lockout states.
-    return Response.json(
-      { blocked: true },
-      { status: 503, headers: { 'Cache-Control': 'no-store' } }
-    )
-  }
+  const bundle = await buildSeasonSnapshot()
+  return Response.json(bundle, {
+    headers: {
+      'Cache-Control': 's-maxage=300, stale-while-revalidate=86400',
+    },
+  })
 }
