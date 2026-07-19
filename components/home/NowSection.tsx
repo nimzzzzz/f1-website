@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { Meeting, Session } from '@/lib/openf1'
+import HeroCanvas from '@/components/hero/HeroCanvas'
 
 interface Props {
   meeting: Meeting
@@ -37,6 +38,12 @@ const pad = (n: number) => String(n).padStart(2, '0')
 export default function NowSection({ meeting, raceSession, round, totalRounds, isLive }: Props) {
   const target = raceSession ? new Date(raceSession.date_start) : new Date(meeting.date_start)
   const [left, setLeft] = useState<TimeLeft>(() => calcTimeLeft(target))
+  // WebGL hero state: when the 3D scene is live, the type planes pick up
+  // a slight cursor parallax (different coefficients per plane) so the
+  // countdown and race name read as floating IN the scene's space.
+  const [heroLive, setHeroLive] = useState(false)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const numeralRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
     if (isLive) return
@@ -44,6 +51,39 @@ export default function NowSection({ meeting, raceSession, round, totalRounds, i
     return () => clearInterval(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLive, target.getTime()])
+
+  useEffect(() => {
+    if (!heroLive) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const cur = { x: 0, y: 0 }
+    const tgt = { x: 0, y: 0 }
+    const onMouse = (e: MouseEvent) => {
+      tgt.x = e.clientX / window.innerWidth - 0.5
+      tgt.y = e.clientY / window.innerHeight - 0.5
+    }
+    let raf = 0
+    const tick = () => {
+      cur.x += (tgt.x - cur.x) * 0.05
+      cur.y += (tgt.y - cur.y) * 0.05
+      // content drifts against the camera; the huge numeral barely moves —
+      // three planes (numeral, circuit, type) at three depths
+      if (contentRef.current) {
+        contentRef.current.style.transform = `translate3d(${(-cur.x * 14).toFixed(2)}px, ${(-cur.y * 8).toFixed(2)}px, 0)`
+      }
+      if (numeralRef.current) {
+        numeralRef.current.style.transform = `translate3d(${(cur.x * 5).toFixed(2)}px, ${(cur.y * 3).toFixed(2)}px, 0)`
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    window.addEventListener('mousemove', onMouse, { passive: true })
+    raf = requestAnimationFrame(tick)
+    return () => {
+      window.removeEventListener('mousemove', onMouse)
+      cancelAnimationFrame(raf)
+      if (contentRef.current) contentRef.current.style.transform = ''
+      if (numeralRef.current) numeralRef.current.style.transform = ''
+    }
+  }, [heroLive])
 
   const nameMatch = meeting.meeting_name.match(/^(.*?)\s+(Grand\s+Prix)$/i)
   const big = (nameMatch ? nameMatch[1] : meeting.meeting_name).toUpperCase()
@@ -59,8 +99,13 @@ export default function NowSection({ meeting, raceSession, round, totalRounds, i
 
   return (
     <section className="relative flex min-h-[calc(100dvh-4rem)] flex-col justify-center overflow-hidden px-6 md:px-14">
+      {/* WebGL circuit hero — absolute layer behind everything; renders
+          nothing unless the capability gate passes (static NOW is the floor) */}
+      <HeroCanvas circuitShortName={meeting.circuit_short_name} onLive={setHeroLive} />
+
       {/* oversized dim outline round numeral, asymmetric behind the composition */}
       <span
+        ref={numeralRef}
         aria-hidden
         className="outline-numeral absolute -right-[4vw] top-[2%] leading-none"
         style={{ fontSize: 'clamp(16rem, 42vw, 52rem)' }}
@@ -68,7 +113,7 @@ export default function NowSection({ meeting, raceSession, round, totalRounds, i
         {pad(round)}
       </span>
 
-      <div className="relative">
+      <div ref={contentRef} className="relative">
         <p className="label-mono mb-6 flex items-center gap-3 text-[var(--text-dim)]">
           {isLive ? (
             <span className="flex items-center gap-2 text-[var(--accent)]">
