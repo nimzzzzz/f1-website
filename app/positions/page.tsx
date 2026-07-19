@@ -177,7 +177,7 @@ export default function PositionsPage() {
           {/* ─── the scrubber: replay the session on a red rail ─── */}
           <FadeUp className="mt-14">
             <div className="border-t border-[var(--line)] pt-8">
-              <div className="label-mono flex items-baseline justify-between gap-6 text-[var(--text-dim)]">
+              <div className="section-header flex items-baseline justify-between gap-6 text-[var(--text-dim)]">
                 <span>SESSION SCRUB</span>
                 <span className="tabular-nums">
                   {scrub >= 1 ? 'FINAL CLASSIFICATION' : scrubClock ?? '—'}

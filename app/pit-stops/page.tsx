@@ -114,7 +114,7 @@ export default function PitStopsPage() {
           <div className="mt-16 flex flex-wrap items-baseline gap-x-20 gap-y-10">
             {fastestStop && (
               <FadeUp>
-                <p className="label-mono flex items-center gap-2.5 text-[var(--accent)]">
+                <p className="section-header flex items-center gap-2.5 text-[var(--accent)]">
                   FASTEST STOP
                   <span aria-hidden className="inline-block h-[2px] w-8 bg-[var(--accent)]" />
                 </p>
@@ -160,7 +160,7 @@ export default function PitStopsPage() {
           {/* ─── every stop ─── */}
           <div className="mt-20">
             <FadeUp>
-              <p className="label-mono text-[var(--text-dim)]">EVERY STOP — IN LAP ORDER</p>
+              <p className="section-header text-[var(--text-dim)]">EVERY STOP — IN LAP ORDER</p>
             </FadeUp>
             <div className="mt-6">
               {pitStops.map((stop, idx) => {

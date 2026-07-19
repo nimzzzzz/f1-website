@@ -187,7 +187,7 @@ export default function DriverPage() {
       {standing && (
         <section className="border-t border-[var(--line)] px-6 py-20 md:px-14 md:py-24">
           <FadeUp>
-            <p className="label-mono mb-12 flex flex-wrap gap-x-4 text-[var(--text-dim)]">
+            <p className="section-header mb-12 flex flex-wrap gap-x-4 text-[var(--text-dim)]">
               THIS SEASON{asOf && <span>AS OF {asOf}</span>}
             </p>
           </FadeUp>
@@ -241,7 +241,7 @@ export default function DriverPage() {
       {record.length > 0 && (
         <section className="border-t border-[var(--line)] px-6 py-20 md:px-14 md:py-24">
           <FadeUp>
-            <p className="label-mono mb-10 text-[var(--text-dim)]">
+            <p className="section-header mb-10 text-[var(--text-dim)]">
               SEASON RECORD — {String(record.length).padStart(2, '0')} ROUNDS
             </p>
           </FadeUp>
@@ -292,7 +292,7 @@ export default function DriverPage() {
       {car && (
         <section className="border-t border-[var(--line)] px-6 py-20 md:px-14 md:py-24">
           <FadeUp>
-            <p className="label-mono mb-10 text-[var(--text-dim)]">
+            <p className="section-header mb-10 text-[var(--text-dim)]">
               THE CAR — {driver.team_name?.toUpperCase()}
             </p>
           </FadeUp>
@@ -320,7 +320,7 @@ export default function DriverPage() {
           {career && (
             <div>
               <FadeUp>
-                <p className="label-mono mb-8 text-[var(--text-dim)]">CAREER</p>
+                <p className="section-header mb-8 text-[var(--text-dim)]">CAREER</p>
               </FadeUp>
               <div>
                 {[
@@ -349,7 +349,7 @@ export default function DriverPage() {
           )}
           <div>
             <FadeUp>
-              <p className="label-mono mb-8 text-[var(--text-dim)]">DRIVER</p>
+              <p className="section-header mb-8 text-[var(--text-dim)]">DRIVER</p>
             </FadeUp>
             <p className="max-w-md text-sm leading-relaxed text-[var(--text-dim)]">
               {driver.full_name} is competing in the {bundle?.seasonYear ?? 2026} Formula 1 World

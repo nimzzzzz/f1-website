@@ -163,7 +163,7 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
             {/* ─── The constructors tower ─── */}
             <div className="mt-28">
               <FadeUp>
-                <p className="label-mono text-[var(--text-dim)]">
+                <p className="section-header text-[var(--text-dim)]">
                   CONSTRUCTORS&rsquo; CHAMPIONSHIP
                 </p>
               </FadeUp>

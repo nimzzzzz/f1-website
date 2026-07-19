@@ -140,7 +140,7 @@ export default function RaceControlPage() {
       ) : (
         <div className="mt-14">
           <FadeUp>
-            <p className="label-mono text-[var(--text-dim)]">
+            <p className="section-header text-[var(--text-dim)]">
               FEED — {filtered.length} MESSAGE{filtered.length !== 1 ? 'S' : ''} · NEWEST FIRST
             </p>
           </FadeUp>

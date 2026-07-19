@@ -117,7 +117,7 @@ export default function LapsPage() {
           {overallFastest && (
             <FadeUp className="mt-16">
               <div className="border-t border-[var(--line)] pt-8">
-                <p className="label-mono flex items-center gap-2.5 text-[var(--accent)]">
+                <p className="section-header flex items-center gap-2.5 text-[var(--accent)]">
                   FASTEST LAP
                   <span aria-hidden className="inline-block h-[2px] w-8 bg-[var(--accent)]" />
                 </p>
@@ -140,7 +140,7 @@ export default function LapsPage() {
           {top5.length > 0 && (
             <div className="mt-20">
               <FadeUp>
-                <p className="label-mono text-[var(--text-dim)]">TOP 5 FASTEST</p>
+                <p className="section-header text-[var(--text-dim)]">TOP 5 FASTEST</p>
               </FadeUp>
               <div className="mt-6">
                 {top5.map((lap, idx) => {
@@ -184,7 +184,7 @@ export default function LapsPage() {
             <div className="mt-20">
               <div className="flex flex-wrap items-baseline justify-between gap-4">
                 <FadeUp>
-                  <p className="label-mono text-[var(--text-dim)]">
+                  <p className="section-header text-[var(--text-dim)]">
                     ALL LAPS — {filteredLaps.length}
                   </p>
                 </FadeUp>

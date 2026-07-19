@@ -109,7 +109,7 @@ export default function FightSection({
   return (
     <section className="border-t border-[var(--line)] px-6 py-24 md:px-14 md:py-32">
       <FadeUp>
-        <p className="label-mono mb-12 flex flex-wrap items-center gap-x-4 gap-y-2 text-[var(--text-dim)]">
+        <p className="section-header mb-12 flex flex-wrap items-center gap-x-4 gap-y-2 text-[var(--text-dim)]">
           THE FIGHT — DRIVERS&rsquo; CHAMPIONSHIP
           {rows && asOf && <span>AS OF {asOf}</span>}
         </p>
