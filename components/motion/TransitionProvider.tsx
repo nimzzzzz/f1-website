@@ -90,35 +90,50 @@ export default function TransitionProvider({ children }: { children: ReactNode }
     [pathname, router]
   )
 
-  // New route committed: hold briefly under the panel, then wipe it off.
+  // New route committed: the panel must not lift until the incoming page
+  // has actually PAINTED beneath it — a double rAF after the route commit
+  // guarantees at least one presented frame, and a minimum hold keeps the
+  // wordmark beat. Only then wipe off.
   useEffect(() => {
     if (phaseRef.current !== 'waiting') return
     const panel = panelRef.current
     if (!panel) return
     window.scrollTo(0, 0)
-    const t = setTimeout(() => {
+    let cancelled = false
+    const painted = new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    )
+    const minHold = new Promise<void>((resolve) => setTimeout(resolve, 150))
+    Promise.all([painted, minHold]).then(() => {
+      if (cancelled) return
       gsap.to(panel, {
         yPercent: -100,
         duration: 0.25,
         ease: 'power3.inOut',
         onComplete: () => {
-          gsap.set(panel, { display: 'none' })
+          gsap.set(panel, { display: 'none', yPercent: 100 })
           phaseRef.current = 'idle'
         },
       })
-    }, 150)
-    return () => clearTimeout(t)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [pathname])
 
   return (
     <TransitionContext.Provider value={navigate}>
       {children}
-      {/* pure black by design — the one place it's allowed outside the intro */}
+      {/* pure black by design — the one place it's allowed outside the intro.
+          NO inline transform here: GSAP's yPercent stacks on top of a base
+          transform, and an inline translateY(100%) offset every phase by a
+          full viewport — the cover played out below the screen and the
+          "wipe-off" dragged the panel INTO view over the new page. The
+          hidden state is display:none; each run positions via fromTo. */}
       <div
         ref={panelRef}
         aria-hidden
         className="fixed inset-0 z-[180] hidden items-center justify-center bg-black"
-        style={{ transform: 'translateY(100%)' }}
       >
         <span
           className="text-2xl text-[var(--text)]"
