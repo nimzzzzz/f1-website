@@ -290,11 +290,39 @@ async function computeSeasonData(): Promise<SeasonBundle> {
 // we THROW so Next keeps serving the last good snapshot; at build time
 // (openf1 may be locked or flaky) we never throw — a blocked placeholder
 // ships and the first background revalidation replaces it.
+// Build-time fallback: if the compute fails (openf1 429 bursts poison
+// roughly every other build — measured 4/4 replays throwing on an idle
+// Monday), bake the LIVE production site's current snapshot instead.
+// Production always serves last-good data by design, even mid-lockout,
+// so a deploy can never bake the blocked placeholder unless this is the
+// project's first-ever deploy (no production URL to fall back to).
+async function fetchProductionSnapshot(): Promise<SeasonBundle | null> {
+  const host = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  if (!host) return null
+  try {
+    const res = await fetch(`https://${host}/api/season-data`, {
+      next: { revalidate: 60 },
+      signal: AbortSignal.timeout(15000),
+    })
+    if (!res.ok) return null
+    const body = (await res.json()) as SeasonBundle | { blocked: true }
+    if (!body || body.blocked || !Array.isArray((body as SeasonBundle).meetings)) return null
+    console.error(
+      '[season-data] build-time compute failed; baked the live production snapshot as fallback'
+    )
+    return body as SeasonBundle
+  } catch {
+    return null
+  }
+}
+
 export async function buildSeasonSnapshot(): Promise<SeasonBundle | { blocked: true }> {
   try {
     return await computeSeasonData()
   } catch (err) {
     if (process.env.NEXT_PHASE === 'phase-production-build') {
+      const fromProd = await fetchProductionSnapshot()
+      if (fromProd) return fromProd
       return { blocked: true }
     }
     throw err

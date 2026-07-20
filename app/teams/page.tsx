@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
-import { getSeasonBundleSSRDiag, diagAttr } from '@/lib/season-data-ssr'
+import { getSeasonBundleSSR } from '@/lib/season-data-ssr'
+import WarmingRetry from '@/components/WarmingRetry'
 import TeamsBands, { type BandTeam } from './TeamsBands'
 
 // Server-rendered: constructor order + rosters come from the cached season
@@ -23,19 +24,17 @@ function Skeleton() {
 }
 
 async function Bands() {
-  const { bundle, diag } = await getSeasonBundleSSRDiag()
+  const bundle = await getSeasonBundleSSR()
 
-  // Truly nothing to show (deploy built mid-lockout, first revalidation
-  // pending, or the snapshot fetch timed out). Honest and present — never
-  // an infinite skeleton; a refresh lands the snapshot within minutes.
+  // Truly nothing to show (first-ever deploy built mid-outage, or the
+  // snapshot fetch failed). Honest, present, and self-healing:
+  // WarmingRetry re-renders the route until the snapshot exists.
   if (!bundle) {
     return (
-      <div
-        className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14"
-        data-ssr-diag={diagAttr(diag)}
-      >
+      <div className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
+        <WarmingRetry />
         <p className="label-mono text-[var(--text-dim)]">
-          STANDINGS DATA IS WARMING UP — REFRESH IN A MOMENT
+          STANDINGS DATA IS WARMING UP — HOLD ON A MOMENT
         </p>
       </div>
     )
@@ -69,12 +68,7 @@ async function Bands() {
     drivers: rosterByTeam.get(t.teamName) ?? [],
   }))
 
-  return (
-    <>
-      <span hidden data-ssr-diag={diagAttr(diag)} />
-      <TeamsBands teams={teams} seasonYear={bundle.seasonYear} />
-    </>
-  )
+  return <TeamsBands teams={teams} seasonYear={bundle.seasonYear} />
 }
 
 export default function TeamsPage() {

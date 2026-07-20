@@ -1,29 +1,6 @@
 import { headers } from 'next/headers'
 import type { SeasonBundle, SeasonDataResponse } from '@/lib/season-data'
 
-// ── TEMP DIAGNOSTICS (fix/snapshot-persistence) ─────────────────────────
-// Captures why an SSR bundle fetch failed (or how close a success ran to
-// the 4s bound) so the intermittent WARMING UP can be attributed to a
-// concrete upstream condition. Rendered by /drivers + /teams as a
-// data-ssr-diag attribute and logged server-side. Remove after diagnosis.
-export interface SSRDiag {
-  outcome: string // ok | no-host | timeout | abort-<name> | http-<status> | blocked | json-<name>
-  ms: number
-  status: number | null
-  xCache: string | null
-  age: string | null
-  vercelId: string | null
-  coldLambda: boolean
-  at: string
-}
-
-const lambdaBornAt = Date.now()
-let invocations = 0
-
-export function diagAttr(diag: SSRDiag | null): string {
-  return diag ? JSON.stringify(diag) : 'none'
-}
-
 // Bundle access for server-rendered PAGES (/drivers, /teams).
 //
 // Pages must NOT call unstable_cache/computeSeasonData directly: on Vercel
@@ -33,39 +10,24 @@ export function diagAttr(diag: SSRDiag | null): string {
 // the deployment's own /api/season-data over HTTP: one cache authority,
 // CDN-cached at the edge (s-maxage=300, SWR 1h), the exact path clients
 // have exercised in production since phase 2.
-export async function getSeasonBundleSSRDiag(): Promise<{
-  bundle: SeasonBundle | null
-  diag: SSRDiag
-}> {
-  const coldLambda = ++invocations === 1
+//
+// Failures log a structured [ssr-diag] line (visible in Vercel function
+// logs) so any future WARMING UP sighting is attributable from the logs.
+export async function getSeasonBundleSSR(): Promise<SeasonBundle | null> {
   const t0 = Date.now()
-  const diag: SSRDiag = {
-    outcome: 'ok',
-    ms: 0,
-    status: null,
-    xCache: null,
-    age: null,
-    vercelId: null,
-    coldLambda,
-    at: new Date().toISOString(),
-  }
-  const finish = (outcome: string, bundle: SeasonBundle | null) => {
-    diag.outcome = outcome
-    diag.ms = Date.now() - t0
-    if (outcome !== 'ok') {
-      console.error(
-        `[ssr-diag] outcome=${outcome} ms=${diag.ms} status=${diag.status} xCache=${diag.xCache} age=${diag.age} cold=${coldLambda} lambdaAgeS=${Math.round((Date.now() - lambdaBornAt) / 1000)} id=${diag.vercelId}`
-      )
-    }
-    return { bundle, diag }
+  const fail = (outcome: string, status?: number | null, xCache?: string | null) => {
+    console.error(
+      `[ssr-diag] outcome=${outcome} ms=${Date.now() - t0} status=${status ?? '-'} xCache=${xCache ?? '-'}`
+    )
+    return null
   }
 
   // Local verification hook for the cold-cache lockout path (unset in prod).
-  if (process.env.SIMULATE_SEASON_BLOCKED === '1') return finish('simulated-blocked', null)
+  if (process.env.SIMULATE_SEASON_BLOCKED === '1') return fail('simulated-blocked')
   try {
     const h = headers()
     const host = h.get('x-forwarded-host') ?? h.get('host')
-    if (!host) return finish('no-host', null)
+    if (!host) return fail('no-host')
     const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
     // The snapshot route serves statically (ISR), so this resolves in
     // milliseconds — the timeout is a hard bound so a pathological edge
@@ -78,26 +40,14 @@ export async function getSeasonBundleSSRDiag(): Promise<{
       })
     } catch (err) {
       const name = err instanceof Error ? err.name : 'unknown'
-      return finish(name === 'TimeoutError' ? 'timeout' : `abort-${name}`, null)
+      return fail(name === 'TimeoutError' ? 'timeout' : `abort-${name}`)
     }
-    diag.status = res.status
-    diag.xCache = res.headers.get('x-vercel-cache')
-    diag.age = res.headers.get('age')
-    diag.vercelId = res.headers.get('x-vercel-id')
-    if (!res.ok) return finish(`http-${res.status}`, null)
-    let body: SeasonDataResponse
-    try {
-      body = (await res.json()) as SeasonDataResponse
-    } catch (err) {
-      return finish(`json-${err instanceof Error ? err.name : 'unknown'}`, null)
-    }
-    if (body.blocked) return finish('blocked', null)
-    return finish('ok', body)
+    const xCache = res.headers.get('x-vercel-cache')
+    if (!res.ok) return fail(`http-${res.status}`, res.status, xCache)
+    const body = (await res.json()) as SeasonDataResponse
+    if (body.blocked) return fail('blocked', res.status, xCache)
+    return body
   } catch (err) {
-    return finish(`outer-${err instanceof Error ? err.name : 'unknown'}`, null)
+    return fail(`outer-${err instanceof Error ? err.name : 'unknown'}`)
   }
-}
-
-export async function getSeasonBundleSSR(): Promise<SeasonBundle | null> {
-  return (await getSeasonBundleSSRDiag()).bundle
 }
