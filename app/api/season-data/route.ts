@@ -14,6 +14,17 @@ export const maxDuration = 60
 
 export async function GET() {
   const bundle = await buildSeasonSnapshot()
+  // The blocked placeholder (only reachable on a brand-new project's
+  // first-ever deploy) must never be edge-cacheable: a 200 with s-maxage
+  // let PoPs echo the poison for minutes after recovery. Status stays 200
+  // because a non-200 during build prerender silently demotes the route
+  // to fully dynamic (verified against Next 14.2.5), which would put the
+  // ~15s compute back into the request path.
+  if (bundle.blocked) {
+    return Response.json(bundle, {
+      headers: { 'Cache-Control': 'no-store' },
+    })
+  }
   return Response.json(bundle, {
     headers: {
       'Cache-Control': 's-maxage=300, stale-while-revalidate=86400',

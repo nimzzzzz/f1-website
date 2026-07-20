@@ -95,8 +95,17 @@ export function fetchSeasonData(): Promise<SeasonBundle | null> {
   if (!inflight) {
     inflight = fetch('/api/season-data')
       .then((res) => (res.ok ? (res.json() as Promise<SeasonDataResponse>) : null))
-      .then((body) => (body && !body.blocked ? body : null))
-      .catch(() => null)
+      .then((body) => {
+        const bundle = body && !body.blocked ? body : null
+        // Only successes are memoized: a failure must not pin every later
+        // consumer on this page to null — the next caller retries.
+        if (!bundle) inflight = null
+        return bundle
+      })
+      .catch(() => {
+        inflight = null
+        return null
+      })
   }
   return inflight
 }
