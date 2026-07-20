@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { fetchSeasonData, bundleAsOf } from '@/lib/season-data'
+import { fetchSeasonData } from '@/lib/season-data'
 import type { BundleDriverStanding, BundleTeamStanding } from '@/lib/season-data'
 import { ClipReveal, CountUp, FadeUp } from '@/components/motion/reveals'
 
@@ -32,7 +32,6 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
   const [error, setError] = useState<string | null>(null)
   const [completedRaces, setCompletedRaces] = useState(() => initialBundle?.completedRaces ?? 0)
   const [seasonYear, setSeasonYear] = useState<number | null>(() => initialBundle?.seasonYear ?? null)
-  const [asOf, setAsOf] = useState<string | null>(() => (initialBundle ? bundleAsOf(initialBundle) : null))
 
   // One server-computed bundle replaces the ~20-request client pipeline.
   useEffect(() => {
@@ -45,7 +44,6 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
         setTeamStandings(bundle.teamStandings)
         setCompletedRaces(bundle.completedRaces)
         setSeasonYear(bundle.seasonYear)
-        setAsOf(bundleAsOf(bundle))
       })
       .catch(() => {
         if (alive) setError('Failed to load standings')
@@ -88,7 +86,7 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
           <p className="strip-header text-[var(--text-dim)]">
             DRIVERS&rsquo; CHAMPIONSHIP{seasonYear !== null ? ` — ${seasonYear}` : ''} — AFTER{' '}
             {String(completedRaces).padStart(2, '0')} ROUND{completedRaces !== 1 ? 'S' : ''}
-            {asOf && <span className="ml-4">AS OF {asOf}</span>}
+            
           </p>
         </FadeUp>
 

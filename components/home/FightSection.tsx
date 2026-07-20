@@ -99,19 +99,13 @@ function Row({
 // Section 2 — "THE FIGHT". The frame renders immediately — ghost numerals
 // at full scale hold the layout — and real rows replace it in place when
 // the standings math lands.
-export default function FightSection({
-  rows,
-  asOf = null,
-}: {
-  rows: FightRow[] | null
-  asOf?: string | null
-}) {
+export default function FightSection({ rows }: { rows: FightRow[] | null }) {
   return (
     <section className="border-t border-[var(--line)] px-6 py-24 md:px-14 md:py-32">
       <FadeUp>
         <p className="section-header mb-12 flex flex-wrap items-center gap-x-4 gap-y-2 text-[var(--text-dim)]">
           THE FIGHT — DRIVERS&rsquo; CHAMPIONSHIP
-          {rows && asOf && <span>AS OF {asOf}</span>}
+          
         </p>
       </FadeUp>
 

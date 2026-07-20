@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import type { Driver, Meeting } from '@/lib/openf1'
 import { getCachedLatestDrivers } from '@/lib/client-cache'
 import { getRaceMeetings } from '@/lib/openf1'
-import { fetchSeasonData, bundleAsOf, type SeasonBundle } from '@/lib/season-data'
+import { fetchSeasonData, type SeasonBundle } from '@/lib/season-data'
 import { DRIVER_PHOTOS, CAREER_STATS, DRIVER_NATIONALITIES } from '@/lib/driver-data'
 import { teamToSlug } from '@/lib/team-data'
 import { driverImage, carImage } from '@/lib/media-manifest'
@@ -98,7 +98,6 @@ export default function DriverPage() {
 
   // ── bundle joins ──
   const standing = bundle?.driverStandings.find((d) => d.driverNumber === driver.driver_number)
-  const asOf = bundle ? bundleAsOf(bundle) : null
 
   let record: SeasonRecordRow[] = []
   if (bundle) {
@@ -188,7 +187,7 @@ export default function DriverPage() {
         <section className="border-t border-[var(--line)] px-6 py-20 md:px-14 md:py-24">
           <FadeUp>
             <p className="section-header mb-12 flex flex-wrap gap-x-4 text-[var(--text-dim)]">
-              THIS SEASON{asOf && <span>AS OF {asOf}</span>}
+              THIS SEASON
             </p>
           </FadeUp>
           <div className="flex flex-wrap items-baseline gap-x-16 gap-y-10 md:gap-x-24">

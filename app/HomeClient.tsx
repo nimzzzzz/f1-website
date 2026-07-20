@@ -13,7 +13,7 @@ import {
   getNextMeeting,
   CANCELLED_COUNTRIES,
 } from '@/lib/openf1'
-import { fetchSeasonData, bundleAsOf } from '@/lib/season-data'
+import { fetchSeasonData } from '@/lib/season-data'
 import IntroSequence, { type RevealMode } from '@/components/IntroSequence'
 import NowSection from '@/components/home/NowSection'
 import FightSection, { type FightRow } from '@/components/home/FightSection'
@@ -103,10 +103,6 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
   const [winners, setWinners] = useState<Record<number, string>>(
     () => initialBundle?.winnersByRound ?? {}
   )
-  // "AS OF 14:32" when the bundle is stale (served through a lockout)
-  const [asOf, setAsOf] = useState<string | null>(() =>
-    initialBundle ? bundleAsOf(initialBundle) : null
-  )
   // Cinematic intro overlay — plays on every visit to /; data fetching below
   // runs in parallel behind it.
   const [introActive, setIntroActive] = useState(true)
@@ -164,7 +160,6 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
       }
 
       if (Object.keys(bundle.winnersByRound).length > 0) setWinners(bundle.winnersByRound)
-      setAsOf(bundleAsOf(bundle))
     })
     return () => {
       alive = false
@@ -275,13 +270,12 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
           {targetMeeting && (
             <>
               <Reveal order={1} state={reveal}>
-                <FightSection rows={fight} asOf={asOf} />
+                <FightSection rows={fight} />
               </Reveal>
               <Reveal order={2} state={reveal}>
                 <LastRaceSection
                   raceLabel={lastRace?.label ?? null}
                   podium={lastRace?.podium ?? null}
-                  asOf={asOf}
                 />
               </Reveal>
             </>
