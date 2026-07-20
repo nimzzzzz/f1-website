@@ -316,14 +316,24 @@ async function fetchProductionSnapshot(): Promise<SeasonBundle | null> {
   }
 }
 
+// Build-scope memo: /api/season-data, /drivers, and /teams all prerender
+// from this snapshot. One compute (or one fallback fetch) serves every
+// route in the build worker instead of three full openf1 sweeps — three
+// sweeps back-to-back is exactly the 429 pattern that poisons builds.
+let buildMemo: SeasonBundle | { blocked: true } | null = null
+
 export async function buildSeasonSnapshot(): Promise<SeasonBundle | { blocked: true }> {
+  const isBuild = process.env.NEXT_PHASE === 'phase-production-build'
+  if (isBuild && buildMemo) return buildMemo
   try {
-    return await computeSeasonData()
+    const bundle = await computeSeasonData()
+    if (isBuild) buildMemo = bundle
+    return bundle
   } catch (err) {
-    if (process.env.NEXT_PHASE === 'phase-production-build') {
+    if (isBuild) {
       const fromProd = await fetchProductionSnapshot()
-      if (fromProd) return fromProd
-      return { blocked: true }
+      buildMemo = fromProd ?? { blocked: true }
+      return buildMemo
     }
     throw err
   }

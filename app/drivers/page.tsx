@@ -1,16 +1,18 @@
 import { Suspense } from 'react'
-import { getSeasonBundleSSR } from '@/lib/season-data-ssr'
+import { buildSeasonSnapshot } from '@/lib/season-data-server'
 import WarmingRetry from '@/components/WarmingRetry'
 import DriversGallery, { type GalleryDriver } from './DriversGallery'
 
-// Server-rendered: championship identity comes straight from the cached
-// season bundle, so panel 1 (the real P1) and its headshot preload ship in
-// the initial HTML — no hydration wait, no client standings fetch. The
-// bundle is the same 5-min durable cache entry /api/season-data serves;
-// this page inherits its stale-while-error behavior for free.
-export const dynamic = 'force-dynamic'
-// Cold computes fetch ~17 paced result sets — same budget as the API route.
-export const maxDuration = 30
+// STATIC with ISR, same regime as /api/season-data: the page is generated
+// at build time from the season bundle and re-generated in the background
+// every 5 minutes; a failed revalidation throws and keeps the last good
+// page. NO request-time data fetch exists — the previous SSR self-fetch
+// to the deployment's own API failed under real conditions the API never
+// showed (proven: any Vercel-authenticated host poisons the cookie-less
+// self-fetch with an SSO redirect while the browser API call succeeds).
+export const revalidate = 300
+// Background revalidations fetch ~17 paced result sets.
+export const maxDuration = 60
 
 function Skeleton() {
   return (
@@ -23,11 +25,12 @@ function Skeleton() {
 }
 
 async function Gallery() {
-  const bundle = await getSeasonBundleSSR()
+  const snap = await buildSeasonSnapshot()
+  const bundle = snap.blocked ? null : snap
 
-  // Truly nothing to show (first-ever deploy built mid-outage, or the
-  // snapshot fetch failed). Honest, present, and self-healing:
-  // WarmingRetry re-renders the route until the snapshot exists.
+  // Truly nothing to show (a brand-new project's first-ever deploy built
+  // mid-outage — the only path that bakes blocked). Honest, present, and
+  // self-healing: WarmingRetry re-renders until a revalidation lands.
   if (!bundle) {
     return (
       <div className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
