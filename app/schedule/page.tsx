@@ -189,8 +189,8 @@ export default function SchedulePage() {
   return (
     <div className="relative overflow-x-clip px-6 pb-32 pt-20 md:px-14">
       <FadeUp>
-        <p className="label-mono text-[var(--text-dim)]">
-          THE CALENDAR{seasonYear ? ` — ${seasonYear}` : ''} · {pad2(raceMeetings.length)} ROUNDS
+        <p className="strip-header text-[var(--text-dim)]">
+          THE CALENDAR{seasonYear ? ` — ${seasonYear}` : ''} — {pad2(raceMeetings.length)} ROUNDS
         </p>
       </FadeUp>
 

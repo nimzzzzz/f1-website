@@ -112,7 +112,7 @@ export default function WeatherPage() {
           {latest && (
             <div className="mt-16">
               <FadeUp>
-                <p className="label-mono text-[var(--text-dim)]">
+                <p className="section-header text-[var(--text-dim)]">
                   FINAL READING — {formatTime(latest.date)}
                   {latest.rainfall ? <span className="ml-4 text-[#60A5FA]">RAIN</span> : null}
                 </p>
@@ -161,7 +161,7 @@ export default function WeatherPage() {
           {/* ─── readings over the session ─── */}
           <div className="mt-20">
             <FadeUp>
-              <p className="label-mono text-[var(--text-dim)]">
+              <p className="section-header text-[var(--text-dim)]">
                 OVER THE SESSION — {sampled.length} SAMPLES
               </p>
             </FadeUp>

@@ -8,7 +8,7 @@ export default function SportsCardsPage() {
       >
         CARDS
       </span>
-      <p className="label-mono text-[var(--text-dim)]">THE COLLECTION</p>
+      <p className="strip-header text-[var(--text-dim)]">THE COLLECTION</p>
       <h1
         className="mt-4 uppercase leading-[0.85] text-[var(--text)]"
         style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(3rem, 8vw, 8rem)' }}

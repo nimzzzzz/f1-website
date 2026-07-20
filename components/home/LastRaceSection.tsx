@@ -15,11 +15,9 @@ export interface PodiumRow {
 export default function LastRaceSection({
   raceLabel,
   podium,
-  asOf = null,
 }: {
   raceLabel: string | null
   podium: PodiumRow[] | null
-  asOf?: string | null
 }) {
   const winner = podium?.find((p) => p.position === 1)
   const rest = podium ? podium.filter((p) => p.position !== 1) : [2, 3]
@@ -27,9 +25,9 @@ export default function LastRaceSection({
   return (
     <section className="border-t border-[var(--line)] px-6 py-24 md:px-14 md:py-32">
       <FadeUp>
-        <p className="label-mono mb-12 flex flex-wrap items-center gap-x-4 gap-y-2 text-[var(--text-dim)]">
+        <p className="section-header mb-12 flex flex-wrap items-center gap-x-4 gap-y-2 text-[var(--text-dim)]">
           LAST TIME OUT — {raceLabel ?? '——'}
-          {podium && asOf && <span>AS OF {asOf}</span>}
+          
         </p>
       </FadeUp>
 

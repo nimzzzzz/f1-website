@@ -47,7 +47,7 @@ export default function HighlightsPage() {
         VIDEO
       </span>
 
-      <p className="label-mono text-[var(--text-dim)]">HIGHLIGHTS — OFFICIAL F1 CHANNEL</p>
+      <p className="strip-header text-[var(--text-dim)]">HIGHLIGHTS — OFFICIAL F1 CHANNEL</p>
       <h1
         className="mt-4 uppercase leading-[0.85] text-[var(--text)]"
         style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(2.6rem, 6vw, 5.5rem)' }}

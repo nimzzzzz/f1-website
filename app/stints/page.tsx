@@ -157,7 +157,7 @@ export default function StintsPage() {
       ) : (
         <div className="mt-14">
           <FadeUp>
-            <p className="label-mono text-[var(--text-dim)]">
+            <p className="section-header text-[var(--text-dim)]">
               STRATEGY — {String(groupedByDriver.length).padStart(2, '0')} DRIVERS · {sessionMaxLap}{' '}
               LAPS
             </p>

@@ -311,7 +311,7 @@ export default function SeasonSection({
 
       <div className="relative z-10 px-6 pt-24 md:px-14">
         <FadeUp>
-          <p className="label-mono text-[var(--text-dim)]">
+          <p className="section-header text-[var(--text-dim)]">
             THE SEASON — {pad2(total)} ROUNDS
           </p>
         </FadeUp>

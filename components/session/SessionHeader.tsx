@@ -30,11 +30,11 @@ export default function SessionHeader({
         {ghost}
       </span>
       <div className="relative z-10">
-        <p className="label-mono mb-6 text-[var(--text-dim)]">{kicker}</p>
+        <p className="strip-header mb-6 text-[var(--text-dim)]">{kicker}</p>
         <SessionPicker sessions={sessions} selectedKey={selectedKey} onSelect={onSelect} />
         {selected && (
-          <p className="label-mono mt-4 text-[var(--text-dim)]">
-            {selected.circuit_short_name.toUpperCase()} ·{' '}
+          <p className="strip-header mt-4 text-[var(--text-dim)]">
+            {selected.circuit_short_name.toUpperCase()} —{' '}
             {new Date(selected.date_start)
               .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
               .toUpperCase()}

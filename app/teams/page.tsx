@@ -1,6 +1,5 @@
 import { Suspense } from 'react'
 import { getSeasonBundleSSR } from '@/lib/season-data-ssr'
-import { bundleAsOf } from '@/lib/season-data'
 import TeamsBands, { type BandTeam } from './TeamsBands'
 
 // Server-rendered: constructor order + rosters come from the cached season
@@ -67,7 +66,7 @@ async function Bands() {
     drivers: rosterByTeam.get(t.teamName) ?? [],
   }))
 
-  return <TeamsBands teams={teams} seasonYear={bundle.seasonYear} asOf={bundleAsOf(bundle)} />
+  return <TeamsBands teams={teams} seasonYear={bundle.seasonYear} />
 }
 
 export default function TeamsPage() {

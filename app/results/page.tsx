@@ -192,7 +192,7 @@ export default function ResultsPage() {
           {winner && (
             <ClipReveal className="mt-14">
               <div className="border-t border-[var(--line)] pt-10">
-                <p className="label-mono flex items-center gap-2.5 text-[var(--accent)]">
+                <p className="section-header flex items-center gap-2.5 text-[var(--accent)]">
                   P1
                   <span aria-hidden className="inline-block h-[2px] w-8 bg-[var(--accent)]" />
                 </p>

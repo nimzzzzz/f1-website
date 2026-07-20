@@ -86,8 +86,8 @@ export default function DriversGallery({ drivers }: { drivers: GalleryDriver[] }
   return (
     <section ref={sectionRef} className="relative overflow-hidden">
       <div className="px-6 pt-10 md:px-14">
-        <p className="label-mono text-[var(--text-dim)]">
-          THE GRID — {pad2(drivers.length)} DRIVERS · CHAMPIONSHIP ORDER
+        <p className="strip-header text-[var(--text-dim)]">
+          THE GRID — {pad2(drivers.length)} DRIVERS — CHAMPIONSHIP ORDER
         </p>
       </div>
 

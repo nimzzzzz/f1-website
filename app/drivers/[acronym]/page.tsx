@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import type { Driver, Meeting } from '@/lib/openf1'
 import { getCachedLatestDrivers } from '@/lib/client-cache'
 import { getRaceMeetings } from '@/lib/openf1'
-import { fetchSeasonData, bundleAsOf, type SeasonBundle } from '@/lib/season-data'
+import { fetchSeasonData, type SeasonBundle } from '@/lib/season-data'
 import { DRIVER_PHOTOS, CAREER_STATS, DRIVER_NATIONALITIES } from '@/lib/driver-data'
 import { teamToSlug } from '@/lib/team-data'
 import { driverImage, carImage } from '@/lib/media-manifest'
@@ -98,7 +98,6 @@ export default function DriverPage() {
 
   // ── bundle joins ──
   const standing = bundle?.driverStandings.find((d) => d.driverNumber === driver.driver_number)
-  const asOf = bundle ? bundleAsOf(bundle) : null
 
   let record: SeasonRecordRow[] = []
   if (bundle) {
@@ -158,7 +157,7 @@ export default function DriverPage() {
 
         <TransitionLink
           href="/drivers"
-          className="label-mono absolute left-6 top-8 text-[var(--text-dim)] transition-colors hover:text-[var(--accent)] md:left-14"
+          className="strip-header absolute left-6 top-8 text-[var(--text-dim)] transition-colors hover:text-[var(--accent)] md:left-14"
         >
           ← THE GRID
         </TransitionLink>
@@ -187,8 +186,8 @@ export default function DriverPage() {
       {standing && (
         <section className="border-t border-[var(--line)] px-6 py-20 md:px-14 md:py-24">
           <FadeUp>
-            <p className="label-mono mb-12 flex flex-wrap gap-x-4 text-[var(--text-dim)]">
-              THIS SEASON{asOf && <span>AS OF {asOf}</span>}
+            <p className="section-header mb-12 flex flex-wrap gap-x-4 text-[var(--text-dim)]">
+              THIS SEASON
             </p>
           </FadeUp>
           <div className="flex flex-wrap items-baseline gap-x-16 gap-y-10 md:gap-x-24">
@@ -241,7 +240,7 @@ export default function DriverPage() {
       {record.length > 0 && (
         <section className="border-t border-[var(--line)] px-6 py-20 md:px-14 md:py-24">
           <FadeUp>
-            <p className="label-mono mb-10 text-[var(--text-dim)]">
+            <p className="section-header mb-10 text-[var(--text-dim)]">
               SEASON RECORD — {String(record.length).padStart(2, '0')} ROUNDS
             </p>
           </FadeUp>
@@ -292,7 +291,7 @@ export default function DriverPage() {
       {car && (
         <section className="border-t border-[var(--line)] px-6 py-20 md:px-14 md:py-24">
           <FadeUp>
-            <p className="label-mono mb-10 text-[var(--text-dim)]">
+            <p className="section-header mb-10 text-[var(--text-dim)]">
               THE CAR — {driver.team_name?.toUpperCase()}
             </p>
           </FadeUp>
@@ -320,7 +319,7 @@ export default function DriverPage() {
           {career && (
             <div>
               <FadeUp>
-                <p className="label-mono mb-8 text-[var(--text-dim)]">CAREER</p>
+                <p className="section-header mb-8 text-[var(--text-dim)]">CAREER</p>
               </FadeUp>
               <div>
                 {[
@@ -349,7 +348,7 @@ export default function DriverPage() {
           )}
           <div>
             <FadeUp>
-              <p className="label-mono mb-8 text-[var(--text-dim)]">DRIVER</p>
+              <p className="section-header mb-8 text-[var(--text-dim)]">DRIVER</p>
             </FadeUp>
             <p className="max-w-md text-sm leading-relaxed text-[var(--text-dim)]">
               {driver.full_name} is competing in the {bundle?.seasonYear ?? 2026} Formula 1 World
