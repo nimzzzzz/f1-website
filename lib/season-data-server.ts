@@ -6,9 +6,13 @@ import type { SeasonBundle } from '@/lib/season-data'
 // inner fetches must be revalidate-tagged — a no-store fetch would force
 // the route dynamic, and an untagged fetch would freeze at build time.
 // 60s freshness means every background revalidation reads fresh data.
+// OPENF1_BASE_URL: test hook (unset in prod) — lets local builds/servers
+// simulate an openf1 outage by pointing at a dead port.
+const OF1_BASE = process.env.OPENF1_BASE_URL ?? 'https://api.openf1.org/v1'
+
 async function of1<T>(query: string): Promise<T[]> {
   try {
-    const res = await fetch(`https://api.openf1.org/v1/${query}`, {
+    const res = await fetch(`${OF1_BASE}/${query}`, {
       headers: { 'User-Agent': 'lights-out-site/1.0' },
       next: { revalidate: 60 },
     })

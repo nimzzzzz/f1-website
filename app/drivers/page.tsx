@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { getSeasonBundleSSR } from '@/lib/season-data-ssr'
+import { getSeasonBundleSSRDiag, diagAttr } from '@/lib/season-data-ssr'
 import DriversGallery, { type GalleryDriver } from './DriversGallery'
 
 // Server-rendered: championship identity comes straight from the cached
@@ -22,14 +22,17 @@ function Skeleton() {
 }
 
 async function Gallery() {
-  const bundle = await getSeasonBundleSSR()
+  const { bundle, diag } = await getSeasonBundleSSRDiag()
 
   // Truly nothing to show (deploy built mid-lockout, first revalidation
   // pending, or the snapshot fetch timed out). Honest and present — never
   // an infinite skeleton; a refresh lands the snapshot within minutes.
   if (!bundle) {
     return (
-      <div className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
+      <div
+        className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14"
+        data-ssr-diag={diagAttr(diag)}
+      >
         <p className="label-mono text-[var(--text-dim)]">
           STANDINGS DATA IS WARMING UP — REFRESH IN A MOMENT
         </p>
@@ -57,7 +60,12 @@ async function Gallery() {
     points: d.points,
   }))
 
-  return <DriversGallery drivers={drivers} />
+  return (
+    <>
+      <span hidden data-ssr-diag={diagAttr(diag)} />
+      <DriversGallery drivers={drivers} />
+    </>
+  )
 }
 
 export default function DriversPage() {

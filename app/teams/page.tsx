@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { getSeasonBundleSSR } from '@/lib/season-data-ssr'
+import { getSeasonBundleSSRDiag, diagAttr } from '@/lib/season-data-ssr'
 import TeamsBands, { type BandTeam } from './TeamsBands'
 
 // Server-rendered: constructor order + rosters come from the cached season
@@ -23,14 +23,17 @@ function Skeleton() {
 }
 
 async function Bands() {
-  const bundle = await getSeasonBundleSSR()
+  const { bundle, diag } = await getSeasonBundleSSRDiag()
 
   // Truly nothing to show (deploy built mid-lockout, first revalidation
   // pending, or the snapshot fetch timed out). Honest and present — never
   // an infinite skeleton; a refresh lands the snapshot within minutes.
   if (!bundle) {
     return (
-      <div className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
+      <div
+        className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14"
+        data-ssr-diag={diagAttr(diag)}
+      >
         <p className="label-mono text-[var(--text-dim)]">
           STANDINGS DATA IS WARMING UP — REFRESH IN A MOMENT
         </p>
@@ -66,7 +69,12 @@ async function Bands() {
     drivers: rosterByTeam.get(t.teamName) ?? [],
   }))
 
-  return <TeamsBands teams={teams} seasonYear={bundle.seasonYear} />
+  return (
+    <>
+      <span hidden data-ssr-diag={diagAttr(diag)} />
+      <TeamsBands teams={teams} seasonYear={bundle.seasonYear} />
+    </>
+  )
 }
 
 export default function TeamsPage() {
