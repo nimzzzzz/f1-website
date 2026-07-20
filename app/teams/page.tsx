@@ -1,13 +1,14 @@
 import { Suspense } from 'react'
-import { getSeasonBundleSSR } from '@/lib/season-data-ssr'
+import { buildSeasonSnapshot } from '@/lib/season-data-server'
 import WarmingRetry from '@/components/WarmingRetry'
 import TeamsBands, { type BandTeam } from './TeamsBands'
 
-// Server-rendered: constructor order + rosters come from the cached season
-// bundle, so the top bands (and their imagery) are in the initial HTML.
-// Same cache entry as /api/season-data — stale-while-error inherited.
-export const dynamic = 'force-dynamic'
-export const maxDuration = 30
+// STATIC with ISR, same regime as /api/season-data and /drivers: built
+// from the bundle, background-revalidated every 5 minutes, failed
+// revalidations keep the last good page, and no request-time fetch can
+// fail (the old SSR self-fetch broke on Vercel-authenticated hosts).
+export const revalidate = 300
+export const maxDuration = 60
 
 function Skeleton() {
   return (
@@ -24,11 +25,12 @@ function Skeleton() {
 }
 
 async function Bands() {
-  const bundle = await getSeasonBundleSSR()
+  const snap = await buildSeasonSnapshot()
+  const bundle = snap.blocked ? null : snap
 
-  // Truly nothing to show (first-ever deploy built mid-outage, or the
-  // snapshot fetch failed). Honest, present, and self-healing:
-  // WarmingRetry re-renders the route until the snapshot exists.
+  // Truly nothing to show (a brand-new project's first-ever deploy built
+  // mid-outage — the only path that bakes blocked). Honest, present, and
+  // self-healing: WarmingRetry re-renders until a revalidation lands.
   if (!bundle) {
     return (
       <div className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
