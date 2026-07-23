@@ -4,7 +4,8 @@ import { useRef } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useGSAP } from '@gsap/react'
-import { driverImage } from '@/lib/media-manifest'
+import { driverImage, carImage } from '@/lib/media-manifest'
+import { teamToSlug } from '@/lib/team-data'
 import TreatedImage from '@/components/media/TreatedImage'
 import { TransitionLink } from '@/components/motion/TransitionProvider'
 
@@ -12,8 +13,11 @@ gsap.registerPlugin(ScrollTrigger, useGSAP)
 
 // One gallery panel, championship-ordered — identity comes from the server
 // bundle (SSR'd by app/drivers/page.tsx), so panel 1 and its headshot are in
-// the initial HTML. This component only owns the interaction layer: the
-// pinned horizontal scrub, the progress rail, hover states.
+// the initial HTML. This component owns the interaction layer: the pinned
+// horizontal scrub, the progress rail, and the per-panel CAR BLAST — when a
+// panel becomes active its team's car sweeps in from off-screen with motion
+// blur and settles large behind the number, a team-colour light wall sweeps
+// across, and a faint ambient glow stays.
 export interface GalleryDriver {
   driverNumber: number
   firstName: string
@@ -26,6 +30,11 @@ export interface GalleryDriver {
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
+
+// Car grade: team colour at reduced saturation (matches /teams) but darker,
+// so it sinks into the panel world behind the number and headshot.
+const CAR_FILTER = 'saturate(0.75) contrast(1.05) brightness(0.6)'
+const GLOW_REST = 0.14
 
 export default function DriversGallery({ drivers }: { drivers: GalleryDriver[] }) {
   const sectionRef = useRef<HTMLElement>(null)
@@ -40,26 +49,195 @@ export default function DriversGallery({ drivers }: { drivers: GalleryDriver[] }
       const track = trackRef.current
       const rail = railRef.current
       if (!section || !viewport || !track || drivers.length === 0) return
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+      const panelEls = gsap.utils.toArray<HTMLElement>('[data-panel]')
+      type Parts = {
+        car: HTMLElement | null
+        img: HTMLImageElement | null
+        wall: HTMLElement | null
+        glow: HTMLElement | null
+        shot: HTMLElement | null
+      }
+      const parts = (i: number): Parts => {
+        const p = panelEls[i]
+        return {
+          car: p?.querySelector('[data-car]') ?? null,
+          img: p?.querySelector<HTMLImageElement>('[data-car-img]') ?? null,
+          wall: p?.querySelector('[data-wall]') ?? null,
+          glow: p?.querySelector('[data-glow]') ?? null,
+          shot: p?.querySelector('[data-shot]') ?? null,
+        }
+      }
+
+      // Compose a panel into its finished, static state — car parked, glow on,
+      // no sweep. This is the reduced-motion look AND the resting state a
+      // panel keeps after its first blast (so fast scrub-bys show parked cars).
+      const compose = (i: number) => {
+        const { car, wall, glow, shot } = parts(i)
+        if (car) gsap.set(car, { xPercent: 0, skewX: 0, scaleX: 1, opacity: 1, filter: 'blur(0px)' })
+        if (glow) gsap.set(glow, { opacity: GLOW_REST })
+        if (wall) gsap.set(wall, { opacity: 0 })
+        if (shot) gsap.set(shot, { filter: 'brightness(1) contrast(1)' })
+      }
+
+      // ── reduced motion: every panel pre-settled, fully composed, no triggers
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        drivers.forEach((_, i) => {
+          const { img } = parts(i)
+          if (img && img.dataset.src && !img.getAttribute('src')) img.src = img.dataset.src
+          compose(i)
+        })
+        return
+      }
+
+      const ensureLoaded = (i: number) => {
+        const { img } = parts(i)
+        if (img && img.dataset.src && !img.getAttribute('src')) img.src = img.dataset.src
+      }
+      const isReady = (img: HTMLImageElement | null) =>
+        !!img && !!img.getAttribute('src') && img.complete && img.naturalWidth > 0
+
+      // Park a panel's car instantly — the resting state a panel keeps when it
+      // becomes active, so fast scrub-bys always show parked cars + glow (no
+      // entrance). If the car isn't decoded yet, park it the moment it is.
+      const settleInstant = (i: number) => {
+        const { car, img, glow } = parts(i)
+        if (!car) return
+        ensureLoaded(i)
+        if (!isReady(img)) {
+          if (img) img.onload = () => settleInstant(i)
+          return
+        }
+        gsap.set(car, { xPercent: 0, skewX: 0, scaleX: 1, opacity: 1, filter: 'blur(0px)' })
+        if (glow) gsap.set(glow, { opacity: GLOW_REST })
+      }
+
+      // The blast: car in from off-screen with motion blur, decel expo.out to
+      // parked; light wall sweeps once; headshot gets a rim-light bump as the
+      // wall crosses it; glow rises and stays. dir>=0 → enter from the right
+      // (scrub travelling forward), dir<0 → from the left.
+      const blast = (i: number, dir: number, tame = false) => {
+        const { car, img, wall, glow, shot } = parts(i)
+        if (!car) return
+        ensureLoaded(i)
+        // Never blast an unloaded image: play the entrance once it's decoded,
+        // if this panel is still the active one.
+        if (!isReady(img)) {
+          if (img) img.onload = () => { if (activeIdx === i) blast(i, dir, tame) }
+          return
+        }
+        const ENTER = tame ? 74 : 122
+        const BLUR = tame ? 14 : 26
+        const DUR = tame ? 0.62 : 0.76
+        const from = dir >= 0 ? 1 : -1
+
+        const tl = gsap.timeline()
+        tl.set(car, { willChange: 'transform, filter' })
+          .fromTo(
+            car,
+            {
+              xPercent: from * ENTER,
+              skewX: from * -7,
+              scaleX: 1.18,
+              opacity: 0.25,
+              filter: `blur(${BLUR}px)`,
+            },
+            {
+              xPercent: 0,
+              skewX: 0,
+              scaleX: 1,
+              opacity: 1,
+              filter: 'blur(0px)',
+              duration: DUR,
+              ease: 'expo.out',
+              onComplete: () => gsap.set(car, { clearProps: 'willChange' }),
+            }
+          )
+        if (glow) {
+          tl.fromTo(glow, { opacity: 0 }, { opacity: GLOW_REST, duration: 0.9, ease: 'power2.out' }, 0)
+        }
+        // light wall — a single bright screen-blend sweep across the panel
+        if (wall && !tame) {
+          tl.set(wall, { willChange: 'transform', xPercent: from * -145, opacity: 0 }, 0)
+            .to(wall, { opacity: 1, duration: 0.18, ease: 'power1.out' }, 0.03)
+            .to(
+              wall,
+              {
+                xPercent: from * 145,
+                duration: 0.6,
+                ease: 'power1.inOut',
+                onComplete: () => gsap.set(wall, { clearProps: 'willChange', opacity: 0 }),
+              },
+              0.03
+            )
+            .to(wall, { opacity: 0, duration: 0.26, ease: 'power1.in' }, 0.37)
+        }
+        // rim light passing across the headshot, synced to the wall crossing it
+        if (shot && !tame) {
+          tl.to(shot, { filter: 'brightness(1.55) contrast(1.12)', duration: 0.16, ease: 'power2.out' }, 0.2)
+            .to(shot, { filter: 'brightness(1) contrast(1)', duration: 0.42, ease: 'power2.inOut' }, 0.36)
+        }
+      }
+
+      let activeIdx = -1
+      let dwellTimer: number | undefined
+      const preloadAround = (i: number) => {
+        for (let j = i - 2; j <= i + 2; j++) if (j >= 0 && j < drivers.length) ensureLoaded(j)
+      }
+
+      // A panel became active: park its car at once (fast scrub-bys just show
+      // parked cars streaking past), then — only if it's held ≥ DWELL — fire
+      // the entrance blast. The debounce means fast scrubbing through 22 panels
+      // never machine-guns 22 blasts; a deliberate hold, or re-activating a
+      // panel, replays the entrance, which reads as alive.
+      const DWELL = 170
+      const onActivate = (i: number, dir: number) => {
+        activeIdx = i
+        preloadAround(i)
+        settleInstant(i)
+        if (dwellTimer) window.clearTimeout(dwellTimer)
+        dwellTimer = window.setTimeout(() => {
+          if (activeIdx === i) blast(i, dir)
+        }, DWELL)
+      }
+
+      // init: cars hidden until a panel first becomes active (then parked);
+      // walls off; headshot filter neutral so the rim bump has a baseline
+      drivers.forEach((_, i) => {
+        const { car, glow, wall, shot } = parts(i)
+        if (car) gsap.set(car, { opacity: 0, xPercent: 0 })
+        if (glow) gsap.set(glow, { opacity: 0 })
+        if (wall) gsap.set(wall, { opacity: 0 })
+        if (shot) gsap.set(shot, { filter: 'brightness(1) contrast(1)' })
+      })
 
       const mm = gsap.matchMedia()
+      const cleanups: Array<() => void> = []
+
+      // ── desktop: pinned horizontal scrub ───────────────────────────────
       mm.add('(min-width: 768px) and (hover: hover)', () => {
         const distance = () => Math.max(0, track.scrollWidth - viewport.clientWidth)
         let lastIdx = -1
+        let lastProg = 0
         const setPanel = (progress: number) => {
-          if (!rail) return
           const idx = Math.min(drivers.length - 1, Math.round(progress * (drivers.length - 1)))
-          if (idx === lastIdx) return
-          lastIdx = idx
-          const counter = rail.querySelector<HTMLElement>('[data-rail-counter]')
-          if (counter) counter.textContent = `${pad2(idx + 1)} / ${pad2(drivers.length)}`
-          rail.querySelectorAll<HTMLElement>('[data-tick]').forEach((t, i) => {
-            t.style.backgroundColor =
-              i === idx ? `#${drivers[i]?.teamColour || 'F5F5F3'}` : 'rgba(245,245,243,0.18)'
-            t.style.transform = i === idx ? 'scaleY(1.8)' : 'scaleY(1)'
-          })
+          if (idx !== lastIdx) {
+            const dir = progress >= lastProg ? 1 : -1
+            lastIdx = idx
+            if (rail) {
+              const counter = rail.querySelector<HTMLElement>('[data-rail-counter]')
+              if (counter) counter.textContent = `${pad2(idx + 1)} / ${pad2(drivers.length)}`
+              rail.querySelectorAll<HTMLElement>('[data-tick]').forEach((t, i) => {
+                t.style.backgroundColor =
+                  i === idx ? `#${drivers[i]?.teamColour || 'F5F5F3'}` : 'rgba(245,245,243,0.18)'
+                t.style.transform = i === idx ? 'scaleY(1.8)' : 'scaleY(1)'
+              })
+            }
+            onActivate(idx, dir)
+          }
+          lastProg = progress
         }
-        gsap.fromTo(
+        const tween = gsap.fromTo(
           track,
           { x: 0 },
           {
@@ -77,8 +255,50 @@ export default function DriversGallery({ drivers }: { drivers: GalleryDriver[] }
             },
           }
         )
+        // The opening moment: ScrollTrigger's initial onRefresh reports
+        // progress 0, so onActivate(0) runs on load — panel 0 parks and then
+        // blasts ~DWELL later, opening /drivers on the moment. No separate
+        // intro call (it would double-fire with that first activation).
+        cleanups.push(() => {
+          tween.scrollTrigger?.kill()
+          tween.kill()
+        })
       })
-      return () => mm.revert()
+
+      // ── mobile / touch: vertical stack, blast on scroll-into-view (tamer) ──
+      mm.add('(max-width: 767px), (hover: none)', () => {
+        const lastBlast: number[] = new Array(drivers.length).fill(-Infinity)
+        const io = new IntersectionObserver(
+          (entries) => {
+            const now = performance.now()
+            for (const e of entries) {
+              const i = Number((e.target as HTMLElement).dataset.idx)
+              if (Number.isNaN(i)) continue
+              if (e.isIntersecting) {
+                activeIdx = i
+                preloadAround(i)
+                // debounce re-entries so scrubbing the stack up and down doesn't
+                // machine-gun the same panel; otherwise each scroll-in blasts
+                if (now - lastBlast[i] > 1200) {
+                  lastBlast[i] = now
+                  blast(i, 1, true)
+                } else {
+                  settleInstant(i)
+                }
+              }
+            }
+          },
+          { root: null, threshold: 0.55 }
+        )
+        panelEls.forEach((p) => io.observe(p))
+        cleanups.push(() => io.disconnect())
+      })
+
+      return () => {
+        if (dwellTimer) window.clearTimeout(dwellTimer)
+        cleanups.forEach((fn) => fn())
+        mm.revert()
+      }
     },
     { scope: sectionRef, dependencies: [drivers.length] }
   )
@@ -101,22 +321,65 @@ export default function DriversGallery({ drivers }: { drivers: GalleryDriver[] }
           {drivers.map((d, i) => {
             const teamColor = `#${d.teamColour || 'F5F5F3'}`
             const photo = driverImage(d.nameAcronym)
+            const car = carImage(teamToSlug(d.teamName))
             return (
               <TransitionLink
                 key={d.driverNumber}
                 href={`/drivers/${d.nameAcronym.toLowerCase()}`}
+                data-panel
+                data-idx={i}
                 className="group relative flex min-h-[72vh] w-full shrink-0 flex-col justify-end overflow-hidden border-t border-[var(--line)] px-6 pb-16 pt-10 md:min-h-[calc(100dvh-11rem)] md:w-screen md:border-l md:border-t-0 md:px-14 motion-reduce:md:w-full motion-reduce:md:border-l-0 motion-reduce:md:border-t"
               >
+                {/* ambient team-colour glow — lowest layer, faint atmosphere */}
+                <div
+                  data-glow
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 opacity-0"
+                  style={{
+                    background: `radial-gradient(58% 46% at 50% 80%, ${teamColor}, transparent 70%)`,
+                  }}
+                />
+
+                {/* THE CAR — large, low, behind the number and headshot. Plain
+                    img (alpha cutout) so load timing is controllable; src is set
+                    imperatively for the active ±2 panels. Panel 0 loads eagerly
+                    for its opening blast. */}
+                {car && (
+                  <div
+                    data-car
+                    aria-hidden
+                    className="pointer-events-none absolute bottom-[3%] left-0 right-0 mx-auto h-[58%] w-[64vw] max-w-[1040px] opacity-0"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      data-car-img
+                      data-src={car}
+                      src={i === 0 ? car : undefined}
+                      alt=""
+                      fetchPriority={i === 0 ? 'high' : 'low'}
+                      decoding="async"
+                      className="h-full w-full object-contain object-bottom"
+                      style={{ filter: CAR_FILTER }}
+                    />
+                  </div>
+                )}
+
                 {/* headshot — dark-treated atmosphere; the number paints above it.
+                    Wrapped so the rim-light bump can brighten the whole subtree.
                     Panel 1 is the LCP: priority puts its preload in the SSR HTML. */}
                 {photo && (
-                  <TreatedImage
-                    src={photo}
-                    treatment="mono"
-                    priority={i === 0}
-                    sizes="(min-width: 768px) 36vw, 72vw"
+                  <div
+                    data-shot
                     className="pointer-events-none absolute bottom-0 right-0 h-[58%] w-[72%] md:right-[8vw] md:h-[76%] md:w-[36vw] md:max-w-[560px]"
-                  />
+                  >
+                    <TreatedImage
+                      src={photo}
+                      treatment="mono"
+                      priority={i === 0}
+                      sizes="(min-width: 768px) 36vw, 72vw"
+                      className="absolute inset-0"
+                    />
+                  </div>
                 )}
 
                 {/* the race number — massive, outlined in the team's color.
@@ -134,6 +397,19 @@ export default function DriversGallery({ drivers }: { drivers: GalleryDriver[] }
                 >
                   {d.driverNumber}
                 </span>
+
+                {/* light wall — a single team-colour sweep during the blast,
+                    screen-blended so it lightens rather than occludes. Above the
+                    car/headshot/number, below the bottom text (legibility). */}
+                <div
+                  data-wall
+                  aria-hidden
+                  className="pointer-events-none absolute inset-y-0 -inset-x-[14%] opacity-0"
+                  style={{
+                    background: `linear-gradient(103deg, transparent 22%, ${teamColor}00 30%, ${teamColor} 43%, #ffffff 50%, ${teamColor} 57%, ${teamColor}00 70%, transparent 78%)`,
+                    mixBlendMode: 'screen',
+                  }}
+                />
 
                 {/* championship index */}
                 <span className="label-mono absolute right-6 top-6 text-[var(--text-dim)] md:right-14">
