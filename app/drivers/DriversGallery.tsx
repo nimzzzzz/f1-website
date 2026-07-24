@@ -153,29 +153,67 @@ export default function DriversGallery({ drivers }: { drivers: GalleryDriver[] }
               onComplete: () => gsap.set(car, { clearProps: 'willChange' }),
             }
           )
-        if (glow) {
+        // Ambient glow: on mobile / no-wall it's a simple clock fade-in; on
+        // desktop it starts hidden and rises as the AFTERGLOW the light pass
+        // leaves behind (fired from the wall's exit, below).
+        const hasWall = !!wall && !tame
+        if (glow && !hasWall) {
           tl.fromTo(glow, { opacity: 0 }, { opacity: GLOW_REST, duration: 0.9, ease: 'power2.out' }, 0)
+        } else if (glow) {
+          tl.set(glow, { opacity: 0 }, 0)
         }
-        // light wall — a single bright screen-blend sweep across the panel
-        if (wall && !tame) {
-          tl.set(wall, { willChange: 'transform', xPercent: from * -145, opacity: 0 }, 0)
-            .to(wall, { opacity: 1, duration: 0.18, ease: 'power1.out' }, 0.03)
+
+        // The light PASS — a deliberate team-colour light source moving across
+        // the panel (~1.4s crossing), washing over the car after it parks.
+        // Screen-blend, gentle ease so it reads as a moving source, not a
+        // strobe. The rim bump and the afterglow are driven by where the light
+        // ACTUALLY is (its live panel-fraction), not a fixed clock, so both
+        // stay synced whichever direction the scrub is travelling.
+        if (hasWall) {
+          const TRAVEL = 44
+          const WALL_DUR = 2.0
+          const HEADSHOT_FRAC = 0.75 // headshot centre, as a panel-width fraction
+          // core (bright centre) panel-fraction from the element's live xPercent:
+          // the wall box is 128% wide (‑14% inset each side), so its 50% point
+          // maps to 0.5 + 1.28·(xPercent/100) in panel-width units.
+          const coreFrac = () => 0.5 + 1.28 * ((gsap.getProperty(wall, 'xPercent') as number) / 100)
+          const passedPast = (f: number, mark: number) => (from > 0 ? f >= mark : f <= mark)
+          let rimFired = false
+          let glowFired = false
+          const riseGlow = () => {
+            if (glowFired || !glow) return
+            glowFired = true
+            gsap.to(glow, { opacity: GLOW_REST, duration: 0.7, ease: 'power2.out' })
+          }
+          // Both cues track where the light ACTUALLY is: the headshot rim bump
+          // fires as the core crosses the headshot; the ambient glow rises as
+          // the core leaves the frame (the afterglow the pass leaves behind).
+          const onWall = () => {
+            const f = coreFrac()
+            if (!rimFired && shot && passedPast(f, HEADSHOT_FRAC)) {
+              rimFired = true
+              gsap
+                .timeline()
+                .to(shot, { filter: 'brightness(1.5) contrast(1.1)', duration: 0.22, ease: 'power2.out' })
+                .to(shot, { filter: 'brightness(1) contrast(1)', duration: 0.55, ease: 'power2.inOut' })
+            }
+            if (!glowFired && passedPast(f, from > 0 ? 1 : 0)) riseGlow()
+          }
+          tl.set(wall, { willChange: 'transform', xPercent: from * -TRAVEL, opacity: 0 }, 0)
+            .to(wall, { opacity: 1, duration: 0.32, ease: 'sine.out' }, 0)
             .to(
               wall,
               {
-                xPercent: from * 145,
-                duration: 0.6,
-                ease: 'power1.inOut',
-                onComplete: () => gsap.set(wall, { clearProps: 'willChange', opacity: 0 }),
+                xPercent: from * TRAVEL,
+                duration: WALL_DUR,
+                ease: 'sine.inOut',
+                onUpdate: onWall,
+                onComplete: riseGlow, // safety net if the core cleared between frames
               },
-              0.03
+              0
             )
-            .to(wall, { opacity: 0, duration: 0.26, ease: 'power1.in' }, 0.37)
-        }
-        // rim light passing across the headshot, synced to the wall crossing it
-        if (shot && !tame) {
-          tl.to(shot, { filter: 'brightness(1.55) contrast(1.12)', duration: 0.16, ease: 'power2.out' }, 0.2)
-            .to(shot, { filter: 'brightness(1) contrast(1)', duration: 0.42, ease: 'power2.inOut' }, 0.36)
+            .to(wall, { opacity: 0, duration: 0.5, ease: 'sine.in' }, WALL_DUR - 0.46)
+            .set(wall, { clearProps: 'willChange' }, WALL_DUR + 0.1)
         }
       }
 
@@ -406,7 +444,7 @@ export default function DriversGallery({ drivers }: { drivers: GalleryDriver[] }
                   aria-hidden
                   className="pointer-events-none absolute inset-y-0 -inset-x-[14%] opacity-0"
                   style={{
-                    background: `linear-gradient(103deg, transparent 22%, ${teamColor}00 30%, ${teamColor} 43%, #ffffff 50%, ${teamColor} 57%, ${teamColor}00 70%, transparent 78%)`,
+                    background: `linear-gradient(103deg, transparent 14%, ${teamColor}00 25%, ${teamColor} 43%, #ffffff 50%, ${teamColor} 57%, ${teamColor}00 75%, transparent 86%)`,
                     mixBlendMode: 'screen',
                   }}
                 />
