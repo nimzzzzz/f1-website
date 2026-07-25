@@ -171,7 +171,7 @@ export default function DriversGallery({ drivers }: { drivers: GalleryDriver[] }
         // stay synced whichever direction the scrub is travelling.
         if (hasWall) {
           const TRAVEL = 44
-          const WALL_DUR = 2.0
+          const WALL_DUR = 1.37
           const HEADSHOT_FRAC = 0.75 // headshot centre, as a panel-width fraction
           // core (bright centre) panel-fraction from the element's live xPercent:
           // the wall box is 128% wide (‑14% inset each side), so its 50% point
