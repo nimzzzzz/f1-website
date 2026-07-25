@@ -65,6 +65,28 @@ body {
   text-transform: uppercase;
 }
 
+/* Route change — the incoming page's content fades up over ~130ms. This is
+   all that remains of the old black wipe panel: pages serve from static
+   snapshots and arrive too fast for a covering transition to mean anything.
+   Starting at 0.55 rather than 0 keeps it a softening of the swap, not a
+   flash of empty page. */
+@keyframes routeFade {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.route-fade {
+  animation: routeFade 130ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .route-fade {
+    animation: none;
+  }
+}
+
 /* Oversized dim outline numerals (display-scale backdrop digits) */
 .outline-numeral {
   font-family: var(--font-display), sans-serif;
