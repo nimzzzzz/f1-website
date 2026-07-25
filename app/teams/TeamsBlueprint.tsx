@@ -15,6 +15,15 @@ import {
   leaderPath,
   type StageGeom,
 } from './blueprint-geometry'
+import {
+  CAR_DARK,
+  CAR_LIT,
+  calibrate,
+  glowGradient,
+  lightGradient,
+  measureRender,
+  warmRender,
+} from './render-calibration'
 
 gsap.registerPlugin(useGSAP)
 
@@ -35,21 +44,23 @@ export interface BlueprintTeam {
   colour: string
   points: number
   position: number
-  wins: number
+  /** Best classified GP finish this season, either car; null if never classified. */
+  bestFinish: number | null
   /** Points behind the team above; null for the championship leader. */
   gapAhead: number | null
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
-// The car's two grades. LIT is the settled, "on the launch stand" look —
-// a touch brighter than the site's `team` treatment because here the car IS
-// the subject rather than atmosphere behind type. DARK is the same filter
-// list (so GSAP can interpolate it) crushed to near-black.
-const CAR_LIT = 'saturate(0.86) contrast(1.05) brightness(1)'
-const CAR_DARK = 'saturate(0.2) contrast(1.5) brightness(0.06)'
+// 1ST / 2ND / 3RD / 4TH… — deliberately NOT the "P04" grammar the
+// championship callout uses, so two positional numbers on one panel can't be
+// mistaken for each other.
+const ordinal = (n: number) => {
+  const v = n % 100
+  const suffix = v >= 11 && v <= 13 ? 'TH' : (['TH', 'ST', 'ND', 'RD'][n % 10] ?? 'TH')
+  return `${n}${suffix}`
+}
 
-const LIGHT_PEAK = 0.5
 const LIGHT_REST = 0.16
 const GLOW_REST = 0.13
 const RULE_REST = 0.5
@@ -69,7 +80,14 @@ function callouts(team: BlueprintTeam): Record<string, Callout> {
   return {
     position: { key: 'position', caption: 'CHAMPIONSHIP', text: `P${pad2(team.position)}` },
     points: { key: 'points', caption: 'POINTS', count: team.points },
-    wins: { key: 'wins', caption: team.wins === 1 ? 'RACE WIN' : 'RACE WINS', count: team.wins },
+    // Replaced RACE WINS, which printed 0 on nine of eleven panels — the
+    // bottom-left number was a zero across most of the grid. Best finish is
+    // non-zero for every team and actually separates the midfield.
+    best: {
+      key: 'best',
+      caption: 'BEST FINISH',
+      text: team.bestFinish === null ? '—' : ordinal(team.bestFinish),
+    },
     gap:
       team.gapAhead === null
         ? { key: 'gap', caption: 'STATUS', text: 'LEADER' }
@@ -216,12 +234,24 @@ export default function TeamsBlueprint({
         })
       }
 
+      // Composed (scrolled past un-watched) must LOOK the same as unveiled, so
+      // it takes the same calibrated settled grade and light colour whenever
+      // the render is decoded enough to measure — otherwise a skipped dark
+      // livery would sit dimmer than the identical panel that got its reveal.
       const compose = (p: HTMLElement) => {
-        const { glow, light, rule, car, numeral, title, drawings } = parts(p)
+        const { glow, light, rule, car, img, numeral, title, drawings } = parts(p)
+        const cal =
+          img && img.complete && img.naturalWidth > 0
+            ? calibrate(measureRender(img), p.dataset.teamColour || '#F5F5F3')
+            : null
+        if (cal && cal.lightColour !== p.dataset.teamColour) {
+          if (light) light.style.background = lightGradient(cal.lightColour)
+          if (glow) glow.style.background = glowGradient(cal.lightColour)
+        }
         if (glow) gsap.set(glow, { opacity: GLOW_REST })
         if (light) gsap.set(light, { opacity: LIGHT_REST, yPercent: 0 })
         if (rule) gsap.set(rule, { scaleX: 1, opacity: RULE_REST })
-        if (car) gsap.set(car, { autoAlpha: 1, y: 0, filter: CAR_LIT })
+        if (car) gsap.set(car, { autoAlpha: 1, y: 0, filter: cal?.lit ?? CAR_LIT })
         if (numeral) gsap.set(numeral, { autoAlpha: 1, scale: 1 })
         if (title) gsap.set(title, { autoAlpha: 1, y: 0 })
         drawings.forEach(composeDrawing)
@@ -271,6 +301,18 @@ export default function TeamsBlueprint({
           return
         }
 
+        // Calibrate against THIS render. Measured off the image the browser
+        // has already decoded above, memoised per src, and degrading to a
+        // neutral calibration if the read fails — so a livery change is
+        // picked up on its own with no table to regenerate.
+        const cal = calibrate(measureRender(img!), p.dataset.teamColour || '#F5F5F3')
+        // A biased light only differs for near-grey team colours (Haas,
+        // Cadillac); everyone else keeps the SSR'd gradients untouched.
+        if (cal.lightColour !== p.dataset.teamColour) {
+          if (light) light.style.background = lightGradient(cal.lightColour)
+          if (glow) glow.style.background = glowGradient(cal.lightColour)
+        }
+
         const variant = activeVariant()
         const live = drawings.find((d) => d.dataset.variant === variant)
         // the variant CSS is hiding never animates — it sits composed
@@ -288,18 +330,36 @@ export default function TeamsBlueprint({
           tl.fromTo(
             light,
             { autoAlpha: 0, yPercent: 46 },
-            { autoAlpha: LIGHT_PEAK, yPercent: 0, duration: 0.9, ease: 'power2.out' },
+            { autoAlpha: cal.lightPeak, yPercent: 0, duration: 0.9, ease: 'power2.out' },
             0
           ).to(light, { autoAlpha: LIGHT_REST, duration: 0.8, ease: 'power2.inOut' }, 0.92)
         }
 
-        // 2 — the car emerges out of the darkness with it
+        // 2 — the car emerges out of the darkness with it. A dark livery
+        // ramps PAST its settled brightness and eases back — the overshoot is
+        // what gives a near-black car something to reveal; a bright one has
+        // enough of its own and goes straight to lit (overshoot === false).
+        const CAR_IN = 0.06
+        const rise = cal.duration * (cal.overshoot ? 0.7 : 1)
         tl.fromTo(
           car,
-          { autoAlpha: 0, y: 26, filter: CAR_DARK },
-          { autoAlpha: 1, y: 0, filter: CAR_LIT, duration: 0.98, ease: 'power3.out' },
-          0.06
+          { autoAlpha: 0, y: 26, filter: cal.dark },
+          {
+            autoAlpha: 1,
+            y: 0,
+            filter: cal.overshoot ? cal.peak : cal.lit,
+            duration: rise,
+            ease: 'power3.out',
+          },
+          CAR_IN
         )
+        if (cal.overshoot) {
+          tl.to(
+            car,
+            { filter: cal.lit, duration: cal.duration * 0.6, ease: 'power2.inOut' },
+            CAR_IN + rise
+          )
+        }
         if (rule) {
           tl.fromTo(
             rule,
@@ -323,9 +383,12 @@ export default function TeamsBlueprint({
           tl.fromTo(glow, { autoAlpha: 0 }, { autoAlpha: GLOW_REST, duration: 0.9, ease: 'power2.out' }, 0.55)
         }
 
-        // 3 — the drawing assembles: dot, leader line, label, number
+        // 3 — the drawing assembles: dot, leader line, label, number. Starts
+        // when the car has LANDED (end of the rise) rather than at a fixed
+        // clock, so a dark livery's longer ramp pushes the drawing back with
+        // it instead of drawing onto a car still emerging.
         if (live) {
-          const START = 0.95
+          const START = CAR_IN + rise + 0.05
           live.querySelectorAll<HTMLElement>('[data-callout]').forEach((g, k) => {
             const at = START + k * STAGGER
             const dot = g.querySelector('[data-dot]')
@@ -400,6 +463,9 @@ export default function TeamsBlueprint({
             if (done.has(p)) continue
             if (e.isIntersecting) {
               onScreen.add(p)
+              // Measure the render in idle time during the dwell, so the
+              // unveiling's first frame isn't paying for a canvas readback.
+              warmRender(p.querySelector<HTMLImageElement>('[data-car-img]'))
               if (timers.has(p)) continue
               timers.set(
                 p,
@@ -448,6 +514,7 @@ export default function TeamsBlueprint({
             href={`/teams/${slug}`}
             data-panel
             data-idx={i}
+            data-team-colour={team.colour}
             // pt clears the fixed 4rem top bar: at reading position a panel's
             // own top edge sits at viewport 0, i.e. behind the bar, and an
             // index row at pt-8 was being occluded on every panel but the first.
@@ -459,10 +526,7 @@ export default function TeamsBlueprint({
               data-glow
               aria-hidden
               className="pointer-events-none absolute inset-0"
-              style={{
-                background: `radial-gradient(72% 48% at 50% 76%, ${team.colour}, transparent 72%)`,
-                opacity: GLOW_REST,
-              }}
+              style={{ background: glowGradient(team.colour), opacity: GLOW_REST }}
             />
 
             {/* THE LIGHT — rises from below the frame during the unveiling and
@@ -474,10 +538,7 @@ export default function TeamsBlueprint({
               data-light
               aria-hidden
               className="pointer-events-none absolute inset-x-0 bottom-0 h-[78%]"
-              style={{
-                background: `linear-gradient(to top, ${team.colour} 0%, ${team.colour}59 24%, transparent 60%)`,
-                opacity: LIGHT_REST,
-              }}
+              style={{ background: lightGradient(team.colour), opacity: LIGHT_REST }}
             />
 
             <div className="relative flex items-start justify-between">
@@ -522,6 +583,11 @@ export default function TeamsBlueprint({
                 <div
                   data-car
                   aria-hidden
+                  // The car's grade lives HERE and nowhere else — the <img>
+                  // inside carries no filter. This inline value is the settled
+                  // grade an SSR'd, no-JS or reduced-motion panel shows; the
+                  // reveal replaces it with the per-team calibration.
+                  style={{ filter: CAR_LIT }}
                   className="pointer-events-none absolute left-[2%] w-[96%] top-[37.5%] h-[23.75%] md:left-[11%] md:w-[78%] md:top-[28.3%] md:h-[45.8%]"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -533,7 +599,6 @@ export default function TeamsBlueprint({
                     fetchPriority={i === 0 ? 'high' : 'auto'}
                     decoding="async"
                     className="h-full w-full object-contain object-center"
-                    style={{ filter: CAR_LIT }}
                   />
                 </div>
               )}
@@ -580,7 +645,7 @@ export default function TeamsBlueprint({
                     on the car instead, so nothing is said twice */}
                 <span className="md:hidden">P{pad2(team.position)}</span>
                 <span className="md:hidden">
-                  {team.wins} {team.wins === 1 ? 'WIN' : 'WINS'}
+                  BEST {team.bestFinish === null ? '—' : ordinal(team.bestFinish)}
                 </span>
                 <span className="opacity-0 transition-opacity duration-300 group-hover:opacity-100 motion-reduce:transition-none">
                   TEAM &rarr;
