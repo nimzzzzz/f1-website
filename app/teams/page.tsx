@@ -1,7 +1,7 @@
 import { Suspense } from 'react'
 import { buildSeasonSnapshot } from '@/lib/season-data-server'
 import WarmingRetry from '@/components/WarmingRetry'
-import TeamsBands, { type BandTeam } from './TeamsBands'
+import TeamsBlueprint, { type BlueprintTeam } from './TeamsBlueprint'
 
 // STATIC with ISR, same regime as /api/season-data and /drivers: built
 // from the bundle, background-revalidated every 5 minutes, failed
@@ -24,7 +24,7 @@ function Skeleton() {
   )
 }
 
-async function Bands() {
+async function Blueprint() {
   const snap = await buildSeasonSnapshot()
   const bundle = snap.blocked ? null : snap
 
@@ -50,27 +50,24 @@ async function Bands() {
     )
   }
 
-  // Rosters join from driverStandings (surname + number, sorted by number) —
-  // no separate drivers fetch.
-  const rosterByTeam = new Map<string, { surname: string; driverNumber: number }[]>()
-  for (const d of bundle.driverStandings) {
-    if (!rosterByTeam.has(d.teamName)) rosterByTeam.set(d.teamName, [])
-    rosterByTeam.get(d.teamName)!.push({ surname: d.surname, driverNumber: d.driverNumber })
-  }
-  for (const roster of rosterByTeam.values()) {
-    roster.sort((a, b) => a.driverNumber - b.driverNumber)
-  }
+  // This page is the CONSTRUCTOR and the MACHINE — no roster. Drivers have
+  // their own page, and the callouts on each car are the substance here.
+  //
+  // Points are floored before the gap is taken so the callout arithmetic
+  // matches the numbers actually printed (a raw subtraction of unrounded
+  // OpenF1 points can print a gap one off from the two totals beside it).
+  const rows = bundle.teamStandings.map((t) => ({ ...t, points: Math.floor(t.points) }))
 
-  const teams: BandTeam[] = bundle.teamStandings.map((t) => ({
+  const teams: BlueprintTeam[] = rows.map((t, i) => ({
     name: t.teamName,
     colour: `#${t.teamColour || 'F5F5F3'}`,
-    points: Math.floor(t.points),
+    points: t.points,
     position: t.position,
     wins: t.wins,
-    drivers: rosterByTeam.get(t.teamName) ?? [],
+    gapAhead: i === 0 ? null : rows[i - 1].points - t.points,
   }))
 
-  return <TeamsBands teams={teams} seasonYear={bundle.seasonYear} />
+  return <TeamsBlueprint teams={teams} seasonYear={bundle.seasonYear} />
 }
 
 export default function TeamsPage() {
@@ -78,7 +75,7 @@ export default function TeamsPage() {
   // blanking first paint; the warm path resolves before the first flush.
   return (
     <Suspense fallback={<Skeleton />}>
-      <Bands />
+      <Blueprint />
     </Suspense>
   )
 }
