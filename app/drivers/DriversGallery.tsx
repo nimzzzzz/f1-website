@@ -173,6 +173,15 @@ export default function DriversGallery({ drivers }: { drivers: GalleryDriver[] }
           const TRAVEL = 44
           const WALL_DUR = 1.15
           const HEADSHOT_FRAC = 0.75 // headshot centre, as a panel-width fraction
+          // Peak wall opacity — the dial that governs the sweep's hotness.
+          // Under screen blend the added light is α·(screen(base,src) − base),
+          // so this scales the whole wall, and it lifts the gradient's white
+          // core stop off the 255 ceiling: at α=1 that core clipped to pure
+          // white on every team, which read as blow-out on the lightest
+          // colours (papaya). Measured in isolation, 0.82 is the ~15%-down
+          // point (peak luma 255 → 218); 0.85 only got ~12.5% because
+          // compositing over the panel base isn't linear in luma.
+          const WALL_PEAK = 0.82
           // core (bright centre) panel-fraction from the element's live xPercent:
           // the wall box is 128% wide (‑14% inset each side), so its 50% point
           // maps to 0.5 + 1.28·(xPercent/100) in panel-width units.
@@ -200,7 +209,7 @@ export default function DriversGallery({ drivers }: { drivers: GalleryDriver[] }
             if (!glowFired && passedPast(f, from > 0 ? 1 : 0)) riseGlow()
           }
           tl.set(wall, { willChange: 'transform', xPercent: from * -TRAVEL, opacity: 0 }, 0)
-            .to(wall, { opacity: 1, duration: 0.32, ease: 'sine.out' }, 0)
+            .to(wall, { opacity: WALL_PEAK, duration: 0.32, ease: 'sine.out' }, 0)
             .to(
               wall,
               {
