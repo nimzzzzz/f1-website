@@ -15,6 +15,7 @@ import {
 } from '@/lib/openf1'
 import { fetchSeasonData } from '@/lib/season-data'
 import IntroSequence, { type RevealMode } from '@/components/IntroSequence'
+import { introMayPlay, consumeIntro } from '@/lib/intro-gate'
 import NowSection from '@/components/home/NowSection'
 import FightSection, { type FightRow } from '@/components/home/FightSection'
 import LastRaceSection, { type PodiumRow } from '@/components/home/LastRaceSection'
@@ -103,10 +104,26 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
   const [winners, setWinners] = useState<Record<number, string>>(
     () => initialBundle?.winnersByRound ?? {}
   )
-  // Cinematic intro overlay — plays on every visit to /; data fetching below
-  // runs in parallel behind it.
-  const [introActive, setIntroActive] = useState(true)
-  const [reveal, setReveal] = useState<'hidden' | RevealMode>('hidden')
+  // Cinematic intro overlay — plays when "/" is opened as a new document
+  // (fresh load, reload, new tab, direct link), never on a client-side route
+  // change back to "/" mid-session. Data fetching below runs in parallel
+  // behind it. The gate is read once per mount so the value can't change
+  // under the tree mid-session.
+  const [playIntro] = useState(introMayPlay)
+  const [introActive, setIntroActive] = useState(playIntro)
+  // Content mounts hidden ONLY when something is about to cover it. Arriving
+  // without the intro (a nav back to "/") must land on visible content —
+  // 'instant' skips the cascade, leaving the shell's 130ms route fade as the
+  // only transition.
+  const [reveal, setReveal] = useState<'hidden' | RevealMode>(playIntro ? 'hidden' : 'instant')
+
+  // Claim the document's one intro play, so returning to "/" later in the
+  // same session doesn't replay it. In an effect rather than the state
+  // initializer above: initializers can run twice (StrictMode) and would
+  // consume the claim before the intro ever rendered.
+  useEffect(() => {
+    if (playIntro) consumeIntro()
+  }, [playIntro])
 
   const handleIntroReveal = useCallback((mode: RevealMode) => setReveal(mode), [])
   const handleIntroDone = useCallback(() => {
