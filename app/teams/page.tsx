@@ -5,10 +5,12 @@ import WarmingRetry from '@/components/WarmingRetry'
 import TeamsBlueprint from './TeamsBlueprint'
 
 // STATIC with ISR, same regime as /api/season-data and /drivers: built
-// from the bundle, background-revalidated every 5 minutes, failed
+// from the bundle, background-revalidated every 60 seconds, failed
 // revalidations keep the last good page, and no request-time fetch can
 // fail (the old SSR self-fetch broke on Vercel-authenticated hosts).
-export const revalidate = 300
+// 60 rather than the 300 this used to declare — see the note in
+// app/drivers/page.tsx; 60 was already the effective value.
+export const revalidate = 60
 export const maxDuration = 60
 
 function Skeleton() {

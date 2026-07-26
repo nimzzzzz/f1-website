@@ -6,12 +6,19 @@ import { toGalleryDrivers } from '@/lib/season-view'
 
 // STATIC with ISR, same regime as /api/season-data: the page is generated
 // at build time from the season bundle and re-generated in the background
-// every 5 minutes; a failed revalidation throws and keeps the last good
+// every 60 seconds; a failed revalidation throws and keeps the last good
 // page. NO request-time data fetch exists — the previous SSR self-fetch
 // to the deployment's own API failed under real conditions the API never
 // showed (proven: any Vercel-authenticated host poisons the cookie-less
 // self-fetch with an SSO redirect while the browser API call succeeds).
-export const revalidate = 300
+//
+// 60, not 300: this used to declare 300 while the build baked 60, because
+// computeSeasonData's inner openf1 fetches are revalidate-60 and Next takes
+// the MINIMUM of the route and its fetches. 60 was therefore already the
+// real behaviour — declaring it changes nothing at runtime and stops the
+// code lying. Raising the fetches to 300 to honour the old number would
+// have made the site staler, which is the opposite of what is wanted.
+export const revalidate = 60
 // Background revalidations fetch ~17 paced result sets.
 export const maxDuration = 60
 

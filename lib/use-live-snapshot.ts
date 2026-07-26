@@ -25,11 +25,15 @@ import type { SeasonBundle } from '@/lib/season-data'
 // therefore leaves the page exactly as server-rendered, which is the
 // persistence principle the whole data layer is built on.
 
-// The first attempt is what fixes the common case. The later two exist for
-// the stale-while-revalidate case: our own request is often what kicks off
-// the regeneration, so the fresh snapshot only lands a few seconds later.
-// Bounded on purpose — this is convergence, not polling.
-const ATTEMPTS_MS = [0, 4000, 12000]
+// The first attempt fixes the common case. The rest exist for the
+// stale-while-revalidate case: our own request is often what KICKS OFF the
+// regeneration, and that compute takes ~15s of paced openf1 reads, so the
+// fresh snapshot cannot possibly be there yet. Observed live: the edge
+// serving a 756s-old copy with x-vercel-cache: STALE. The last attempt sits
+// past the compute window so a cold arrival still converges on this page
+// load rather than needing a second visit. Bounded on purpose — this is
+// convergence, not polling, and it stops the moment it has something newer.
+const ATTEMPTS_MS = [0, 4000, 12000, 25000]
 
 export function useLiveSnapshot(ssrComputedAt: string | null): SeasonBundle | null {
   const [fresher, setFresher] = useState<SeasonBundle | null>(null)
