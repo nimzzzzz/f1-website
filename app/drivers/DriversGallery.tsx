@@ -8,6 +8,8 @@ import { driverImage, carImage } from '@/lib/media-manifest'
 import { teamToSlug } from '@/lib/team-data'
 import TreatedImage from '@/components/media/TreatedImage'
 import { TransitionLink } from '@/components/motion/TransitionProvider'
+import { useLiveSnapshot } from '@/lib/use-live-snapshot'
+import { toGalleryDrivers, type GalleryDriver } from '@/lib/season-view'
 
 gsap.registerPlugin(ScrollTrigger, useGSAP)
 
@@ -18,16 +20,7 @@ gsap.registerPlugin(ScrollTrigger, useGSAP)
 // panel becomes active its team's car sweeps in from off-screen with motion
 // blur and settles large behind the number, a team-colour light wall sweeps
 // across, and a faint ambient glow stays.
-export interface GalleryDriver {
-  driverNumber: number
-  firstName: string
-  surname: string
-  teamName: string
-  teamColour: string
-  nameAcronym: string
-  countryCode: string | null
-  points: number
-}
+export type { GalleryDriver }
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
@@ -36,7 +29,20 @@ const pad2 = (n: number) => String(n).padStart(2, '0')
 const CAR_FILTER = 'saturate(0.75) contrast(1.05) brightness(0.6)'
 const GLOW_REST = 0.14
 
-export default function DriversGallery({ drivers }: { drivers: GalleryDriver[] }) {
+export default function DriversGallery({
+  drivers: ssrDrivers,
+  computedAt,
+}: {
+  drivers: GalleryDriver[]
+  computedAt: string | null
+}) {
+  // Converge on the freshest snapshot after hydration; the SSR'd standings
+  // are the floor. Driver count is stable across a refresh, so the pinned
+  // scrub's useGSAP (keyed on drivers.length) does not re-run — only the
+  // numbers and the championship ordering update.
+  const live = useLiveSnapshot(computedAt)
+  const drivers = live ? toGalleryDrivers(live) : ssrDrivers
+
   const sectionRef = useRef<HTMLElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
@@ -58,8 +64,15 @@ export default function DriversGallery({ drivers }: { drivers: GalleryDriver[] }
         glow: HTMLElement | null
         shot: HTMLElement | null
       }
+      // Resolved by LIVE index, not from the array captured above. A client
+      // refresh can reorder the standings, and React's keyed reconciliation
+      // moves the existing panel nodes — so a snapshot array taken at init
+      // would keep the old index → element mapping and fire the car blast on
+      // the wrong panel. Re-querying costs one selector call per panel change.
+      const panelAt = (i: number): HTMLElement | undefined =>
+        section.querySelectorAll<HTMLElement>('[data-panel]')[i]
       const parts = (i: number): Parts => {
-        const p = panelEls[i]
+        const p = panelAt(i)
         return {
           car: p?.querySelector('[data-car]') ?? null,
           img: p?.querySelector<HTMLImageElement>('[data-car-img]') ?? null,

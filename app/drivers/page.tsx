@@ -1,7 +1,8 @@
 import { Suspense } from 'react'
 import { buildSeasonSnapshot } from '@/lib/season-data-server'
 import WarmingRetry from '@/components/WarmingRetry'
-import DriversGallery, { type GalleryDriver } from './DriversGallery'
+import DriversGallery from './DriversGallery'
+import { toGalleryDrivers } from '@/lib/season-view'
 
 // STATIC with ISR, same regime as /api/season-data: the page is generated
 // at build time from the season bundle and re-generated in the background
@@ -51,18 +52,11 @@ async function Gallery() {
     )
   }
 
-  const drivers: GalleryDriver[] = bundle.driverStandings.map((d) => ({
-    driverNumber: d.driverNumber,
-    firstName: d.firstName,
-    surname: d.surname,
-    teamName: d.teamName,
-    teamColour: d.teamColour,
-    nameAcronym: d.nameAcronym,
-    countryCode: d.countryCode,
-    points: d.points,
-  }))
+  // Derived through lib/season-view so the client refresh re-derives with
+  // exactly the same code — see useLiveSnapshot in DriversGallery.
+  const drivers = toGalleryDrivers(bundle)
 
-  return <DriversGallery drivers={drivers} />
+  return <DriversGallery drivers={drivers} computedAt={bundle.computedAt} />
 }
 
 export default function DriversPage() {

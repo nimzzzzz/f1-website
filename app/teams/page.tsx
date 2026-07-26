@@ -1,8 +1,8 @@
 import { Suspense } from 'react'
 import { buildSeasonSnapshot } from '@/lib/season-data-server'
-import { asNum } from '@/lib/format'
+import { toBlueprintTeams } from '@/lib/season-view'
 import WarmingRetry from '@/components/WarmingRetry'
-import TeamsBlueprint, { type BlueprintTeam } from './TeamsBlueprint'
+import TeamsBlueprint from './TeamsBlueprint'
 
 // STATIC with ISR, same regime as /api/season-data and /drivers: built
 // from the bundle, background-revalidated every 5 minutes, failed
@@ -54,40 +54,18 @@ async function Blueprint() {
   // This page is the CONSTRUCTOR and the MACHINE — no roster. Drivers have
   // their own page, and the callouts on each car are the substance here.
   //
-  // Points are floored before the gap is taken so the callout arithmetic
-  // matches the numbers actually printed (a raw subtraction of unrounded
-  // OpenF1 points can print a gap one off from the two totals beside it).
-  const rows = bundle.teamStandings.map((t) => ({ ...t, points: Math.floor(t.points) }))
+  // The derivation (floored points, best classified finish, gap to the team
+  // above) lives in lib/season-view so the client refresh re-derives through
+  // exactly the same code — see useLiveSnapshot in TeamsBlueprint.
+  const teams = toBlueprintTeams(bundle)
 
-  // BEST FINISH — best CLASSIFIED grand prix result this season from either
-  // car. Derived from resultsByRound, which the bundle already carries: it is
-  // grand-prix-only (matching the wins semantic it replaces) and already
-  // flags retirements and exclusions with `out`, so no schema change, no
-  // extra upstream call, and nothing new to fetch at request time.
-  const teamOfDriver = new Map(bundle.driverStandings.map((d) => [d.driverNumber, d.teamName]))
-  const bestByTeam = new Map<string, number>()
-  for (const round of Object.values(bundle.resultsByRound)) {
-    for (const row of round) {
-      if (row.out) continue // DNF / DNS / DSQ still carries a position upstream
-      const pos = asNum(row.p) // positions can arrive as strings after reprocessing
-      if (pos === null) continue
-      const team = teamOfDriver.get(row.d)
-      if (!team) continue
-      const current = bestByTeam.get(team)
-      if (current === undefined || pos < current) bestByTeam.set(team, pos)
-    }
-  }
-
-  const teams: BlueprintTeam[] = rows.map((t, i) => ({
-    name: t.teamName,
-    colour: `#${t.teamColour || 'F5F5F3'}`,
-    points: t.points,
-    position: t.position,
-    bestFinish: bestByTeam.get(t.teamName) ?? null,
-    gapAhead: i === 0 ? null : rows[i - 1].points - t.points,
-  }))
-
-  return <TeamsBlueprint teams={teams} seasonYear={bundle.seasonYear} />
+  return (
+    <TeamsBlueprint
+      teams={teams}
+      seasonYear={bundle.seasonYear}
+      computedAt={bundle.computedAt}
+    />
+  )
 }
 
 export default function TeamsPage() {
