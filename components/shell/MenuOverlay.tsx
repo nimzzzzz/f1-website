@@ -22,7 +22,6 @@ const ROUTES: Array<{ label: string; href: string }> = [
   { label: 'Weather', href: '/weather' },
   { label: 'Race Control', href: '/race-control' },
   { label: 'Sports Cards', href: '/sports-cards' },
-  { label: 'Highlights', href: '/highlights' },
 ]
 
 export default function MenuOverlay({
