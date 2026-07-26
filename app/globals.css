@@ -129,3 +129,29 @@ body::after {
     0 20px 40px -15px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(14px);
 }
+
+/* ── Reduced-motion backstop ──────────────────────────────────────────────
+   Tailwind's animate-* utilities are UNCONDITIONAL — animate-pulse keeps
+   looping under prefers-reduced-motion unless every single call site
+   remembers `motion-reduce:animate-none`. Across this codebase most did and
+   several did not, which is exactly the failure mode a per-site convention
+   has: it is invisible when you forget it.
+
+   The site's own gate is "reduced motion is fully readable and STATIC", so
+   the guarantee belongs here rather than in ~30 class lists. This kills the
+   looping utilities by class, which covers every skeleton pulse and every
+   live/next-race status dot at once — including any added later.
+
+   Scoped deliberately to looping DECORATIVE utilities: it does not touch
+   .route-fade (which carries its own reduce guard above), GSAP (inline
+   transforms, not CSS animations), or framer-motion (which the intro and
+   home already collapse to zero-duration under reduce). */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse,
+  .animate-marquee,
+  .animate-spin,
+  .animate-bounce,
+  .animate-ping {
+    animation: none;
+  }
+}
