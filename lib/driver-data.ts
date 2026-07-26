@@ -55,24 +55,6 @@ export const CAREER_STATS: Record<string, {
   LIN: { grandsPrix: 2,   points: 4,      podiums: 0,   poles: 0,  wins: 0,   championships: 0 },
 }
 
-// Map a hex team colour to the nearest GlowCard glowColor
-export function teamColorToGlow(hex: string): 'blue' | 'purple' | 'green' | 'red' | 'orange' {
-  const map: Record<string, 'blue' | 'purple' | 'green' | 'red' | 'orange'> = {
-    'F47600': 'orange', // McLaren
-    'E8002D': 'red',    // Ferrari
-    '3671C6': 'blue',   // Red Bull
-    '27F4D2': 'blue',   // Mercedes
-    '00704A': 'green',  // Aston Martin
-    '00A1E8': 'blue',   // Alpine
-    '0082FA': 'blue',   // Williams
-    '6692FF': 'purple', // Racing Bulls
-    'DEE1E2': 'blue',   // Haas
-    'DA291C': 'red',    // Audi
-    'FFB81C': 'orange', // Cadillac
-  }
-  return map[hex?.toUpperCase()] ?? 'red'
-}
-
 export const DRIVER_NATIONALITIES: Record<string, string> = {
   VER: 'Dutch',
   HAM: 'British',
