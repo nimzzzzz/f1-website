@@ -131,21 +131,26 @@ body::after {
 }
 
 /* ── Reduced-motion backstop ──────────────────────────────────────────────
-   Tailwind's animate-* utilities are UNCONDITIONAL — animate-pulse keeps
-   looping under prefers-reduced-motion unless every single call site
-   remembers `motion-reduce:animate-none`. Across this codebase most did and
-   several did not, which is exactly the failure mode a per-site convention
-   has: it is invisible when you forget it.
+   IF YOU ARE HERE ASKING "why doesn't animate-pulse animate under reduced
+   motion" — this rule is why, and it is deliberate. Do not delete it; add a
+   `motion-safe:` variant to the one element that genuinely needs to move.
 
-   The site's own gate is "reduced motion is fully readable and STATIC", so
-   the guarantee belongs here rather than in ~30 class lists. This kills the
-   looping utilities by class, which covers every skeleton pulse and every
-   live/next-race status dot at once — including any added later.
+   Tailwind's animate-* utilities are UNCONDITIONAL: they keep looping under
+   prefers-reduced-motion unless every call site remembers
+   `motion-reduce:animate-none`. An audit found 3 of the 8 shipping status
+   dots had been missed — including the LIVE dot in the top bar, which lives
+   in the shell and therefore pulsed on EVERY route. That is the failure mode
+   of a per-call-site convention: forgetting it is invisible.
+
+   So the guarantee lives here rather than in ~30 class lists (the loading
+   skeletons were all unguarded too). Disabling by class covers every skeleton
+   pulse and every status dot at once, including ones added later.
 
    Scoped deliberately to looping DECORATIVE utilities: it does not touch
    .route-fade (which carries its own reduce guard above), GSAP (inline
    transforms, not CSS animations), or framer-motion (which the intro and
-   home already collapse to zero-duration under reduce). */
+   home already collapse to zero-duration under reduce). Elements keep their
+   static appearance — opacity 1, visible — they simply stop moving. */
 @media (prefers-reduced-motion: reduce) {
   .animate-pulse,
   .animate-marquee,
