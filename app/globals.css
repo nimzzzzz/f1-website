@@ -129,3 +129,34 @@ body::after {
     0 20px 40px -15px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(14px);
 }
+
+/* ── Reduced-motion backstop ──────────────────────────────────────────────
+   IF YOU ARE HERE ASKING "why doesn't animate-pulse animate under reduced
+   motion" — this rule is why, and it is deliberate. Do not delete it; add a
+   `motion-safe:` variant to the one element that genuinely needs to move.
+
+   Tailwind's animate-* utilities are UNCONDITIONAL: they keep looping under
+   prefers-reduced-motion unless every call site remembers
+   `motion-reduce:animate-none`. An audit found 3 of the 8 shipping status
+   dots had been missed — including the LIVE dot in the top bar, which lives
+   in the shell and therefore pulsed on EVERY route. That is the failure mode
+   of a per-call-site convention: forgetting it is invisible.
+
+   So the guarantee lives here rather than in ~30 class lists (the loading
+   skeletons were all unguarded too). Disabling by class covers every skeleton
+   pulse and every status dot at once, including ones added later.
+
+   Scoped deliberately to looping DECORATIVE utilities: it does not touch
+   .route-fade (which carries its own reduce guard above), GSAP (inline
+   transforms, not CSS animations), or framer-motion (which the intro and
+   home already collapse to zero-duration under reduce). Elements keep their
+   static appearance — opacity 1, visible — they simply stop moving. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse,
+  .animate-marquee,
+  .animate-spin,
+  .animate-bounce,
+  .animate-ping {
+    animation: none;
+  }
+}

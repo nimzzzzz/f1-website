@@ -385,7 +385,7 @@ export default function SeasonSection({
                       {meeting.circuit_short_name}
                       {isNext && (
                         <span
-                          className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--accent)]"
+                          className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none"
                           aria-label="Next race"
                         />
                       )}

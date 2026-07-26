@@ -70,7 +70,7 @@ export default function TopBar({
               <span aria-hidden>—</span>
               {race.isLive ? (
                 <span className="flex items-center gap-1.5 text-[var(--accent)]">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)]" />
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none" />
                   LIVE
                 </span>
               ) : race.raceStart ? (
