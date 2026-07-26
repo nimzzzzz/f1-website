@@ -295,6 +295,27 @@ export default function DriversGallery({ drivers }: { drivers: GalleryDriver[] }
               start: 'top top',
               end: () => `+=${Math.max(window.innerHeight, distance() * 0.45)}`,
               pin: true,
+              // Pin by TRANSFORM, not by position: fixed — this is a CLS fix,
+              // not a preference. <main> carries pt-16 to clear the fixed top
+              // bar, so this section sits in flow at document y=64. Pinning it
+              // with `position: fixed; top: 0` is a genuine 64px positional
+              // change in the layout tree (plus a 1px height reflow, 805→806),
+              // and Chrome scores it as a layout shift every single time the
+              // gallery is scrolled into — measured 0.0429, identically on warm
+              // and cold cache. It is visually near-seamless, which is exactly
+              // why it went unnoticed: the only visible artefact is a ~5px
+              // hop from Lenis's per-frame scroll granularity (the pin engages
+              // on the first frame where scrollY >= 64, in practice ~69).
+              //
+              // Transform-induced movement is excluded from the Layout
+              // Instability spec, so pinning this way scores 0 while looking
+              // the same. It also keeps the element in flow: no position
+              // switch, no height reflow, and no containing-block change for
+              // the absolutely-positioned progress rail (whose own zero-rect
+              // entry in the shift was a symptom of that switch, not a late
+              // mount). This is also the pinType Lenis recommends for
+              // smooth-scroll setups, which this site is.
+              pinType: 'transform',
               scrub: 0.5,
               invalidateOnRefresh: true,
               onUpdate: (st) => setPanel(st.progress),
