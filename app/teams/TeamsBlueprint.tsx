@@ -3,6 +3,8 @@
 import { useRef } from 'react'
 import gsap from 'gsap'
 import { useGSAP } from '@gsap/react'
+import { useLiveSnapshot } from '@/lib/use-live-snapshot'
+import { toBlueprintTeams, type BlueprintTeam } from '@/lib/season-view'
 import { teamToSlug } from '@/lib/team-data'
 import { carImage, teamLogoImage } from '@/lib/media-manifest'
 import TreatedImage from '@/components/media/TreatedImage'
@@ -39,16 +41,7 @@ gsap.registerPlugin(useGSAP)
 //
 // Identity (name, colour, standings) is SSR'd by app/teams/page.tsx straight
 // from the server bundle — this component owns only the interaction layer.
-export interface BlueprintTeam {
-  name: string
-  colour: string
-  points: number
-  position: number
-  /** Best classified GP finish this season, either car; null if never classified. */
-  bestFinish: number | null
-  /** Points behind the team above; null for the championship leader. */
-  gapAhead: number | null
-}
+export type { BlueprintTeam }
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
@@ -194,13 +187,24 @@ function Drawing({
 }
 
 export default function TeamsBlueprint({
-  teams,
+  teams: ssrTeams,
   seasonYear,
+  computedAt,
 }: {
   teams: BlueprintTeam[]
   seasonYear: number | null
+  computedAt: string | null
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
+
+  // Converge on the freshest snapshot after hydration. The SSR'd standings
+  // are the floor — useLiveSnapshot only ever yields something strictly
+  // newer, so a failed or blocked fetch leaves this page exactly as the
+  // server rendered it. Team count is stable across a refresh, so the
+  // reveal's useGSAP (keyed on teams.length) does not re-run; only the
+  // numbers and the ordering update.
+  const live = useLiveSnapshot(computedAt)
+  const teams = live ? toBlueprintTeams(live) : ssrTeams
 
   useGSAP(
     () => {
