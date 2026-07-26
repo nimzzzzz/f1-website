@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
 import { buildSeasonSnapshot } from '@/lib/season-data-server'
+import { asNum } from '@/lib/format'
 import WarmingRetry from '@/components/WarmingRetry'
 import TeamsBlueprint, { type BlueprintTeam } from './TeamsBlueprint'
 
@@ -58,12 +59,31 @@ async function Blueprint() {
   // OpenF1 points can print a gap one off from the two totals beside it).
   const rows = bundle.teamStandings.map((t) => ({ ...t, points: Math.floor(t.points) }))
 
+  // BEST FINISH — best CLASSIFIED grand prix result this season from either
+  // car. Derived from resultsByRound, which the bundle already carries: it is
+  // grand-prix-only (matching the wins semantic it replaces) and already
+  // flags retirements and exclusions with `out`, so no schema change, no
+  // extra upstream call, and nothing new to fetch at request time.
+  const teamOfDriver = new Map(bundle.driverStandings.map((d) => [d.driverNumber, d.teamName]))
+  const bestByTeam = new Map<string, number>()
+  for (const round of Object.values(bundle.resultsByRound)) {
+    for (const row of round) {
+      if (row.out) continue // DNF / DNS / DSQ still carries a position upstream
+      const pos = asNum(row.p) // positions can arrive as strings after reprocessing
+      if (pos === null) continue
+      const team = teamOfDriver.get(row.d)
+      if (!team) continue
+      const current = bestByTeam.get(team)
+      if (current === undefined || pos < current) bestByTeam.set(team, pos)
+    }
+  }
+
   const teams: BlueprintTeam[] = rows.map((t, i) => ({
     name: t.teamName,
     colour: `#${t.teamColour || 'F5F5F3'}`,
     points: t.points,
     position: t.position,
-    wins: t.wins,
+    bestFinish: bestByTeam.get(t.teamName) ?? null,
     gapAhead: i === 0 ? null : rows[i - 1].points - t.points,
   }))
 

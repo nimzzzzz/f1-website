@@ -71,7 +71,7 @@ export const DESKTOP: StageGeom = {
       side: 'right',
     },
     {
-      key: 'wins',
+      key: 'best',
       anchor: REAR_TYRE,
       elbow: { x: 258, y: 505 },
       end: { x: 40, y: 505 },
