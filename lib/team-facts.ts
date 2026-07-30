@@ -10,9 +10,13 @@
 //                  official record attributes them)
 //   lineage      — predecessor identities in order, [] for new entries
 //
-// UNVERIFIED markers: values I could not confirm against the site's own
-// data. 2026 team principals especially — several changed during 2025 and
-// may have changed again since. Review before merge.
+// HAND-CURATED — none of this comes from the data pipeline. Team
+// principals in particular change mid-season (two 2026 changes are already
+// baked in below). Re-verify this file annually, and after any principal
+// news.
+//
+// UNVERIFIED markers (`unverified` field): values still needing human
+// confirmation. Everything else was reviewed 2026-07-30.
 
 export interface TeamFacts {
   founded: number
@@ -51,11 +55,8 @@ export const TEAM_FACTS: Record<string, TeamFacts> = {
     base: 'Woking, United Kingdom',
     principal: 'Andrea Stella',
     engine: 'Mercedes',
-    // 2025 assumed from the season having completed before this site's data
-    // begins — the bundle only carries 2026.
     titles: [1974, 1984, 1985, 1988, 1989, 1990, 1991, 1998, 2024, 2025],
     lineage: [],
-    unverified: ['titles (2025 entry)'],
   },
   'red-bull-racing': {
     founded: 2005,
@@ -65,7 +66,6 @@ export const TEAM_FACTS: Record<string, TeamFacts> = {
     engine: 'Red Bull Ford',
     titles: [2010, 2011, 2012, 2013, 2022, 2023],
     lineage: ['Stewart', 'Jaguar', 'Red Bull Racing'],
-    unverified: ['principal'],
   },
   alpine: {
     founded: 2021,
@@ -75,7 +75,6 @@ export const TEAM_FACTS: Record<string, TeamFacts> = {
     engine: 'Mercedes',
     titles: [],
     lineage: ['Toleman', 'Benetton', 'Renault', 'Lotus', 'Renault', 'Alpine'],
-    unverified: ['principal (de facto — no formal TP as of last knowledge)'],
   },
   'racing-bulls': {
     founded: 2024,
@@ -85,7 +84,6 @@ export const TEAM_FACTS: Record<string, TeamFacts> = {
     engine: 'Red Bull Ford',
     titles: [],
     lineage: ['Minardi', 'Toro Rosso', 'AlphaTauri', 'Racing Bulls'],
-    unverified: ['principal'],
   },
   'haas-f1-team': {
     founded: 2014,
@@ -109,21 +107,23 @@ export const TEAM_FACTS: Record<string, TeamFacts> = {
     founded: 2026,
     firstSeason: 1993,
     base: 'Hinwil, Switzerland',
-    principal: 'Jonathan Wheatley',
+    // Binotto took the TP role two races into 2026 (Wheatley's exit
+    // announced 20 March 2026), alongside heading the Audi F1 Project.
+    principal: 'Mattia Binotto',
     engine: 'Audi',
     titles: [],
     lineage: ['Sauber', 'BMW Sauber', 'Sauber', 'Alfa Romeo', 'Kick Sauber', 'Audi'],
-    unverified: ['principal'],
   },
   'aston-martin': {
     founded: 2021,
     firstSeason: 1991,
     base: 'Silverstone, United Kingdom',
-    principal: 'Andy Cowell',
+    // VOLATILE: Newey holds the TP role from 2026 (Cowell is CEO), and
+    // Wheatley is rumoured to succeed him — re-check this one first.
+    principal: 'Adrian Newey',
     engine: 'Honda',
     titles: [],
     lineage: ['Jordan', 'Midland', 'Spyker', 'Force India', 'Racing Point', 'Aston Martin'],
-    unverified: ['principal'],
   },
   cadillac: {
     founded: 2026,
@@ -133,7 +133,7 @@ export const TEAM_FACTS: Record<string, TeamFacts> = {
     engine: 'Ferrari',
     titles: [],
     lineage: [],
-    unverified: ['principal', 'base (UK operations at Silverstone)'],
+    unverified: ['base (US HQ vs the Silverstone UK operations split)'],
   },
 }
 
