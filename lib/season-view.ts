@@ -1,5 +1,6 @@
 import type { SeasonBundle } from '@/lib/season-data'
 import { asNum } from '@/lib/format'
+import { getRaceMeetings, CANCELLED_COUNTRIES } from '@/lib/openf1'
 
 // Pure bundle → view-model derivations, deliberately shared by BOTH the
 // server render and the client refresh.
@@ -49,6 +50,172 @@ export function toGalleryDrivers(bundle: SeasonBundle): GalleryDriver[] {
     countryCode: d.countryCode,
     points: d.points,
   }))
+}
+
+// ── driver detail: THE SEASON LINE ───────────────────────────────────────
+
+/**
+ * finished  — classified GP result, a point on the line
+ * out       — retired / excluded (the bundle's `out` bit collapses
+ *             DNF/DNS/DSQ into one flag, so the label is generic): the line
+ *             BREAKS here
+ * absent    — round happened, driver has no result row (joined mid-season):
+ *             the line passes it by
+ * upcoming  — not yet run: ghost station, no line
+ * cancelled — struck from the calendar, kept in sequence
+ */
+export type StationStatus = 'finished' | 'out' | 'absent' | 'upcoming' | 'cancelled'
+
+export interface SeasonStation {
+  round: number // calendar sequence, cancelled rounds included
+  circuit: string
+  country: string
+  /** ISO date_start — formatted by the view with explicit locale + UTC. */
+  date: string
+  status: StationStatus
+  position: number | null
+  points: number
+  /**
+   * Label for an out station. DNF stands in for the bundle's collapsed
+   * DNF/DNS/DSQ bit; NC is a result row with no position and no out flag
+   * (upstream marks some unclassified finishes this way — rendering it as a
+   * position would print "P—").
+   */
+  outLabel?: 'DNF' | 'NC'
+}
+
+export interface DuelView {
+  surname: string
+  acronym: string
+  theirPoints: number
+  myPoints: number
+  /** Rounds where both teammates classified. */
+  bothClassified: number
+  raceWins: number
+  raceLosses: number
+}
+
+export interface DriverSeasonView {
+  computedAt: string
+  seasonYear: number | null
+  driver: {
+    number: number
+    firstName: string
+    surname: string
+    teamName: string
+    teamColour: string
+    acronym: string
+    countryCode: string | null
+    points: number
+    wins: number
+    podiums: number
+    position: number
+  }
+  stations: SeasonStation[]
+  bestFinish: number | null
+  dnfs: number
+  duel: DuelView | null
+}
+
+export function toDriverSeason(bundle: SeasonBundle, acronym: string): DriverSeasonView | null {
+  const me = bundle.driverStandings.find((d) => d.nameAcronym === acronym.toUpperCase())
+  if (!me) return null
+
+  const ordered = getRaceMeetings(bundle.meetings).sort(
+    (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime()
+  )
+
+  const stations: SeasonStation[] = ordered.map((m, i) => {
+    const base = {
+      round: i + 1,
+      circuit: m.circuit_short_name,
+      country: m.country_name,
+      date: m.date_start,
+    }
+    if (CANCELLED_COUNTRIES.has(m.country_name)) {
+      return { ...base, status: 'cancelled' as const, position: null, points: 0 }
+    }
+    const rows = bundle.resultsByRound[m.meeting_key]
+    // The completeness guard means every completed GP has rows — no rows is
+    // therefore a round that hasn't happened, never one with missing data.
+    if (!rows) return { ...base, status: 'upcoming' as const, position: null, points: 0 }
+    const mine = rows.find((r) => r.d === me.driverNumber)
+    if (!mine) return { ...base, status: 'absent' as const, position: null, points: 0 }
+    const pos = asNum(mine.p)
+    if (mine.out || pos === null) {
+      return {
+        ...base,
+        status: 'out' as const,
+        position: pos,
+        points: asNum(mine.pts) ?? 0,
+        outLabel: mine.out ? ('DNF' as const) : ('NC' as const),
+      }
+    }
+    return { ...base, status: 'finished' as const, position: pos, points: asNum(mine.pts) ?? 0 }
+  })
+
+  const bestFinish = stations.reduce<number | null>(
+    (best, s) =>
+      s.status === 'finished' && s.position !== null && (best === null || s.position < best)
+        ? s.position
+        : best,
+    null
+  )
+  // NC (unclassified, no out flag) breaks the line but is not counted as a
+  // DNF — the stat says what it counts.
+  const dnfs = stations.filter((s) => s.outLabel === 'DNF').length
+
+  // THE DUEL — highest-scoring other car in the same team (guards a >2-driver
+  // team if a mid-season swap ever puts three in the standings).
+  const teammate = bundle.driverStandings
+    .filter((d) => d.teamName === me.teamName && d.driverNumber !== me.driverNumber)
+    .sort((a, b) => b.points - a.points)[0]
+  let duel: DuelView | null = null
+  if (teammate) {
+    let bothClassified = 0
+    let raceWins = 0
+    for (const rows of Object.values(bundle.resultsByRound)) {
+      const a = rows.find((r) => r.d === me.driverNumber)
+      const b = rows.find((r) => r.d === teammate.driverNumber)
+      if (!a || !b || a.out || b.out) continue
+      const pa = asNum(a.p)
+      const pb = asNum(b.p)
+      if (pa === null || pb === null) continue
+      bothClassified++
+      if (pa < pb) raceWins++
+    }
+    duel = {
+      surname: teammate.surname,
+      acronym: teammate.nameAcronym,
+      theirPoints: Math.floor(teammate.points),
+      myPoints: Math.floor(me.points),
+      bothClassified,
+      raceWins,
+      raceLosses: bothClassified - raceWins,
+    }
+  }
+
+  return {
+    computedAt: bundle.computedAt,
+    seasonYear: bundle.seasonYear,
+    driver: {
+      number: me.driverNumber,
+      firstName: me.firstName,
+      surname: me.surname,
+      teamName: me.teamName,
+      teamColour: me.teamColour,
+      acronym: me.nameAcronym,
+      countryCode: me.countryCode,
+      points: Math.floor(me.points),
+      wins: me.wins,
+      podiums: me.podiums,
+      position: me.position,
+    },
+    stations,
+    bestFinish,
+    dnfs,
+    duel,
+  }
 }
 
 export function toBlueprintTeams(bundle: SeasonBundle): BlueprintTeam[] {
