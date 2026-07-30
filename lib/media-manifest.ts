@@ -48,6 +48,30 @@ export const CAR_IMAGES: Record<string, string> = {
   "cadillac-formula-one-team": "/media/cars/cadillac-formula-one-team.webp"
 }
 
+// Full-resolution renders for the team-detail glide (w_3392 — the 1280
+// renditions are visibly soft at glide scale).
+export const CAR_IMAGES_HI: Record<string, string> = {
+  "red-bull-racing": "/media/cars-hi/red-bull-racing.webp",
+  "ferrari": "/media/cars-hi/ferrari.webp",
+  "scuderia-ferrari": "/media/cars-hi/scuderia-ferrari.webp",
+  "mclaren": "/media/cars-hi/mclaren.webp",
+  "mercedes": "/media/cars-hi/mercedes.webp",
+  "mercedes-amg-petronas-f1-team": "/media/cars-hi/mercedes-amg-petronas-f1-team.webp",
+  "aston-martin": "/media/cars-hi/aston-martin.webp",
+  "aston-martin-aramco-f1-team": "/media/cars-hi/aston-martin-aramco-f1-team.webp",
+  "alpine": "/media/cars-hi/alpine.webp",
+  "bwt-alpine-f1-team": "/media/cars-hi/bwt-alpine-f1-team.webp",
+  "williams": "/media/cars-hi/williams.webp",
+  "williams-racing": "/media/cars-hi/williams-racing.webp",
+  "racing-bulls": "/media/cars-hi/racing-bulls.webp",
+  "haas-f1-team": "/media/cars-hi/haas-f1-team.webp",
+  "haas": "/media/cars-hi/haas.webp",
+  "audi": "/media/cars-hi/audi.webp",
+  "audi-f1-team": "/media/cars-hi/audi-f1-team.webp",
+  "cadillac": "/media/cars-hi/cadillac.webp",
+  "cadillac-formula-one-team": "/media/cars-hi/cadillac-formula-one-team.webp"
+}
+
 export const TEAM_LOGO_IMAGES: Record<string, string> = {
   "mclaren": "/media/teams/mclaren-logo.svg",
   "ferrari": "/media/teams/ferrari-logo.svg",
@@ -99,6 +123,9 @@ export const driverImage = (acronym: string): string | null =>
   DRIVER_IMAGES[acronym?.toUpperCase()] ?? null
 
 export const carImage = (teamSlug: string): string | null => CAR_IMAGES[teamSlug] ?? null
+
+export const carImageHi = (teamSlug: string): string | null =>
+  CAR_IMAGES_HI[teamSlug] ?? CAR_IMAGES[teamSlug] ?? null
 
 export const teamLogoImage = (teamSlug: string): string | null =>
   TEAM_LOGO_IMAGES[teamSlug] ?? null

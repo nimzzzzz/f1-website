@@ -128,6 +128,16 @@ async function main() {
   }))
   const cars = await fetchCategory('cars', 'cars', carEntries)
 
+  // ── cars, full resolution (w_3392) — the team-detail glide shows the car
+  //    at ~2.5x viewport scale, where the 1280 renditions are visibly soft
+  //    (verified side by side). Only /teams/[slug] loads these. ──
+  const carHiEntries = Object.entries(TEAM_CARS).map(([team, url]) => ({
+    key: teamToSlug(team),
+    url: url.replace(/w_\d+/, 'w_3392'),
+    file: `${teamToSlug(team)}.${extOf(url)}`,
+  }))
+  const carsHi = await fetchCategory('cars-hi', 'cars-hi', carHiEntries)
+
   // ── team logos ──
   const logoEntries = Object.entries(TEAM_LOGOS).map(([team, url]) => ({
     key: teamToSlug(team),
@@ -163,6 +173,10 @@ export const DRIVER_IMAGES: Record<string, string> = ${JSON.stringify(drivers.pa
 
 export const CAR_IMAGES: Record<string, string> = ${JSON.stringify(cars.paths, null, 2)}
 
+// Full-resolution renders for the team-detail glide (w_3392 — the 1280
+// renditions are visibly soft at glide scale).
+export const CAR_IMAGES_HI: Record<string, string> = ${JSON.stringify(carsHi.paths, null, 2)}
+
 export const TEAM_LOGO_IMAGES: Record<string, string> = ${JSON.stringify(logos.paths, null, 2)}
 
 // keyed by country_name as it appears in the calendar data
@@ -173,6 +187,9 @@ export const driverImage = (acronym: string): string | null =>
 
 export const carImage = (teamSlug: string): string | null => CAR_IMAGES[teamSlug] ?? null
 
+export const carImageHi = (teamSlug: string): string | null =>
+  CAR_IMAGES_HI[teamSlug] ?? CAR_IMAGES[teamSlug] ?? null
+
 export const teamLogoImage = (teamSlug: string): string | null =>
   TEAM_LOGO_IMAGES[teamSlug] ?? null
 
@@ -182,7 +199,7 @@ export const circuitImage = (countryName: string): string | null =>
   await writeFile(path.join(ROOT, 'lib', 'media-manifest.ts'), manifest)
   console.log('manifest written: lib/media-manifest.ts')
   console.log(
-    `TOTAL: drivers ${drivers.ok.length}/${driverEntries.length}, cars ${cars.ok.length}/${carEntries.length}, logos ${logos.ok.length}/${logoEntries.length}, circuits ${circuits.ok.length}/${circuitEntries.length}`
+    `TOTAL: drivers ${drivers.ok.length}/${driverEntries.length}, cars ${cars.ok.length}/${carEntries.length}, cars-hi ${carsHi.ok.length}/${carHiEntries.length}, logos ${logos.ok.length}/${logoEntries.length}, circuits ${circuits.ok.length}/${circuitEntries.length}`
   )
   if (drivers.skipped.length) console.log('missing drivers:', drivers.skipped.join(', '))
   if (cars.skipped.length) console.log('missing cars:', cars.skipped.join(', '))
