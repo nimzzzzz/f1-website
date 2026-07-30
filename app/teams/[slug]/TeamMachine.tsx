@@ -319,7 +319,7 @@ export default function TeamMachine({
               CONSTRUCTORS&rsquo; P{view.position}
             </span>
             <span className="text-[var(--text)]">{s.points} PTS</span>
-            <span className="hidden md:inline opacity-60">SCROLL — THE MACHINE</span>
+            <span className="hidden md:inline opacity-60">THE MACHINE</span>
           </div>
         </div>
       </section>
