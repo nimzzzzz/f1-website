@@ -9,7 +9,6 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['var(--font-outfit)', 'sans-serif'],
         body: ['var(--font-body)', 'sans-serif'],
         display: ['var(--font-display)', 'sans-serif'],
         mono: ['var(--font-mono)', 'monospace'],

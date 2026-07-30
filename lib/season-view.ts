@@ -1,6 +1,7 @@
 import type { SeasonBundle } from '@/lib/season-data'
 import { asNum } from '@/lib/format'
 import { getRaceMeetings, CANCELLED_COUNTRIES } from '@/lib/openf1'
+import { teamToSlug } from '@/lib/team-data'
 
 // Pure bundle → view-model derivations, deliberately shared by BOTH the
 // server render and the client refresh.
@@ -215,6 +216,124 @@ export function toDriverSeason(bundle: SeasonBundle, acronym: string): DriverSea
     bestFinish,
     dnfs,
     duel,
+  }
+}
+
+// ── team detail: THE MACHINE ─────────────────────────────────────────────
+
+export interface MachineDriver {
+  acronym: string
+  surname: string
+  number: number
+  points: number
+}
+
+export interface TeamMachineView {
+  computedAt: string
+  seasonYear: number | null
+  name: string
+  slug: string
+  colour: string
+  position: number
+  /** Drivers sorted by points, descending — pairing bar reads left-heavy. */
+  drivers: MachineDriver[]
+  pairing: { winsA: number; winsB: number; bothClassified: number } | null
+  season: {
+    points: number
+    wins: number
+    podiums: number
+    bestFinish: number | null
+    /** Largest single-round team score, with where it happened. */
+    biggestHaul: { points: number; circuit: string; round: number } | null
+    dnfs: number
+  }
+}
+
+export function toTeamMachine(bundle: SeasonBundle, slug: string): TeamMachineView | null {
+  const standing = bundle.teamStandings.find((t) => teamToSlug(t.teamName) === slug)
+  if (!standing) return null
+
+  const drivers: MachineDriver[] = bundle.driverStandings
+    .filter((d) => d.teamName === standing.teamName)
+    .sort((a, b) => b.points - a.points)
+    .map((d) => ({
+      acronym: d.nameAcronym,
+      surname: d.surname,
+      number: d.driverNumber,
+      points: Math.floor(d.points),
+    }))
+  const nums = new Set(drivers.map((d) => d.number))
+
+  const ordered = getRaceMeetings(bundle.meetings)
+    .filter((m) => !CANCELLED_COUNTRIES.has(m.country_name))
+    .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime())
+
+  let podiums = 0
+  let dnfs = 0
+  let bestFinish: number | null = null
+  let biggestHaul: TeamMachineView['season']['biggestHaul'] = null
+  let winsA = 0
+  let winsB = 0
+  let bothClassified = 0
+  const a = drivers[0]
+  const b = drivers[1]
+
+  ordered.forEach((m, i) => {
+    const rows = bundle.resultsByRound[m.meeting_key]
+    if (!rows) return
+    let haul = 0
+    for (const r of rows) {
+      if (!nums.has(r.d)) continue
+      haul += asNum(r.pts) ?? 0
+      if (r.out) {
+        dnfs++
+        continue
+      }
+      const pos = asNum(r.p)
+      if (pos === null) continue // unclassified, no out flag — the NC case
+      if (pos <= 3) podiums++
+      if (bestFinish === null || pos < bestFinish) bestFinish = pos
+    }
+    if (haul > (biggestHaul?.points ?? -1)) {
+      biggestHaul = { points: haul, circuit: m.circuit_short_name, round: i + 1 }
+    }
+    if (a && b) {
+      const ra = rows.find((r) => r.d === a.number)
+      const rb = rows.find((r) => r.d === b.number)
+      if (ra && rb && !ra.out && !rb.out) {
+        const pa = asNum(ra.p)
+        const pb = asNum(rb.p)
+        if (pa !== null && pb !== null) {
+          bothClassified++
+          if (pa < pb) winsA++
+          else winsB++
+        }
+      }
+    }
+  })
+  // A zero-score biggest haul is honest for backmarkers, but a season with
+  // no completed rounds has no haul at all.
+  if (biggestHaul !== null && (biggestHaul as { points: number }).points === 0 && standing.points === 0 && ordered.length === 0) {
+    biggestHaul = null
+  }
+
+  return {
+    computedAt: bundle.computedAt,
+    seasonYear: bundle.seasonYear,
+    name: standing.teamName,
+    slug,
+    colour: `#${standing.teamColour || 'F5F5F3'}`,
+    position: standing.position,
+    drivers,
+    pairing: a && b ? { winsA, winsB, bothClassified } : null,
+    season: {
+      points: Math.floor(standing.points),
+      wins: standing.wins,
+      podiums,
+      bestFinish,
+      biggestHaul,
+      dnfs,
+    },
   }
 }
 

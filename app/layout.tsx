@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Outfit, Bebas_Neue, Space_Grotesk, Syne } from 'next/font/google'
+import { Bebas_Neue, Space_Grotesk, Syne } from 'next/font/google'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import './globals.css'
@@ -8,16 +8,10 @@ import LenisProvider from '@/components/motion/LenisProvider'
 import TransitionProvider from '@/components/motion/TransitionProvider'
 import Shell from '@/components/shell/Shell'
 
-const outfit = Outfit({
-  subsets: ['latin'],
-  variable: '--font-outfit',
-  weight: ['300', '400', '500', '600', '700', '800', '900'],
-  display: 'swap',
-})
-
 // Brand fonts (LIGHTS OUT). Geist ships via the official `geist` package
 // because next/font/google in Next 14 doesn't carry the Geist family yet.
-// Outfit remains loaded for legacy route styling during the phased redesign.
+// Outfit is gone: it was loaded site-wide (7 weights) purely for the old
+// /teams/[slug] page, the last pre-redesign route — replaced by THE MACHINE.
 const bebasNeue = Bebas_Neue({
   subsets: ['latin'],
   weight: '400',
@@ -53,7 +47,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${outfit.variable} ${bebasNeue.variable} ${spaceGrotesk.variable} ${syne.variable} ${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="en" className={`${bebasNeue.variable} ${spaceGrotesk.variable} ${syne.variable} ${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
         <SessionsPreloader />
         <LenisProvider>
