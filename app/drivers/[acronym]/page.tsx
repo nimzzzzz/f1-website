@@ -4,6 +4,7 @@ import type { Metadata } from 'next'
 import { buildSeasonSnapshot } from '@/lib/season-data-server'
 import { toDriverSeason } from '@/lib/season-view'
 import { canonicalDriverSlug } from '@/lib/known-slugs'
+import { resolveDriverParams } from '@/lib/static-params'
 import WarmingRetry from '@/components/WarmingRetry'
 import DriverSeasonLine from './DriverSeasonLine'
 
@@ -20,13 +21,12 @@ export const revalidate = 60
 export const maxDuration = 60
 
 export async function generateStaticParams() {
-  // At build time the snapshot may be the blocked placeholder (first-ever
-  // deploy mid-outage). Returning [] is safe: dynamicParams is on by
-  // default, so every acronym still generates on first request and enters
-  // the ISR cache from there.
+  // Resilient by design: an empty or implausible bundle falls back to the
+  // committed roster instead of returning [], which Next would accept as a
+  // legitimate "no pages" answer and silently under-build. Throws if both
+  // sources are unusable. See lib/static-params.
   const snap = await buildSeasonSnapshot()
-  if (snap.blocked) return []
-  return snap.driverStandings.map((d) => ({ acronym: d.nameAcronym.toLowerCase() }))
+  return resolveDriverParams(snap).values
 }
 
 export async function generateMetadata({

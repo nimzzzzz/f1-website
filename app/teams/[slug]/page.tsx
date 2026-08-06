@@ -6,6 +6,7 @@ import { toTeamMachine } from '@/lib/season-view'
 import { teamToSlug } from '@/lib/team-data'
 import { teamFacts } from '@/lib/team-facts'
 import { canonicalTeamSlug } from '@/lib/known-slugs'
+import { resolveTeamParams } from '@/lib/static-params'
 import WarmingRetry from '@/components/WarmingRetry'
 import TeamMachine from './TeamMachine'
 
@@ -21,9 +22,11 @@ export const revalidate = 60
 export const maxDuration = 60
 
 export async function generateStaticParams() {
+  // See the note in app/drivers/[acronym]/page.tsx — falls back to the
+  // committed roster rather than returning [], and throws if both the
+  // bundle and the fallback are unusable.
   const snap = await buildSeasonSnapshot()
-  if (snap.blocked) return []
-  return snap.teamStandings.map((t) => ({ slug: teamToSlug(t.teamName) }))
+  return resolveTeamParams(snap).values
 }
 
 export async function generateMetadata({

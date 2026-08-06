@@ -10,7 +10,8 @@
     "fetch-media": "tsx scripts/fetch-f1-media.ts",
     "fetch-circuit-photos": "tsx scripts/fetch-circuit-photos.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "sync-roster": "tsx scripts/sync-roster.ts"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
