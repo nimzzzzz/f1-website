@@ -9,6 +9,9 @@ const BASE =
 
 export interface Meeting {
   meeting_key: number
+  /** openf1 marks replaced/abandoned rounds here. Cancellation is per
+   *  MEETING — never infer it from country_name (see CANCELLED_MEETING_KEYS). */
+  is_cancelled?: boolean
   meeting_name: string
   meeting_official_name: string
   location: string
@@ -26,6 +29,8 @@ export interface Meeting {
 
 export interface Session {
   session_key: number
+  /** Mirrors the parent meeting's cancellation flag. */
+  is_cancelled?: boolean
   session_type: string
   session_name: string
   date_start: string
@@ -414,5 +419,52 @@ export const RACE_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
 export const SPRINT_POINTS = [8, 7, 6, 5, 4, 3, 2, 1]
 
 // ─── Cancelled Races ─────────────────────────────────────────────────────────
+//
+// Cancellation is a property of a MEETING, never of a country.
+//
+// This used to be `CANCELLED_COUNTRIES = {'Bahrain', 'Saudi Arabia'}`, which
+// was correct only while those countries appeared exactly once each on the
+// calendar. They no longer do: the cancelled Bahrain GP at Sakhir (meeting
+// 1282) has been REPLACED by a Bahrain Grand Prix held in Kuala Lumpur
+// (meeting 1308, 2026-10-02, is_cancelled false) which still carries
+// country_name "Bahrain". A country filter silently deleted that real,
+// upcoming race from the schedule, the countdown, and every season
+// calculation. 2026 has three more country collisions besides — Bahrain
+// also has two pre-season tests, and Spain and the United States host two
+// and three rounds respectively.
+//
+// openf1 publishes `is_cancelled` on BOTH meetings and sessions (verified
+// live), so that is the source of truth. CANCELLED_MEETING_KEYS exists only
+// as a defensive fallback for the case where upstream omits the field
+// entirely — it is keyed by meeting, never by country, so a replacement
+// round can never be caught by it.
 
-export const CANCELLED_COUNTRIES = new Set(['Bahrain', 'Saudi Arabia'])
+export const CANCELLED_MEETING_KEYS: ReadonlySet<number> = new Set([1282, 1283])
+
+/** True when a meeting or session is cancelled. */
+export function isCancelled(x: { is_cancelled?: boolean; meeting_key?: number }): boolean {
+  if (typeof x.is_cancelled === 'boolean') return x.is_cancelled
+  return x.meeting_key !== undefined && CANCELLED_MEETING_KEYS.has(x.meeting_key)
+}
+
+/** Meeting keys to exclude, resolved from upstream with the static fallback. */
+export function cancelledMeetingKeys(meetings: Meeting[]): Set<number> {
+  const keys = new Set<number>()
+  for (const m of meetings) if (isCancelled(m)) keys.add(m.meeting_key)
+  for (const k of CANCELLED_MEETING_KEYS) keys.add(k)
+  return keys
+}
+
+/** Drop cancelled meetings. */
+export const activeMeetings = (meetings: Meeting[]): Meeting[] => meetings.filter((m) => !isCancelled(m))
+
+/**
+ * Drop sessions belonging to cancelled meetings. Sessions carry their own
+ * is_cancelled, but a session whose field is missing is still resolved
+ * through its meeting_key so a partially-populated payload can't leak a
+ * cancelled round into the tally.
+ */
+export function activeSessions(sessions: Session[], cancelledKeys?: Set<number>): Session[] {
+  const keys = cancelledKeys ?? CANCELLED_MEETING_KEYS
+  return sessions.filter((s) => !isCancelled(s) && !keys.has(s.meeting_key))
+}

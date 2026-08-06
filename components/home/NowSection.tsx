@@ -80,7 +80,11 @@ export default function NowSection({ meeting, sessions, round, totalRounds, isLi
     <section className="relative flex min-h-[calc(100dvh-4rem)] flex-col justify-center overflow-hidden px-6 md:px-14">
       {/* atmospheric circuit backdrop — photo (or line-art fallback),
           absolute behind everything; plain NOW if neither exists */}
-      <NowBackdrop circuitShortName={meeting.circuit_short_name} countryName={meeting.country_name} />
+      <NowBackdrop
+        meetingKey={meeting.meeting_key}
+        circuitShortName={meeting.circuit_short_name}
+        countryName={meeting.country_name}
+      />
 
       {/* oversized dim outline round numeral, asymmetric behind the composition */}
       <span

@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "fetch-media": "tsx scripts/fetch-f1-media.ts",
-    "fetch-circuit-photos": "tsx scripts/fetch-circuit-photos.ts"
+    "fetch-circuit-photos": "tsx scripts/fetch-circuit-photos.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
@@ -31,6 +33,7 @@
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
     "tsx": "^4.23.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^2.1.8"
   }
 }

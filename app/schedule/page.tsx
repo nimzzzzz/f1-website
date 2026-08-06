@@ -6,8 +6,8 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useGSAP } from '@gsap/react'
 import type { Meeting, Session } from '@/lib/openf1'
 import { getCachedMeetings, getCachedSessions, getCachedDrivers, getCachedSessionResult } from '@/lib/client-cache'
-import { getCurrentMeeting, getNextMeeting, CANCELLED_COUNTRIES, fetchAllSessionResults } from '@/lib/openf1'
-import { circuitImage } from '@/lib/media-manifest'
+import { getCurrentMeeting, getNextMeeting, isCancelled, fetchAllSessionResults } from '@/lib/openf1'
+import { circuitImageForMeeting } from '@/lib/media-manifest'
 import TreatedImage from '@/components/media/TreatedImage'
 import CircuitBackdrop from '@/components/media/CircuitBackdrop'
 import { FadeUp } from '@/components/motion/reveals'
@@ -87,7 +87,7 @@ export default function SchedulePage() {
             s.session_type === 'Race' &&
             s.session_name === 'Race' &&
             new Date(s.date_end) < now &&
-            !CANCELLED_COUNTRIES.has(s.country_name)
+            !isCancelled(s)
         )
         if (raceSessions.length === 0) return
         const latest = [...raceSessions].sort(
@@ -126,7 +126,7 @@ export default function SchedulePage() {
     )
     .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime())
 
-  const activeMeetings = raceMeetings.filter((m) => !CANCELLED_COUNTRIES.has(m.country_name))
+  const activeMeetings = raceMeetings.filter((m) => !isCancelled(m))
   const targetMeeting = getCurrentMeeting(activeMeetings) ?? getNextMeeting(activeMeetings)
   const pastFraction =
     raceMeetings.length > 0
@@ -219,11 +219,11 @@ export default function SchedulePage() {
 
         <div className="space-y-20 md:space-y-28">
           {raceMeetings.map((m, i) => {
-            const isCancelled = CANCELLED_COUNTRIES.has(m.country_name)
+            const meetingCancelled = isCancelled(m)
             const isPast = new Date(m.date_end).getTime() < Date.now()
             const isNext = targetMeeting?.meeting_key === m.meeting_key
-            const winner = !isCancelled && isPast ? winners[m.meeting_key] : undefined
-            const dim = isCancelled ? 0.25 : isPast ? 0.35 : 1
+            const winner = !meetingCancelled && isPast ? winners[m.meeting_key] : undefined
+            const dim = meetingCancelled ? 0.25 : isPast ? 0.35 : 1
             const right = i % 2 === 1
             const sessions = (sessionsByMeeting[m.meeting_key] ?? []).sort(
               (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime()
@@ -236,10 +236,11 @@ export default function SchedulePage() {
                     sit quieter, past/cancelled quieter still. Only the
                     opening viewport and the next race load eagerly. */}
                 <CircuitBackdrop
+                  meetingKey={m.meeting_key}
                   circuitShortName={m.circuit_short_name}
                   countryName={m.country_name}
                   eager={i < 2 || isNext}
-                  presence={isCancelled ? 0.3 : isPast ? 0.4 : isNext ? 1 : 0.6}
+                  presence={meetingCancelled ? 0.3 : isPast ? 0.4 : isNext ? 1 : 0.6}
                   lift={isNext}
                 />
 
@@ -260,10 +261,10 @@ export default function SchedulePage() {
                       : 'md:col-start-1 md:flex md:flex-col md:items-end md:pr-20 md:text-right'
                   }`}
                 >
-                  {circuitImage(m.country_name) && (
+                  {circuitImageForMeeting(m) && (
                     <div className={right ? '' : 'md:flex md:justify-end'} style={{ opacity: dim }}>
                       <TreatedImage
-                        src={circuitImage(m.country_name)}
+                        src={circuitImageForMeeting(m)}
                         treatment="line"
                         fade={false}
                         position={right ? 'left center' : 'right center'}
@@ -288,7 +289,7 @@ export default function SchedulePage() {
 
                   <p
                     className={`mt-2 uppercase leading-none text-[var(--text)] ${
-                      isCancelled ? 'line-through decoration-1' : ''
+                      meetingCancelled ? 'line-through decoration-1' : ''
                     }`}
                     style={{
                       fontFamily: 'var(--font-display)',
@@ -301,7 +302,7 @@ export default function SchedulePage() {
 
                   <p className="label-mono mt-3 text-[var(--text-dim)]" style={{ opacity: dim }}>
                     {m.country_name.toUpperCase()} · {formatMeetingDates(m.date_start, m.date_end)}
-                    {isCancelled ? ' · CANCELLED' : ''}
+                    {meetingCancelled ? ' · CANCELLED' : ''}
                   </p>
 
                   {/* the season-record rule: winner stays legible above the dim */}
@@ -312,7 +313,7 @@ export default function SchedulePage() {
                   )}
 
                   {/* compact mono session table */}
-                  {!isCancelled && sessions.length > 0 && (
+                  {!meetingCancelled && sessions.length > 0 && (
                     <div
                       className={`mt-6 w-full max-w-[300px] space-y-1.5 ${right ? '' : 'md:ml-auto'}`}
                       style={{ opacity: dim }}

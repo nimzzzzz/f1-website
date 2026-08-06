@@ -1,5 +1,5 @@
 import type { Driver, Meeting, Session, SessionResult } from '@/lib/openf1'
-import { CANCELLED_COUNTRIES } from '@/lib/openf1'
+import { isCancelled } from '@/lib/openf1'
 import type { SeasonBundle } from '@/lib/season-data'
 
 // Compute-local openf1 fetcher. The bundle route is STATIC (ISR): its
@@ -113,7 +113,10 @@ async function computeSeasonData(): Promise<SeasonBundle> {
   }
 
   const now = new Date()
-  const notCancelled = (s: Session) => !CANCELLED_COUNTRIES.has(s.country_name)
+  // Per-MEETING cancellation. The old country filter also removed the
+  // Bahrain GP replacement round held in Kuala Lumpur, which shares
+  // country_name with the cancelled Sakhir round.
+  const notCancelled = (s: Session) => !isCancelled(s)
   const completedRaceSessions = sessions.filter(
     (s) =>
       s.session_type === 'Race' &&

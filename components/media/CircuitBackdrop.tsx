@@ -1,7 +1,7 @@
 'use client'
 
 import { circuitPhoto } from '@/lib/circuit-photos-manifest'
-import { circuitImage } from '@/lib/media-manifest'
+import { circuitImage, circuitImageForMeeting } from '@/lib/media-manifest'
 import TreatedImage from '@/components/media/TreatedImage'
 
 // The circuit-photo backdrop system, shared by the NOW section and the
@@ -22,6 +22,7 @@ import TreatedImage from '@/components/media/TreatedImage'
 export default function CircuitBackdrop({
   circuitShortName,
   countryName,
+  meetingKey,
   eager = false,
   presence = 1,
   lift = false,
@@ -29,13 +30,20 @@ export default function CircuitBackdrop({
 }: {
   circuitShortName: string
   countryName: string
+  /** Prefer per-meeting art when known — country_name is NOT unique (see
+   *  circuitImageForMeeting). Without it the country map is used, which can
+   *  hand a round its neighbour's outline. */
+  meetingKey?: number
   eager?: boolean
   presence?: number
   lift?: boolean
   forceIcon?: boolean
 }) {
   const photo = forceIcon ? null : circuitPhoto(circuitShortName)
-  const icon = circuitImage(countryName)
+  const icon =
+    meetingKey !== undefined
+      ? circuitImageForMeeting({ meeting_key: meetingKey, country_name: countryName })
+      : circuitImage(countryName)
   if (!photo && !icon) return null
 
   return (

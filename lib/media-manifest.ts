@@ -95,28 +95,60 @@ export const TEAM_LOGO_IMAGES: Record<string, string> = {
   "cadillac-formula-one-team": "/media/teams/cadillac-formula-one-team-logo.svg"
 }
 
-// keyed by country_name as it appears in the calendar data
+// keyed by meeting_key (stringified) — collision-proof for countries that
+// host more than one round
+export const CIRCUIT_IMAGES_BY_MEETING: Record<string, string> = {
+  "1279": "/media/circuits/meeting-1279.png",
+  "1280": "/media/circuits/meeting-1280.png",
+  "1281": "/media/circuits/meeting-1281.png",
+  "1282": "/media/circuits/meeting-1282.png",
+  "1283": "/media/circuits/meeting-1283.png",
+  "1284": "/media/circuits/meeting-1284.png",
+  "1285": "/media/circuits/meeting-1285.png",
+  "1286": "/media/circuits/meeting-1286.png",
+  "1288": "/media/circuits/meeting-1288.png",
+  "1289": "/media/circuits/meeting-1289.png",
+  "1290": "/media/circuits/meeting-1290.png",
+  "1291": "/media/circuits/meeting-1291.png",
+  "1292": "/media/circuits/meeting-1292.png",
+  "1293": "/media/circuits/meeting-1293.png",
+  "1294": "/media/circuits/meeting-1294.png",
+  "1295": "/media/circuits/meeting-1295.png",
+  "1296": "/media/circuits/meeting-1296.png",
+  "1297": "/media/circuits/meeting-1297.png",
+  "1298": "/media/circuits/meeting-1298.png",
+  "1299": "/media/circuits/meeting-1299.png",
+  "1300": "/media/circuits/meeting-1300.png",
+  "1301": "/media/circuits/meeting-1301.png",
+  "1302": "/media/circuits/meeting-1302.png",
+  "1304": "/media/circuits/meeting-1304.png",
+  "1305": "/media/circuits/meeting-1305.png",
+  "1308": "/media/circuits/meeting-1308.png"
+}
+
+// legacy country_name map — first meeting per country
 export const CIRCUIT_IMAGES: Record<string, string> = {
-  "Bahrain": "/media/circuits/bahrain.png",
-  "Australia": "/media/circuits/australia.png",
-  "China": "/media/circuits/china.png",
-  "Japan": "/media/circuits/japan.png",
-  "Saudi Arabia": "/media/circuits/saudi-arabia.png",
-  "United States": "/media/circuits/united-states.png",
-  "Canada": "/media/circuits/canada.png",
-  "Monaco": "/media/circuits/monaco.png",
-  "Austria": "/media/circuits/austria.png",
-  "United Kingdom": "/media/circuits/united-kingdom.png",
-  "Belgium": "/media/circuits/belgium.png",
-  "Hungary": "/media/circuits/hungary.png",
-  "Netherlands": "/media/circuits/netherlands.png",
-  "Italy": "/media/circuits/italy.png",
-  "Azerbaijan": "/media/circuits/azerbaijan.png",
-  "Singapore": "/media/circuits/singapore.png",
-  "Mexico": "/media/circuits/mexico.png",
-  "Brazil": "/media/circuits/brazil.png",
-  "Qatar": "/media/circuits/qatar.png",
-  "United Arab Emirates": "/media/circuits/united-arab-emirates.png"
+  "Bahrain": "/media/circuits/meeting-1304.png",
+  "Australia": "/media/circuits/meeting-1279.png",
+  "China": "/media/circuits/meeting-1280.png",
+  "Japan": "/media/circuits/meeting-1281.png",
+  "Saudi Arabia": "/media/circuits/meeting-1283.png",
+  "United States": "/media/circuits/meeting-1284.png",
+  "Canada": "/media/circuits/meeting-1285.png",
+  "Monaco": "/media/circuits/meeting-1286.png",
+  "Austria": "/media/circuits/meeting-1288.png",
+  "United Kingdom": "/media/circuits/meeting-1289.png",
+  "Belgium": "/media/circuits/meeting-1290.png",
+  "Hungary": "/media/circuits/meeting-1291.png",
+  "Netherlands": "/media/circuits/meeting-1292.png",
+  "Italy": "/media/circuits/meeting-1293.png",
+  "Spain": "/media/circuits/meeting-1294.png",
+  "Azerbaijan": "/media/circuits/meeting-1295.png",
+  "Singapore": "/media/circuits/meeting-1296.png",
+  "Mexico": "/media/circuits/meeting-1298.png",
+  "Brazil": "/media/circuits/meeting-1299.png",
+  "Qatar": "/media/circuits/meeting-1301.png",
+  "United Arab Emirates": "/media/circuits/meeting-1302.png"
 }
 
 export const driverImage = (acronym: string): string | null =>
@@ -132,3 +164,25 @@ export const teamLogoImage = (teamSlug: string): string | null =>
 
 export const circuitImage = (countryName: string): string | null =>
   CIRCUIT_IMAGES[countryName] ?? null
+
+// Meetings whose upstream circuit_image is known to be WRONG. openf1 serves
+// the Sakhir track icon for the Bahrain GP replacement round held in Kuala
+// Lumpur (meeting 1308) — byte-identical URL to the cancelled round's. A
+// factually wrong circuit outline is worse than none, so this round renders
+// without art until F1 publishes a Kuala Lumpur icon.
+export const CIRCUIT_ART_SUPPRESSED: ReadonlySet<string> = new Set(['1308'])
+
+/**
+ * Circuit art for a meeting — per-meeting ONLY, deliberately with no
+ * country fallback. Falling back to the country map hands a round its
+ * neighbour's outline: Barcelona's own icon 404s upstream, so a fallback
+ * would draw Madrid's circuit on the Barcelona round. No art beats wrong
+ * art; a missing icon degrades to empty space by design.
+ */
+export const circuitImageForMeeting = (
+  meeting: { meeting_key: number; country_name: string }
+): string | null => {
+  const key = String(meeting.meeting_key)
+  if (CIRCUIT_ART_SUPPRESSED.has(key)) return null
+  return CIRCUIT_IMAGES_BY_MEETING[key] ?? null
+}
