@@ -10,6 +10,29 @@ gsap.registerPlugin(ScrollTrigger, useGSAP)
 // Reusable scroll-reveal primitives. All of them animate transform /
 // opacity / clip-path ONLY (no layout properties), and all collapse to
 // fully-visible static content under prefers-reduced-motion.
+//
+// ⚠ THESE WRAPPERS CREATE STACKING CONTEXTS. Every reveal here leaves a
+// transform (and/or opacity/clip-path) on its wrapper div, and each of
+// those properties makes the element a stacking context. Consequences:
+//
+//   • A z-index set on anything INSIDE a reveal is scoped to that reveal.
+//     It cannot beat content in a sibling reveal — two sibling wrappers
+//     both at z-index:auto paint in DOM ORDER, so the later one always
+//     wins no matter how high the inner z-index is.
+//   • Therefore ANY OVERLAY rendered inside a reveal — dropdown, popover,
+//     tooltip, modal — MUST portal to document.body (createPortal) and
+//     position itself `fixed`. Raising z-index is not a fix and will look
+//     like it works only until the overlay meets a later sibling.
+//
+// This has now bitten this codebase three times, each a different symptom
+// of the same mechanism:
+//   1. the intro: a CSS animation with fill-mode:both made <main> a
+//      stacking context and trapped a fixed z-[200] overlay under the bar
+//   2. /drivers pin: position:fixed pinning scored a real 0.0429 CLS;
+//      fixed by pinType:'transform' (see DriversGallery's note)
+//   3. the session picker: its panel, inside a FadeUp on /results, was
+//      painted over by the podium block in the NEXT sibling FadeUp —
+//      z-[140] was powerless. Fixed by portalling (see SessionPicker).
 
 const reduced = () =>
   typeof window !== 'undefined' &&

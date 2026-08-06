@@ -31,8 +31,11 @@ const getSessionResult = (sessionKey: number) =>
   of1<SessionResult>(`session_result?session_key=${sessionKey}`)
 
 // Server-computed season bundle: the standings pipeline runs ONCE here
-// (cached 300s via unstable_cache, backed by Vercel's durable data cache)
-// instead of in every visitor's browser. Incomplete computations THROW so
+// instead of in every visitor's browser. Caching is Next's, at two layers:
+// the consuming routes' Full Route Cache (ISR, 60s) and the Data Cache on
+// the openf1 fetches below (also 60s). There is no unstable_cache here —
+// an older comment claimed there was; the only unstable_cache in the repo
+// wraps the openf1 proxy route. Incomplete computations THROW so
 // they are never cached — Next's stale-while-revalidate then keeps serving
 // the last complete bundle through openf1's live-session 401 lockouts.
 // Only a cold cache during a lockout has nothing to serve.
@@ -284,7 +287,7 @@ async function computeSeasonData(): Promise<SeasonBundle> {
   }
 }
 
-// The route that serves this is STATIC with ISR (revalidate: 300): the
+// The route that serves this is STATIC with ISR (revalidate: 60): the
 // bundle is generated at build time and refreshed in the background — a
 // user request NEVER runs this compute inline. On a revalidation failure
 // we THROW so Next keeps serving the last good snapshot; at build time
