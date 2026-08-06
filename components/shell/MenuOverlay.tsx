@@ -21,7 +21,9 @@ const ROUTES: Array<{ label: string; href: string }> = [
   { label: 'Tyres & Stints', href: '/stints' },
   { label: 'Weather', href: '/weather' },
   { label: 'Race Control', href: '/race-control' },
-  { label: 'Sports Cards', href: '/sports-cards' },
+  // /sports-cards is intentionally absent: it is a COMING SOON placeholder.
+  // The route still resolves for anyone holding the link — it just isn't
+  // promoted in the site's own navigation until it has content.
   { label: 'Highlights', href: '/highlights' },
 ]
 

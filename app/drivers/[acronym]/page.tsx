@@ -1,8 +1,9 @@
 import { Suspense } from 'react'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import { buildSeasonSnapshot } from '@/lib/season-data-server'
 import { toDriverSeason } from '@/lib/season-view'
+import { canonicalDriverSlug } from '@/lib/known-slugs'
 import WarmingRetry from '@/components/WarmingRetry'
 import DriverSeasonLine from './DriverSeasonLine'
 
@@ -74,9 +75,21 @@ async function SeasonLine({ acronym }: { acronym: string }) {
 }
 
 export default function DriverPage({ params }: { params: { acronym: string } }) {
+  // Validate BEFORE the Suspense boundary and before any season work.
+  // Inside Suspense the response has already started streaming, so
+  // notFound() there cannot set a status — unknown slugs used to return
+  // 200 with not-found markup after awaiting the snapshot. Here it is a
+  // real 404 with zero computation. See lib/known-slugs.
+  const canonical = canonicalDriverSlug(params.acronym)
+  if (!canonical) notFound()
+  // Canonical form is LOWERCASE, matching generateStaticParams and every
+  // internal link on the site; /drivers/VER redirects to /drivers/ver so
+  // there is exactly one indexable URL per driver.
+  if (params.acronym !== canonical) redirect(`/drivers/${canonical}`)
+
   return (
     <Suspense fallback={<Skeleton />}>
-      <SeasonLine acronym={params.acronym} />
+      <SeasonLine acronym={canonical} />
     </Suspense>
   )
 }

@@ -83,35 +83,11 @@ export async function getCachedSessions(): Promise<Session[]> {
   return sessionsInflight
 }
 
-// ─── Latest drivers (for drivers/teams pages) ────────────────────────────────
-
-let latestDriversCache: { data: Driver[]; expiresAt: number } | null = null
-let latestDriversInflight: Promise<Driver[]> | null = null
-
-export async function getCachedLatestDrivers(): Promise<Driver[]> {
-  if (latestDriversCache && Date.now() < latestDriversCache.expiresAt) return latestDriversCache.data
-  if (latestDriversInflight) return latestDriversInflight
-  latestDriversInflight = (async () => {
-    try {
-      const drivers = await getDrivers(11247)
-      if (drivers.length > 0) return drivers
-    } catch { /* fall through */ }
-    const sessions = await getAllSessions()
-    const sorted = sessions
-      .filter((s) => new Date(s.date_end) < new Date())
-      .sort((a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime())
-    if (sorted[0]) return getDrivers(sorted[0].session_key)
-    return []
-  })().then((data) => {
-    latestDriversCache = { data, expiresAt: Date.now() + SESSION_TTL }
-    latestDriversInflight = null
-    return data
-  }).catch((err) => {
-    latestDriversInflight = null
-    throw err
-  })
-  return latestDriversInflight
-}
+// getCachedLatestDrivers used to live here: a preloader-only warm-up that
+// fetched a HARD-CODED session key (11247) with a scan fallback. Its only
+// caller was SessionsPreloader, and once /drivers and /teams became static
+// + ISR nothing read the cache it filled — so every visitor paid an openf1
+// round trip on load to populate a map no page consumed. Removed.
 
 // ─── Per-session data caches ──────────────────────────────────────────────────
 

@@ -1,10 +1,11 @@
 import { Suspense } from 'react'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import { buildSeasonSnapshot } from '@/lib/season-data-server'
 import { toTeamMachine } from '@/lib/season-view'
 import { teamToSlug } from '@/lib/team-data'
 import { teamFacts } from '@/lib/team-facts'
+import { canonicalTeamSlug } from '@/lib/known-slugs'
 import WarmingRetry from '@/components/WarmingRetry'
 import TeamMachine from './TeamMachine'
 
@@ -69,9 +70,15 @@ async function Machine({ slug }: { slug: string }) {
 }
 
 export default function TeamPage({ params }: { params: { slug: string } }) {
+  // Real 404 for unknown slugs, before Suspense and before any season
+  // computation — see the note in app/drivers/[acronym]/page.tsx.
+  const canonical = canonicalTeamSlug(params.slug)
+  if (!canonical) notFound()
+  if (params.slug !== canonical) redirect(`/teams/${canonical}`)
+
   return (
     <Suspense fallback={<Skeleton />}>
-      <Machine slug={params.slug} />
+      <Machine slug={canonical} />
     </Suspense>
   )
 }
