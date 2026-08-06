@@ -21,7 +21,11 @@ const ROUTES: Array<{ label: string; href: string }> = [
   { label: 'Tyres & Stints', href: '/stints' },
   { label: 'Weather', href: '/weather' },
   { label: 'Race Control', href: '/race-control' },
-  { label: 'Sports Cards', href: '/sports-cards' },
+  // Neither /sports-cards nor /highlights appears here. /highlights was
+  // deleted outright (dead for months — its API 500s without a key that was
+  // never set). /sports-cards still resolves for anyone holding the link,
+  // but is a COMING SOON placeholder and is not promoted in the site's own
+  // navigation until it has content.
 ]
 
 export default function MenuOverlay({
