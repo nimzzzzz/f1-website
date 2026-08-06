@@ -1,6 +1,6 @@
 import type { SeasonBundle } from '@/lib/season-data'
 import { asNum } from '@/lib/format'
-import { getRaceMeetings, CANCELLED_COUNTRIES } from '@/lib/openf1'
+import { getRaceMeetings, isCancelled } from '@/lib/openf1'
 import { teamToSlug } from '@/lib/team-data'
 
 // Pure bundle → view-model derivations, deliberately shared by BOTH the
@@ -133,7 +133,7 @@ export function toDriverSeason(bundle: SeasonBundle, acronym: string): DriverSea
       country: m.country_name,
       date: m.date_start,
     }
-    if (CANCELLED_COUNTRIES.has(m.country_name)) {
+    if (isCancelled(m)) {
       return { ...base, status: 'cancelled' as const, position: null, points: 0 }
     }
     const rows = bundle.resultsByRound[m.meeting_key]
@@ -264,9 +264,14 @@ export function toTeamMachine(bundle: SeasonBundle, slug: string): TeamMachineVi
     }))
   const nums = new Set(drivers.map((d) => d.number))
 
-  const ordered = getRaceMeetings(bundle.meetings)
-    .filter((m) => !CANCELLED_COUNTRIES.has(m.country_name))
-    .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime())
+  // Numbered over the FULL calendar, cancelled rounds included, so a round
+  // number means the same thing here as on the schedule and the driver
+  // season line (both of which show cancelled rounds struck in sequence).
+  // Filtering first would have shifted every round after Sakhir by one and
+  // made "biggest haul at R18" disagree with the schedule's R18.
+  const ordered = getRaceMeetings(bundle.meetings).sort(
+    (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime()
+  )
 
   let podiums = 0
   let dnfs = 0

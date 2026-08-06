@@ -7,7 +7,7 @@ import {
   getRaceMeetings,
   getCurrentMeeting,
   getNextMeeting,
-  CANCELLED_COUNTRIES,
+  isCancelled,
 } from '@/lib/openf1'
 
 export interface NextRaceInfo {
@@ -30,7 +30,7 @@ export function useNextRace(): NextRaceInfo | null {
     Promise.all([getCachedMeetings(), getCachedSessions()])
       .then(([meetings, sessions]: [Meeting[], Session[]]) => {
         if (!alive) return
-        const active = meetings.filter((m) => !CANCELLED_COUNTRIES.has(m.country_name))
+        const active = meetings.filter((m) => !isCancelled(m))
         const current = getCurrentMeeting(active)
         const target = current ?? getNextMeeting(active)
         if (!target) return

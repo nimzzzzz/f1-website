@@ -5,7 +5,7 @@ import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useGSAP } from '@gsap/react'
 import type { Meeting } from '@/lib/openf1'
-import { circuitImage } from '@/lib/media-manifest'
+import { circuitImageForMeeting } from '@/lib/media-manifest'
 import TreatedImage from '@/components/media/TreatedImage'
 import { getLenis } from '@/lib/lenis-store'
 import { FadeUp } from '@/components/motion/reveals'
@@ -327,7 +327,7 @@ export default function SeasonSection({
             <div className="flex items-end">
               {rounds.map(({ meeting, isPast, isNext, isCancelled }, i) => {
                 const winner = !isCancelled && isPast ? winners[meeting.meeting_key] : undefined
-                const art = circuitImage(meeting.country_name)
+                const art = circuitImageForMeeting(meeting)
                 // Dim lives on the sub-elements (not the container) so the
                 // winner record can exceed it and the tip focus can brighten
                 // everything independently.

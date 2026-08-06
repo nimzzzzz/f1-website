@@ -8,15 +8,18 @@ import CircuitBackdrop from '@/components/media/CircuitBackdrop'
 export default function NowBackdrop({
   circuitShortName,
   countryName,
+  meetingKey,
 }: {
   circuitShortName: string
   countryName: string
+  meetingKey?: number
 }) {
   const forceIcon =
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).get('backdrop') === 'icon'
   return (
     <CircuitBackdrop
+      meetingKey={meetingKey}
       circuitShortName={circuitShortName}
       countryName={countryName}
       eager

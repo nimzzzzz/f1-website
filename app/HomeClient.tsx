@@ -11,7 +11,7 @@ import {
   isMeetingCompleted,
   getCurrentMeeting,
   getNextMeeting,
-  CANCELLED_COUNTRIES,
+  isCancelled,
 } from '@/lib/openf1'
 import { fetchSeasonData } from '@/lib/season-data'
 import IntroSequence, { type RevealMode } from '@/components/IntroSequence'
@@ -215,7 +215,7 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
     (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime()
   )
   // Exclude cancelled races from countdown + race weekend logic
-  const activeMeetings = meetings.filter((m) => !CANCELLED_COUNTRIES.has(m.country_name))
+  const activeMeetings = meetings.filter((m) => !isCancelled(m))
   const currentMeeting = getCurrentMeeting(activeMeetings)
   const nextMeeting = getNextMeeting(activeMeetings)
   const targetMeeting = currentMeeting ?? nextMeeting
@@ -229,7 +229,7 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
     meeting: m,
     isPast: isMeetingCompleted(m),
     isNext: targetMeeting?.meeting_key === m.meeting_key,
-    isCancelled: CANCELLED_COUNTRIES.has(m.country_name),
+    isCancelled: isCancelled(m),
   }))
 
   // "Season complete" only when it is VERIFIABLY over: a loaded calendar
