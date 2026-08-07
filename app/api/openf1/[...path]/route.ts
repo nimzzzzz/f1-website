@@ -30,10 +30,17 @@ const ALLOWED = new Set([
 
 export const maxDuration = 30
 
+// The upstream status is carried on the thrown error so the handler can
+// pass it through instead of flattening every failure to 503. Without it a
+// live-session 401 lockout and a 429 burst are indistinguishable at the
+// browser, and the client can only ever say "temporarily unavailable" when
+// it could say which.
+const STATUS_RE = /^upstream (\d{3})$/
+
 async function fetchUpstream(url: string): Promise<string> {
   // Local verification hook (unset in prod): pretend openf1 is locked.
   if (process.env.SIMULATE_OPENF1_DOWN === '1') {
-    throw new Error('simulated lockout')
+    throw new Error(`upstream ${process.env.SIMULATE_OPENF1_STATUS ?? '401'}`)
   }
   const res = await fetch(url, {
     headers: { 'User-Agent': 'lights-out-site/1.0' },
@@ -73,10 +80,14 @@ export async function GET(
         'Cache-Control': 's-maxage=60, stale-while-revalidate=604800',
       },
     })
-  } catch {
-    // Nothing ever cached for this key and upstream is unavailable.
-    return new Response(JSON.stringify([]), {
-      status: 503,
+  } catch (err) {
+    // Nothing ever cached for this key and upstream is unavailable. Relay
+    // 401 and 429 verbatim so the client can distinguish a live-session
+    // lockout and a rate limit from a generic outage; anything else is 503.
+    const upstream = STATUS_RE.exec(err instanceof Error ? err.message : '')?.[1]
+    const status = upstream === '401' || upstream === '429' ? Number(upstream) : 503
+    return new Response(JSON.stringify({ error: 'upstream unavailable', status }), {
+      status,
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
     })
   }

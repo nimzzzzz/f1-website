@@ -6,7 +6,7 @@ const BASE =
   typeof window !== 'undefined' ? '/api/openf1' : 'https://api.openf1.org/v1'
 
 import { normalizeSessionResults, normalizeDrivers, describeReport } from '@/lib/openf1-normalize'
-import { type FetchResult, okResult, failResult, rowsOrEmpty, isRetryable } from '@/lib/fetch-result'
+import { type FetchResult, okResult, failResult, isRetryable } from '@/lib/fetch-result'
 export type { FetchResult } from '@/lib/fetch-result'
 
 // ─── TypeScript Interfaces ───────────────────────────────────────────────────
@@ -184,11 +184,12 @@ export interface SessionResult {
 
 // ─── Live-session lockout signal ─────────────────────────────────────────────
 // While an F1 session is live, openf1 401s every unauthenticated request.
-// In the browser the 401 is unreadable (the error response carries no CORS
-// headers, so fetch throws before a status exists), so failures are
-// classified through the same-origin /api/openf1-status probe, which reads
-// the real status server-side. All fetchers keep the return-[] contract;
-// this signal only tells UIs *why* data is absent.
+// Browser traffic goes through the same-origin /api/openf1 proxy, which now
+// RELAYS 401 and 429 rather than flattening them into 503 — so the status is
+// readable in the browser and apiFetch classifies the lockout directly. The
+// /api/openf1-status probe remains the fallback for the case where fetch
+// itself throws (offline, DNS, a torn connection) and there is no status to
+// read at all.
 
 let apiBlocked = false
 let lastProbeAt = 0
@@ -251,7 +252,6 @@ async function apiFetch<T>(
   try {
     const res = await fetch(url.toString(), options)
     if (res.status === 401) {
-      // readable only server-side; browsers hit the catch path instead
       setApiBlocked(true)
       console.error(`[OpenF1] 401 (live-session lockout) — ${url}`)
       return failResult<T>('blocked', 401)
