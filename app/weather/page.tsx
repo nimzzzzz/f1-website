@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import type { Session, Weather } from '@/lib/openf1'
 import { getCachedWeather } from '@/lib/client-cache'
-import { useSessionData, useSessionList } from '@/lib/use-session-data'
+import { useSessionData, useSessionList, sessionStripLabel } from '@/lib/use-session-data'
 import SessionHeader from '@/components/session/SessionHeader'
 import DataStateNotice from '@/components/session/DataStateNotice'
 import { FadeUp } from '@/components/motion/reveals'
@@ -32,9 +32,17 @@ export default function WeatherPage() {
     anySession,
     latestCompleted
   )
-  const { data, state, message, stale, fetching, refresh } = useSessionData(selectedKey, {
+  const { data, dataKey, state, message, stale, fetching, refresh } = useSessionData(selectedKey, {
     weather: getCachedWeather,
   })
+  // Rows kept through an outage may belong to a session the user has
+  // already navigated away from — name it, so the heading above cannot
+  // imply they are its own.
+  const staleLabel =
+    dataKey !== null && dataKey !== selectedKey
+      ? sessionStripLabel(sessions.find((s) => s.session_key === dataKey))
+      : null
+
   const weatherData: Weather[] = useMemo(
     () =>
       [...(data?.weather ?? [])].sort(
@@ -77,6 +85,7 @@ export default function WeatherPage() {
         state={state}
         message={message}
         stale={stale}
+        staleLabel={staleLabel}
         onRetry={refresh}
         emptyLabel={selectedKey ? 'NO WEATHER DATA FOR THIS SESSION' : 'SELECT A SESSION'}
         className="mt-8"

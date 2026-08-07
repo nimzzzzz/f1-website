@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import type { Session, Position, Driver } from '@/lib/openf1'
 import { getCachedPositions, getCachedDrivers } from '@/lib/client-cache'
-import { useSessionData, useSessionList } from '@/lib/use-session-data'
+import { useSessionData, useSessionList, sessionStripLabel } from '@/lib/use-session-data'
 import SessionHeader from '@/components/session/SessionHeader'
 import DataStateNotice from '@/components/session/DataStateNotice'
 import { FadeUp } from '@/components/motion/reveals'
@@ -21,13 +21,21 @@ const latestCompleted = (sorted: Session[]) => sorted.find((s) => new Date(s.dat
 
 export default function PositionsPage() {
   const { sessions, selectedKey, setSelectedKey, loading } = useSessionList(isRace, latestCompleted)
-  const { data, state, message, stale, fetching, refresh } = useSessionData(
+  const { data, dataKey, state, message, stale, fetching, refresh } = useSessionData(
     selectedKey,
     { positions: getCachedPositions, drivers: getCachedDrivers },
     // drivers only supplies acronym + team colour; without it a row reads
     // "#44" instead of "VER", which is degraded but not untrue.
     { primary: 'positions', optional: ['drivers'] }
   )
+  // Rows kept through an outage may belong to a session the user has
+  // already navigated away from — name it, so the heading above cannot
+  // imply they are its own.
+  const staleLabel =
+    dataKey !== null && dataKey !== selectedKey
+      ? sessionStripLabel(sessions.find((s) => s.session_key === dataKey))
+      : null
+
   const rawPositions: Position[] = data?.positions ?? []
   const driverList: Driver[] = data?.drivers ?? []
 
@@ -136,6 +144,7 @@ export default function PositionsPage() {
         state={state}
         message={message}
         stale={stale}
+        staleLabel={staleLabel}
         onRetry={refresh}
         emptyLabel={selectedKey ? 'NO POSITION DATA FOR THIS SESSION' : 'SELECT A RACE SESSION'}
         className="mt-8"

@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import type { Session, PitStop, Driver } from '@/lib/openf1'
 import { asNum } from '@/lib/format'
 import { getCachedPitStops, getCachedDrivers } from '@/lib/client-cache'
-import { useSessionData, useSessionList } from '@/lib/use-session-data'
+import { useSessionData, useSessionList, sessionStripLabel } from '@/lib/use-session-data'
 import SessionHeader from '@/components/session/SessionHeader'
 import DataStateNotice from '@/components/session/DataStateNotice'
 import { FadeUp } from '@/components/motion/reveals'
@@ -19,11 +19,19 @@ const latestCompleted = (sorted: Session[]) => sorted.find((s) => new Date(s.dat
 
 export default function PitStopsPage() {
   const { sessions, selectedKey, setSelectedKey, loading } = useSessionList(isRace, latestCompleted)
-  const { data, state, message, stale, fetching, refresh } = useSessionData(
+  const { data, dataKey, state, message, stale, fetching, refresh } = useSessionData(
     selectedKey,
     { pitStops: getCachedPitStops, drivers: getCachedDrivers },
     { primary: 'pitStops', optional: ['drivers'] }
   )
+  // Rows kept through an outage may belong to a session the user has
+  // already navigated away from — name it, so the heading above cannot
+  // imply they are its own.
+  const staleLabel =
+    dataKey !== null && dataKey !== selectedKey
+      ? sessionStripLabel(sessions.find((s) => s.session_key === dataKey))
+      : null
+
   const pitStops: PitStop[] = useMemo(
     () => [...(data?.pitStops ?? [])].sort((a, b) => (a.lap_number ?? 0) - (b.lap_number ?? 0)),
     [data]
@@ -71,6 +79,7 @@ export default function PitStopsPage() {
         state={state}
         message={message}
         stale={stale}
+        staleLabel={staleLabel}
         onRetry={refresh}
         emptyLabel={selectedKey ? 'NO PIT STOPS RECORDED' : 'SELECT A RACE SESSION'}
         className="mt-8"

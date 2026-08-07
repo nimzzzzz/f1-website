@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { unavailableMessage } from '@/lib/fetch-result'
 import { useFreshSeasonBundle } from '@/lib/use-season-bundle'
 import type { BundleDriverStanding, BundleTeamStanding } from '@/lib/season-data'
 import { ClipReveal, CountUp, FadeUp } from '@/components/motion/reveals'
@@ -44,12 +45,17 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
     setSeasonYear(bundle.seasonYear)
   }, [bundle])
 
-  // The skeleton only ever gates a cold arrival with no SSR bundle.
+  // The skeleton only ever gates a cold arrival with no SSR bundle, and it
+  // ends the moment there is an ANSWER — including a failed one. It used to
+  // wait only for success, so a cold outage sat on "COMPUTING STANDINGS…"
+  // for the full 8s before admitting anything was wrong: a skeleton implies
+  // work in progress, and by then there was none. The timer is now only a
+  // backstop for a request that never settles at all.
   useEffect(() => {
-    if (bundle || initialBundle) setLoading(false)
+    if (bundle || initialBundle || unavailable) setLoading(false)
     const t = setTimeout(() => setLoading(false), 8000)
     return () => clearTimeout(t)
-  }, [bundle, initialBundle])
+  }, [bundle, initialBundle, unavailable])
 
   if (loading) {
     return (
@@ -93,7 +99,7 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
               className="label-mono mt-16 border-l-2 border-[var(--accent)] pl-4 text-[var(--accent)]"
               role="status"
             >
-              STANDINGS TEMPORARILY UNAVAILABLE
+              {unavailableMessage(undefined, false, 'CHAMPIONSHIP')}
             </p>
           ) : (
             <p className="label-mono mt-16 text-[var(--text-dim)]">

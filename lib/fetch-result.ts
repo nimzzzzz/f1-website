@@ -75,25 +75,38 @@ export function dataState<T>(r: FetchResult<T> | null, hadPrevious: boolean): Da
 /**
  * User-facing copy for an unavailable state.
  *
- * The copy must never promise something the code will not do. "RETRYING
- * SHORTLY" is only shown while a retry is genuinely scheduled — once the
- * backoff is exhausted the line changes and the RETRY control beside it is
- * the only thing that will act.
+ * BROADCAST VOICE, NOT MACHINE VOICE. This used to surface the transport:
+ * "RATE LIMITED — RETRYING SHORTLY". A viewer does not know what rate
+ * limiting is, and does not need to — what they need to know is that the
+ * feed dropped and whether it is coming back on its own. So `reason` still
+ * drives retry policy and the logs, but only ONE distinction reaches the
+ * screen beyond the lockout: is a retry actually scheduled.
+ *
+ * The copy must never promise something the code will not do. RECONNECTING
+ * is shown only while a retry is genuinely pending; once the backoff is
+ * exhausted the line drops it and the RETRY control beside it is the only
+ * thing that will act.
+ *
+ * Staleness is deliberately NOT part of this string. Which session the rows
+ * on screen belong to is a fact about the DATA, so it is disclosed next to
+ * the data (see DataStateNotice / staleLabel) rather than tacked onto the
+ * end of a status line that is about the FEED.
  */
 export function unavailableMessage(
   reason: FetchFailureReason | undefined,
-  stale: boolean,
-  retryPending = false
+  retryPending = false,
+  subject?: string
 ): string {
-  const base =
-    reason === 'blocked'
-      ? 'LIVE SESSION — TIMING DATA IS LOCKED'
-      : reason === 'rate-limited'
-        ? retryPending
-          ? 'RATE LIMITED — RETRYING SHORTLY'
-          : 'RATE LIMITED — TRY AGAIN IN A MOMENT'
-        : retryPending
-          ? 'DATA TEMPORARILY UNAVAILABLE — RETRYING'
-          : 'DATA TEMPORARILY UNAVAILABLE'
-  return stale ? `${base} · SHOWING LAST KNOWN` : base
+  // A live-session lockout is its own thing: expected, explicable, and not
+  // something retrying will fix.
+  if (reason === 'blocked') return 'LIVE SESSION — TIMING DATA IS LOCKED'
+  // `subject` names WHICH feed, for surfaces where it is not obvious from
+  // context. On a session page it is omitted — you are looking at the laps,
+  // the interrupted feed is self-evidently the timing feed. The standings
+  // and the calendar are not live timing, so they say which feed they mean.
+  // Every one of them stays in this one family: the site must not say
+  // "temporarily unavailable" in one place and "feed interrupted" in
+  // another, which is exactly what a hand-written string on /standings did.
+  const head = subject ? `${subject.toUpperCase()} FEED INTERRUPTED` : 'FEED INTERRUPTED'
+  return retryPending ? `${head} — RECONNECTING` : head
 }
