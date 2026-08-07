@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useMemo } from 'react'
 import type { Session, PitStop, Driver } from '@/lib/openf1'
 import { asNum } from '@/lib/format'
-import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedPitStops, getCachedDrivers } from '@/lib/client-cache'
+import { useSessionData, useSessionList } from '@/lib/use-session-data'
 import SessionHeader from '@/components/session/SessionHeader'
+import DataStateNotice from '@/components/session/DataStateNotice'
 import { FadeUp } from '@/components/motion/reveals'
 
 function formatPitDuration(seconds: number | null): string {
@@ -13,49 +14,21 @@ function formatPitDuration(seconds: number | null): string {
   return n === null ? '—' : `${n.toFixed(2)}s`
 }
 
+const isRace = (s: Session) => s.session_type === 'Race'
+const latestCompleted = (sorted: Session[]) => sorted.find((s) => new Date(s.date_end) < new Date())
+
 export default function PitStopsPage() {
-  const [sessions, setSessions] = useState<Session[]>([])
-  const [selectedKey, setSelectedKey] = useState<number | null>(null)
-  const [pitStops, setPitStops] = useState<PitStop[]>([])
-  const [drivers, setDrivers] = useState<Driver[]>([])
-  const [loading, setLoading] = useState(true)
-  const [fetching, setFetching] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    getCachedSessions()
-      .then((all) => {
-        const raceSessions = all
-          .filter((s) => s.session_type === 'Race')
-          .sort((a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime())
-        setSessions(raceSessions)
-        const latest = raceSessions.find((s) => new Date(s.date_end) < new Date())
-        if (latest) setSelectedKey(latest.session_key)
-      })
-      .catch(() => setError('Failed to load sessions'))
-      .finally(() => setLoading(false))
-  }, [])
-
-  const fetchData = useCallback(async (sessionKey: number) => {
-    setFetching(true)
-    setError(null)
-    try {
-      const [pits, driverList] = await Promise.all([
-        getCachedPitStops(sessionKey),
-        getCachedDrivers(sessionKey),
-      ])
-      setPitStops(pits.sort((a, b) => (a.lap_number ?? 0) - (b.lap_number ?? 0)))
-      setDrivers(driverList)
-    } catch {
-      setError('Failed to load pit stop data')
-    } finally {
-      setFetching(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (selectedKey) fetchData(selectedKey)
-  }, [selectedKey, fetchData])
+  const { sessions, selectedKey, setSelectedKey, loading } = useSessionList(isRace, latestCompleted)
+  const { data, state, message, stale, fetching, refresh } = useSessionData(
+    selectedKey,
+    { pitStops: getCachedPitStops, drivers: getCachedDrivers },
+    { primary: 'pitStops', optional: ['drivers'] }
+  )
+  const pitStops: PitStop[] = useMemo(
+    () => [...(data?.pitStops ?? [])].sort((a, b) => (a.lap_number ?? 0) - (b.lap_number ?? 0)),
+    [data]
+  )
+  const drivers: Driver[] = data?.drivers ?? []
 
   const driverMap = new Map(drivers.map((d) => [d.driver_number, d]))
 
@@ -94,21 +67,22 @@ export default function PitStopsPage() {
         onSelect={setSelectedKey}
       />
 
-      {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
+      <DataStateNotice
+        state={state}
+        message={message}
+        stale={stale}
+        onRetry={refresh}
+        emptyLabel={selectedKey ? 'NO PIT STOPS RECORDED' : 'SELECT A RACE SESSION'}
+        className="mt-8"
+      />
 
-      {fetching ? (
+      {fetching && pitStops.length === 0 ? (
         <div className="mt-16 space-y-5">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-14 w-[55%] animate-pulse rounded bg-white/5" />
           ))}
         </div>
-      ) : pitStops.length === 0 ? (
-        (
-          <p className="label-mono mt-16 text-[var(--text-dim)]">
-            {selectedKey ? 'NO PIT STOPS RECORDED' : 'SELECT A RACE SESSION'}
-          </p>
-        )
-      ) : (
+      ) : pitStops.length === 0 ? null : (
         <>
           {/* ─── the stationary time IS the drama ─── */}
           <div className="mt-16 flex flex-wrap items-baseline gap-x-20 gap-y-10">

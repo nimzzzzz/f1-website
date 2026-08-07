@@ -13,7 +13,7 @@ import {
   getNextMeeting,
   isCancelled,
 } from '@/lib/openf1'
-import { fetchSeasonData } from '@/lib/season-data'
+import { useFreshSeasonBundle } from '@/lib/use-season-bundle'
 import IntroSequence, { type RevealMode } from '@/components/IntroSequence'
 import { introMayPlay, consumeIntro } from '@/lib/intro-gate'
 import NowSection from '@/components/home/NowSection'
@@ -135,11 +135,14 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
   // Phase 1: fetch meetings + sessions, then show the page immediately
   useEffect(() => {
     Promise.all([getCachedMeetings(), getCachedSessions()])
-      .then(([m, s]) => {
-        // fresh data wins; an empty (locked-out) result never clobbers
-        // calendar state the bundle fallback may already have filled
-        setMeetings((cur) => (m.length > 0 ? m : cur))
-        setSessions((cur) => (s.length > 0 ? s : cur))
+      .then(([mtgRes, sessionRes]) => {
+        // Fresh data wins; a FAILED fetch never clobbers calendar state the
+        // bundle fallback may already have filled. This used to guess at
+        // failure from `length > 0`, which also refused a legitimately
+        // empty calendar — harmless here, but the check now says what it
+        // means.
+        if (mtgRes.ok) setMeetings(mtgRes.rows)
+        if (sessionRes.ok) setSessions(sessionRes.rows)
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -150,10 +153,11 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
   // The bundle's calendar also backstops the direct openf1 fetch: during
   // live-session 401 lockouts the meetings/sessions state stays populated
   // from durable data, so NOW (and its countdown) keep working.
+  const { bundle } = useFreshSeasonBundle(initialBundle?.computedAt ?? null)
+
   useEffect(() => {
-    let alive = true
-    fetchSeasonData().then((bundle) => {
-      if (!alive || !bundle) return
+    if (!bundle) return
+    {
       setMeetings((cur) => (cur.length > 0 ? cur : bundle.meetings))
       setSessions((cur) => (cur.length > 0 ? cur : bundle.sessions))
       const top3: FightRow[] = bundle.driverStandings.slice(0, 3).map((d) => ({
@@ -177,11 +181,8 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
       }
 
       if (Object.keys(bundle.winnersByRound).length > 0) setWinners(bundle.winnersByRound)
-    })
-    return () => {
-      alive = false
     }
-  }, [])
+  }, [bundle])
 
   // Sections 2–3 mount after their data arrives, which changes the page
   // height above the pinned season strip — recompute trigger positions.

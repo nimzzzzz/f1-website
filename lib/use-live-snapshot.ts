@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { SeasonBundle } from '@/lib/season-data'
+import { isNewerBundle } from '@/lib/season-data'
 
 // Converge the page onto the freshest available snapshot, from the CLIENT.
 //
@@ -41,8 +42,6 @@ export function useLiveSnapshot(ssrComputedAt: string | null): SeasonBundle | nu
   useEffect(() => {
     let cancelled = false
     const timers: number[] = []
-    const ssrTime = ssrComputedAt ? Date.parse(ssrComputedAt) : 0
-
     let settled = false // stop retrying the moment we hold something newer
 
     const attempt = async () => {
@@ -58,14 +57,11 @@ export function useLiveSnapshot(ssrComputedAt: string | null): SeasonBundle | nu
         const bundle = body as SeasonBundle
         if (!Array.isArray(bundle.driverStandings) || bundle.driverStandings.length === 0) return
 
-        const t = Date.parse(bundle.computedAt)
-        if (!Number.isFinite(t) || t <= ssrTime) return // not newer — ignore
+        // Strictly newer than what the page was rendered with, or ignore.
+        if (!isNewerBundle(bundle, ssrComputedAt)) return
         settled = true
         timers.forEach((id) => window.clearTimeout(id))
-        setFresher((prev) => {
-          const prevT = prev ? Date.parse(prev.computedAt) : ssrTime
-          return t > prevT ? bundle : prev
-        })
+        setFresher((prev) => (isNewerBundle(bundle, prev?.computedAt ?? ssrComputedAt) ? bundle : prev))
       } catch {
         // Offline, aborted, or a bad payload — keep what the server rendered.
       }

@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
 import type { Session, Stint, Driver } from '@/lib/openf1'
-import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedStints, getCachedDrivers } from '@/lib/client-cache'
+import { useSessionData, useSessionList } from '@/lib/use-session-data'
 import SessionHeader from '@/components/session/SessionHeader'
+import DataStateNotice from '@/components/session/DataStateNotice'
 import { FadeUp } from '@/components/motion/reveals'
 
 // Compound colours are the dataset here — the page's only non-mono colour.
@@ -31,56 +31,28 @@ interface DriverStints {
   stints: Stint[]
 }
 
+const anySession = () => true
+// Default to the latest completed race or sprint, else the latest completed
+// session of any kind.
+const latestRaceish = (sorted: Session[]) =>
+  sorted.find(
+    (s) =>
+      (s.session_type === 'Race' || s.session_name === 'Sprint') &&
+      new Date(s.date_end) < new Date()
+  ) ?? sorted.find((s) => new Date(s.date_end) < new Date())
+
 export default function StintsPage() {
-  const [sessions, setSessions] = useState<Session[]>([])
-  const [selectedKey, setSelectedKey] = useState<number | null>(null)
-  const [stints, setStints] = useState<Stint[]>([])
-  const [drivers, setDrivers] = useState<Driver[]>([])
-  const [loading, setLoading] = useState(true)
-  const [fetching, setFetching] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    getCachedSessions()
-      .then((all) => {
-        const sorted = all.sort(
-          (a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime()
-        )
-        setSessions(sorted)
-        // Default to latest completed race
-        const latestRace = sorted.find(
-          (s) => (s.session_type === 'Race' || s.session_name === 'Sprint') && new Date(s.date_end) < new Date()
-        )
-        if (latestRace) setSelectedKey(latestRace.session_key)
-        else {
-          const latest = sorted.find((s) => new Date(s.date_end) < new Date())
-          if (latest) setSelectedKey(latest.session_key)
-        }
-      })
-      .catch(() => setError('Failed to load sessions'))
-      .finally(() => setLoading(false))
-  }, [])
-
-  const fetchData = useCallback(async (sessionKey: number) => {
-    setFetching(true)
-    setError(null)
-    try {
-      const [stintData, driverData] = await Promise.all([
-        getCachedStints(sessionKey),
-        getCachedDrivers(sessionKey),
-      ])
-      setStints(stintData)
-      setDrivers(driverData)
-    } catch {
-      setError('Failed to load stint data')
-    } finally {
-      setFetching(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (selectedKey) fetchData(selectedKey)
-  }, [selectedKey, fetchData])
+  const { sessions, selectedKey, setSelectedKey, loading } = useSessionList(
+    anySession,
+    latestRaceish
+  )
+  const { data, state, message, stale, fetching, refresh } = useSessionData(
+    selectedKey,
+    { stints: getCachedStints, drivers: getCachedDrivers },
+    { primary: 'stints', optional: ['drivers'] }
+  )
+  const stints: Stint[] = data?.stints ?? []
+  const drivers: Driver[] = data?.drivers ?? []
 
   const driverMap = new Map(drivers.map((d) => [d.driver_number, d]))
 
@@ -140,21 +112,22 @@ export default function StintsPage() {
         ))}
       </div>
 
-      {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
+      <DataStateNotice
+        state={state}
+        message={message}
+        stale={stale}
+        onRetry={refresh}
+        emptyLabel={selectedKey ? 'NO STINT DATA FOR THIS SESSION' : 'SELECT A SESSION'}
+        className="mt-8"
+      />
 
-      {fetching ? (
+      {fetching && stints.length === 0 ? (
         <div className="mt-16 space-y-5">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="h-10 w-[70%] animate-pulse rounded bg-white/5" />
           ))}
         </div>
-      ) : stints.length === 0 ? (
-        (
-          <p className="label-mono mt-16 text-[var(--text-dim)]">
-            {selectedKey ? 'NO STINT DATA FOR THIS SESSION' : 'SELECT A SESSION'}
-          </p>
-        )
-      ) : (
+      ) : stints.length === 0 ? null : (
         <div className="mt-14">
           <FadeUp>
             <p className="section-header text-[var(--text-dim)]">

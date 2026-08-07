@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useMemo } from 'react'
 import type { Session, Driver, Position, SessionResult } from '@/lib/openf1'
 import { asNum } from '@/lib/format'
-import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedDrivers, getCachedPositions, getCachedPitStops, getCachedSessionResult } from '@/lib/client-cache'
+import { useSessionData, useSessionList } from '@/lib/use-session-data'
 import { ClipReveal, FadeUp } from '@/components/motion/reveals'
 import SessionHeader from '@/components/session/SessionHeader'
+import DataStateNotice from '@/components/session/DataStateNotice'
 
 interface DriverResult {
   position: number
@@ -58,87 +59,64 @@ function gapLabel(r: SessionResult | undefined): string {
 
 const isOut = (r: SessionResult | undefined) => Boolean(r && (r.dnf || r.dns || r.dsq))
 
+const anySession = () => true
+const latestCompleted = (sorted: Session[]) => sorted.find((s) => new Date(s.date_end) < new Date())
+
 export default function ResultsPage() {
-  const allSessionsRef = useRef<Session[]>([])
-  const [sessions, setSessions] = useState<Session[]>([])
-  const [selectedKey, setSelectedKey] = useState<number | null>(null)
-  const [results, setResults] = useState<DriverResult[]>([])
-  const [loading, setLoading] = useState(true)
-  const [fetchingResults, setFetchingResults] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  // Gap/time/status enrichment per driver — same cached fetcher family,
-  // fetched alongside (not inside) the untouched fetchResults flow.
-  const [resultDetail, setResultDetail] = useState<Map<number, SessionResult> | null>(null)
+  const { sessions, selectedKey, setSelectedKey, loading } = useSessionList(
+    anySession,
+    latestCompleted
+  )
+  // All four endpoints move together now. The gap/time/status detail used to
+  // load in its own effect with its own `alive` flag, which meant the two
+  // could disagree about which session was on screen.
+  const {
+    data,
+    state,
+    message,
+    stale,
+    fetching: fetchingResults,
+    refresh,
+  } = useSessionData(
+    selectedKey,
+    {
+      positions: getCachedPositions,
+      drivers: getCachedDrivers,
+      pitStops: getCachedPitStops,
+      detail: getCachedSessionResult,
+    },
+    // drivers and pitStops are REQUIRED: result rows are keyed on the
+    // roster, and a missing pit count would render "0 STOPS" — a false
+    // claim rather than a blank. detail is pure enrichment (gap, winner
+    // time) and renders "—" when absent, so its frequent 429s must not
+    // take the classification off the page.
+    { primary: 'positions', optional: ['detail'] }
+  )
 
-  useEffect(() => {
-    getCachedSessions()
-      .then((all) => {
-        allSessionsRef.current = all
-        const allSorted = [...all].sort(
-          (a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime()
-        )
-        setSessions(allSorted)
+  const results: DriverResult[] = useMemo(() => {
+    const positions: Position[] = data?.positions ?? []
+    const driverList: Driver[] = data?.drivers ?? []
+    const latestPos = getLatestPositions(positions)
+    const pitCount = (data?.pitStops ?? []).reduce<Record<number, number>>((acc, p) => {
+      acc[p.driver_number] = (acc[p.driver_number] ?? 0) + 1
+      return acc
+    }, {})
+    const driverMap = new Map(driverList.map((d) => [d.driver_number, d]))
 
-        const latest = allSorted.find((s) => new Date(s.date_end) < new Date())
-        if (latest) setSelectedKey(latest.session_key)
-      })
-      .catch(() => setError('Failed to load sessions'))
-      .finally(() => setLoading(false))
-  }, [])
+    const rows: DriverResult[] = []
+    latestPos.forEach((pos, driverNum) => {
+      const driver = driverMap.get(driverNum)
+      if (driver) rows.push({ position: pos, driver, pitStops: pitCount[driverNum] ?? 0 })
+    })
+    rows.sort((a, b) => a.position - b.position)
+    return rows
+  }, [data])
 
-  const fetchResults = useCallback(async (sessionKey: number) => {
-    setFetchingResults(true)
-    setError(null)
-
-    try {
-      const [driverList, positions, pitStops] = await Promise.all([
-        getCachedDrivers(sessionKey),
-        getCachedPositions(sessionKey),
-        getCachedPitStops(sessionKey),
-      ])
-
-      const latestPos = getLatestPositions(positions)
-      const pitCount = pitStops.reduce<Record<number, number>>((acc, p) => {
-        acc[p.driver_number] = (acc[p.driver_number] ?? 0) + 1
-        return acc
-      }, {})
-      const driverMap = new Map(driverList.map((d) => [d.driver_number, d]))
-
-      const resultRows: DriverResult[] = []
-      latestPos.forEach((pos, driverNum) => {
-        const driver = driverMap.get(driverNum)
-        if (driver) {
-          resultRows.push({ position: pos, driver, pitStops: pitCount[driverNum] ?? 0 })
-        }
-      })
-      resultRows.sort((a, b) => a.position - b.position)
-      setResults(resultRows)
-
-    } catch {
-      setError('Failed to load results')
-    } finally {
-      setFetchingResults(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (selectedKey) fetchResults(selectedKey)
-  }, [selectedKey, fetchResults])
-
-  useEffect(() => {
-    if (!selectedKey) return
-    let alive = true
-    setResultDetail(null)
-    getCachedSessionResult(selectedKey)
-      .then((rows: SessionResult[]) => {
-        if (!alive || rows.length === 0) return
-        setResultDetail(new Map(rows.map((r) => [r.driver_number, r])))
-      })
-      .catch(() => {})
-    return () => {
-      alive = false
-    }
-  }, [selectedKey])
+  // Gap/time/status enrichment per driver.
+  const resultDetail: Map<number, SessionResult> | null = useMemo(() => {
+    const rows = data?.detail ?? []
+    return rows.length === 0 ? null : new Map(rows.map((r) => [r.driver_number, r]))
+  }, [data])
 
   const selectedSession = sessions.find((s) => s.session_key === selectedKey)
 
@@ -172,21 +150,22 @@ export default function ResultsPage() {
         />
       </FadeUp>
 
-      {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
+      <DataStateNotice
+        state={state}
+        message={message}
+        stale={stale}
+        onRetry={refresh}
+        emptyLabel={selectedKey ? 'NO POSITION DATA FOR THIS SESSION' : 'SELECT A SESSION'}
+        className="mt-8"
+      />
 
-      {fetchingResults ? (
+      {fetchingResults && results.length === 0 ? (
         <div className="mt-16 space-y-5">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="h-16 w-[55%] animate-pulse rounded bg-white/5" />
           ))}
         </div>
-      ) : results.length === 0 ? (
-        (
-          <p className="label-mono mt-16 text-[var(--text-dim)]">
-            {selectedKey ? 'NO POSITION DATA FOR THIS SESSION' : 'SELECT A SESSION'}
-          </p>
-        )
-      ) : (
+      ) : results.length === 0 ? null : (
         <>
           {/* ─── the winner, monumental ─── */}
           {winner && (

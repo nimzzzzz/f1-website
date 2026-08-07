@@ -28,8 +28,12 @@ export function useNextRace(): NextRaceInfo | null {
   useEffect(() => {
     let alive = true
     Promise.all([getCachedMeetings(), getCachedSessions()])
-      .then(([meetings, sessions]: [Meeting[], Session[]]) => {
-        if (!alive) return
+      .then(([mtgRes, sessionRes]) => {
+        // The shell ticker keeps whatever it last showed rather than
+        // clearing itself on a failed fetch.
+        if (!alive || !mtgRes.ok || !sessionRes.ok) return
+        const meetings = mtgRes.rows
+        const sessions = sessionRes.rows
         const active = meetings.filter((m) => !isCancelled(m))
         const current = getCurrentMeeting(active)
         const target = current ?? getNextMeeting(active)

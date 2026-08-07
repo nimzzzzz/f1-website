@@ -3,6 +3,7 @@ import { isCancelled, getSessionResultsForMeeting, getDriversForMeeting } from '
 import { resultStatus } from '@/lib/openf1-normalize'
 import { sortByCountback } from '@/lib/countback'
 import type { SeasonBundle } from '@/lib/season-data'
+import { type FetchResult, okResult, failResult, isRetryable } from '@/lib/fetch-result'
 
 // Compute-local openf1 fetcher. The bundle route is STATIC (ISR): its
 // inner fetches must be revalidate-tagged — a no-store fetch would force
@@ -12,25 +13,29 @@ import type { SeasonBundle } from '@/lib/season-data'
 // simulate an openf1 outage by pointing at a dead port.
 const OF1_BASE = process.env.OPENF1_BASE_URL ?? 'https://api.openf1.org/v1'
 
-async function of1<T>(query: string): Promise<T[]> {
+// Same FetchResult contract as lib/openf1: a 401, a 429 and an empty
+// calendar are three different things and the log line below says which.
+async function of1<T>(query: string): Promise<FetchResult<T>> {
   try {
     const res = await fetch(`${OF1_BASE}/${query}`, {
       headers: { 'User-Agent': 'lights-out-site/1.0' },
       next: { revalidate: 60 },
     })
-    if (!res.ok) return []
+    if (res.status === 401) return failResult<T>('blocked', 401)
+    if (res.status === 429) return failResult<T>('rate-limited', 429)
+    // 404 is openf1's "nothing matched" — an empty answer, not a failure.
+    if (res.status === 404) return okResult<T>([])
+    if (!res.ok) return failResult<T>('http', res.status)
     const data = await res.json()
-    return Array.isArray(data) ? data : []
+    if (!Array.isArray(data)) return failResult<T>('malformed', res.status)
+    return okResult(data as T[])
   } catch {
-    return []
+    return failResult<T>('network')
   }
 }
 
 const getMeetings = () => of1<Meeting>('meetings?year=2026')
 const getAllSessions = () => of1<Session>('sessions?year=2026')
-const getDrivers = (sessionKey: number) => of1<Driver>(`drivers?session_key=${sessionKey}`)
-const getSessionResult = (sessionKey: number) =>
-  of1<SessionResult>(`session_result?session_key=${sessionKey}`)
 
 // Server-computed season bundle: the standings pipeline runs ONCE here
 // instead of in every visitor's browser. Caching is Next's, at two layers:
@@ -66,17 +71,23 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
  * 22 rows perfectly when asked politely). meeting_key collapses a weekend
  * into one call each, so 15 points sessions cost 2 × 11 meetings = 22.
  *
- * Empty is treated as RETRYABLE with backoff: a 429 is indistinguishable
- * from an empty body through apiFetch's return-[] contract, so nothing is
- * declared missing until it has been asked for patiently.
+ * RETRIES KEY ON FAILURE, NOT ON EMPTINESS. They used to key on emptiness
+ * because a 429 was indistinguishable from an empty body through apiFetch's
+ * old return-[] contract — so a meeting that genuinely had no rows was
+ * re-fetched three times with backoff before the completeness guard rejected
+ * it anyway, while a rate-limited one got exactly the same treatment by
+ * accident. FetchResult now says which happened: only rate-limited /
+ * network / http are retried. A 401 lockout is not retryable (openf1 will
+ * keep refusing for the length of the session) and a successful empty is an
+ * answer, not a miss.
  */
 async function fetchSeasonRows(pointsSessions: Session[]) {
   const meetingKeys = [...new Set(pointsSessions.map((s) => s.meeting_key))]
   const BATCH = 2
   const GAP = 500
 
-  const results = new Map<number, SessionResult[]>()
-  const rosters = new Map<number, Driver[]>()
+  const results = new Map<number, FetchResult<SessionResult>>()
+  const rosters = new Map<number, FetchResult<Driver>>()
 
   const sweep = async (keys: number[]) => {
     for (let i = 0; i < keys.length; i += BATCH) {
@@ -96,31 +107,50 @@ async function fetchSeasonRows(pointsSessions: Session[]) {
   }
   await sweep(meetingKeys)
 
+  const needsRetry = (r: FetchResult<unknown> | undefined) => r === undefined || isRetryable(r)
+
   for (const delay of [800, 1600, 3000]) {
-    const missing = meetingKeys.filter(
-      (mk) => (results.get(mk)?.length ?? 0) === 0 || (rosters.get(mk)?.length ?? 0) === 0
+    const failed = meetingKeys.filter(
+      (mk) => needsRetry(results.get(mk)) || needsRetry(rosters.get(mk))
     )
-    if (missing.length === 0) break
-    console.warn(`[season-data] retrying ${missing.length} meeting(s) in ${delay}ms`)
+    if (failed.length === 0) break
+    console.warn(`[season-data] retrying ${failed.length} failed meeting(s) in ${delay}ms`)
     await sleep(delay)
-    for (const mk of missing) {
-      if ((results.get(mk)?.length ?? 0) === 0) results.set(mk, await getSessionResultsForMeeting(mk))
+    for (const mk of failed) {
+      if (needsRetry(results.get(mk))) results.set(mk, await getSessionResultsForMeeting(mk))
       await sleep(250)
-      if ((rosters.get(mk)?.length ?? 0) === 0) rosters.set(mk, await getDriversForMeeting(mk))
+      if (needsRetry(rosters.get(mk))) rosters.set(mk, await getDriversForMeeting(mk))
       await sleep(250)
     }
   }
 
+  // Anything still failing is reported by reason so a lockout reads
+  // differently from a throttle in the build/server log.
+  const stillFailing = meetingKeys.filter(
+    (mk) => results.get(mk)?.ok === false || rosters.get(mk)?.ok === false
+  )
+  if (stillFailing.length > 0) {
+    const reasons = stillFailing.map((mk) => {
+      const r = results.get(mk)
+      const d = rosters.get(mk)
+      const why = (!r?.ok && r?.reason) || (!d?.ok && d?.reason) || 'unknown'
+      return `${mk}:${why}`
+    })
+    console.warn(`[season-data] ${stillFailing.length} meeting(s) unavailable — ${reasons.join(' ')}`)
+  }
+
+  const rowsOf = <T>(r: FetchResult<T> | undefined): T[] => (r && r.ok ? r.rows : [])
+
   // split by session
   const resultSets = pointsSessions.map((session) => ({
     session,
-    results: (results.get(session.meeting_key) ?? []).filter(
+    results: rowsOf(results.get(session.meeting_key)).filter(
       (r) => r.session_key === session.session_key
     ),
   }))
   const rosterBySession = new Map<number, Map<number, Driver>>()
   for (const session of pointsSessions) {
-    const rows = (rosters.get(session.meeting_key) ?? []).filter(
+    const rows = rowsOf(rosters.get(session.meeting_key)).filter(
       (d) => d.session_key === session.session_key
     )
     rosterBySession.set(session.session_key, new Map(rows.map((d) => [d.driver_number, d])))
@@ -160,11 +190,19 @@ function winnerTime(rawDuration: SessionResult['duration']): string | null {
 }
 
 async function computeSeasonData(): Promise<SeasonBundle> {
-  const [meetings, sessions] = await Promise.all([getMeetings(), getAllSessions()])
-  // apiFetch returns [] on failure — empty core data means upstream is
-  // unavailable (or 401-locked): refuse to cache anything.
+  const [meetingsRes, sessionsRes] = await Promise.all([getMeetings(), getAllSessions()])
+  // A FAILED calendar fetch and a genuinely empty calendar both mean we
+  // cannot compute — but they are reported differently, and throwing keeps
+  // either out of the cache so stale-while-revalidate serves the last good
+  // bundle.
+  if (!meetingsRes.ok || !sessionsRes.ok) {
+    const why = (!meetingsRes.ok && meetingsRes.reason) || (!sessionsRes.ok && sessionsRes.reason)
+    throw new Error(`season-data: calendar fetch failed (${why})`)
+  }
+  const meetings = meetingsRes.rows
+  const sessions = sessionsRes.rows
   if (meetings.length === 0 || sessions.length === 0) {
-    throw new Error('season-data: calendar unavailable')
+    throw new Error('season-data: calendar empty')
   }
 
   const now = new Date()

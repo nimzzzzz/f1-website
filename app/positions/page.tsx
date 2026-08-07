@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import type { Session, Position, Driver } from '@/lib/openf1'
-import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedPositions, getCachedDrivers } from '@/lib/client-cache'
+import { useSessionData, useSessionList } from '@/lib/use-session-data'
 import SessionHeader from '@/components/session/SessionHeader'
+import DataStateNotice from '@/components/session/DataStateNotice'
 import { FadeUp } from '@/components/motion/reveals'
 
 interface DriverPosition {
@@ -15,88 +16,61 @@ interface DriverPosition {
   positionChange: number | null
 }
 
+const isRace = (s: Session) => s.session_type === 'Race'
+const latestCompleted = (sorted: Session[]) => sorted.find((s) => new Date(s.date_end) < new Date())
+
 export default function PositionsPage() {
-  const [sessions, setSessions] = useState<Session[]>([])
-  const [selectedKey, setSelectedKey] = useState<number | null>(null)
-  const [driverPositions, setDriverPositions] = useState<DriverPosition[]>([])
-  const [rawPositions, setRawPositions] = useState<Position[]>([])
-  const [driverList, setDriverList] = useState<Driver[]>([])
-  const [loading, setLoading] = useState(true)
-  const [fetching, setFetching] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { sessions, selectedKey, setSelectedKey, loading } = useSessionList(isRace, latestCompleted)
+  const { data, state, message, stale, fetching, refresh } = useSessionData(
+    selectedKey,
+    { positions: getCachedPositions, drivers: getCachedDrivers },
+    // drivers only supplies acronym + team colour; without it a row reads
+    // "#44" instead of "VER", which is degraded but not untrue.
+    { primary: 'positions', optional: ['drivers'] }
+  )
+  const rawPositions: Position[] = data?.positions ?? []
+  const driverList: Driver[] = data?.drivers ?? []
+
   // scrub through the session's position timeline (1 = final classification)
   const [scrub, setScrub] = useState(1)
+  useEffect(() => setScrub(1), [selectedKey])
 
-  useEffect(() => {
-    getCachedSessions()
-      .then((all) => {
-        const raceSessions = all
-          .filter((s) => s.session_type === 'Race')
-          .sort((a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime())
-        setSessions(raceSessions)
-        const latest = raceSessions.find((s) => new Date(s.date_end) < new Date())
-        if (latest) setSelectedKey(latest.session_key)
-      })
-      .catch(() => setError('Failed to load sessions'))
-      .finally(() => setLoading(false))
-  }, [])
+  // Final classification, derived from the fetched timeline.
+  const driverPositions: DriverPosition[] = useMemo(() => {
+    const driverMap = new Map(driverList.map((d) => [d.driver_number, d]))
 
-  const fetchData = useCallback(async (sessionKey: number) => {
-    setFetching(true)
-    setError(null)
-    try {
-      const [positions, drivers] = await Promise.all([
-        getCachedPositions(sessionKey),
-        getCachedDrivers(sessionKey),
-      ])
-      setRawPositions(positions)
-      setDriverList(drivers)
-      setScrub(1)
-
-      const driverMap = new Map(drivers.map((d) => [d.driver_number, d]))
-
-      // Get start positions (earliest entry per driver)
-      const startPositions = new Map<number, number>()
-      const sorted = [...positions].sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-      )
-      for (const p of sorted) {
-        if (!startPositions.has(p.driver_number)) startPositions.set(p.driver_number, p.position)
-      }
-
-      // Get final positions (latest entry per driver)
-      const finalPositions = new Map<number, number>()
-      const sortedDesc = [...positions].sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-      )
-      for (const p of sortedDesc) {
-        if (!finalPositions.has(p.driver_number)) finalPositions.set(p.driver_number, p.position)
-      }
-
-      const rows: DriverPosition[] = []
-      finalPositions.forEach((finalPos, driverNum) => {
-        const startPos = startPositions.get(driverNum) ?? null
-        rows.push({
-          driverNumber: driverNum,
-          driver: driverMap.get(driverNum),
-          currentPosition: finalPos,
-          startPosition: startPos,
-          positionChange: startPos !== null ? startPos - finalPos : null,
-        })
-      })
-
-      rows.sort((a, b) => a.currentPosition - b.currentPosition)
-      setDriverPositions(rows)
-    } catch {
-      setError('Failed to load position data')
-    } finally {
-      setFetching(false)
+    // Start positions (earliest entry per driver)
+    const startPositions = new Map<number, number>()
+    const sorted = [...rawPositions].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    )
+    for (const p of sorted) {
+      if (!startPositions.has(p.driver_number)) startPositions.set(p.driver_number, p.position)
     }
-  }, [])
 
-  useEffect(() => {
-    if (selectedKey) fetchData(selectedKey)
-  }, [selectedKey, fetchData])
+    // Final positions (latest entry per driver)
+    const finalPositions = new Map<number, number>()
+    const sortedDesc = [...rawPositions].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    )
+    for (const p of sortedDesc) {
+      if (!finalPositions.has(p.driver_number)) finalPositions.set(p.driver_number, p.position)
+    }
+
+    const rows: DriverPosition[] = []
+    finalPositions.forEach((finalPos, driverNum) => {
+      const startPos = startPositions.get(driverNum) ?? null
+      rows.push({
+        driverNumber: driverNum,
+        driver: driverMap.get(driverNum),
+        currentPosition: finalPos,
+        startPosition: startPos,
+        positionChange: startPos !== null ? startPos - finalPos : null,
+      })
+    })
+    rows.sort((a, b) => a.currentPosition - b.currentPosition)
+    return rows
+  }, [rawPositions, driverList])
 
   // Rows at the scrub point, derived from the already-fetched timeline.
   const { rows: scrubRows, scrubClock } = useMemo(() => {
@@ -158,21 +132,22 @@ export default function PositionsPage() {
         onSelect={setSelectedKey}
       />
 
-      {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
+      <DataStateNotice
+        state={state}
+        message={message}
+        stale={stale}
+        onRetry={refresh}
+        emptyLabel={selectedKey ? 'NO POSITION DATA FOR THIS SESSION' : 'SELECT A RACE SESSION'}
+        className="mt-8"
+      />
 
-      {fetching ? (
+      {fetching && driverPositions.length === 0 ? (
         <div className="mt-16 space-y-5">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="h-12 w-[55%] animate-pulse rounded bg-white/5" />
           ))}
         </div>
-      ) : driverPositions.length === 0 ? (
-        (
-          <p className="label-mono mt-16 text-[var(--text-dim)]">
-            {selectedKey ? 'NO POSITION DATA FOR THIS SESSION' : 'SELECT A RACE SESSION'}
-          </p>
-        )
-      ) : (
+      ) : driverPositions.length === 0 ? null : (
         <>
           {/* ─── the scrubber: replay the session on a red rail ─── */}
           <FadeUp className="mt-14">
