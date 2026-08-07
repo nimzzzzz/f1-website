@@ -7,6 +7,7 @@ import { useGSAP } from '@gsap/react'
 import type { Meeting, Session } from '@/lib/openf1'
 import { getCachedMeetings, getCachedSessions, getCachedDrivers, getCachedSessionResult } from '@/lib/client-cache'
 import { getCurrentMeeting, getNextMeeting, isCancelled, fetchAllSessionResults } from '@/lib/openf1'
+import { type FetchFailureReason, unavailableMessage } from '@/lib/fetch-result'
 import { circuitImageForMeeting } from '@/lib/media-manifest'
 import TreatedImage from '@/components/media/TreatedImage'
 import CircuitBackdrop from '@/components/media/CircuitBackdrop'
@@ -60,29 +61,43 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true)
   // meeting_key → winner surname (same cached fetchers as the home index)
   const [winners, setWinners] = useState<Record<number, string>>({})
+  // Set when the calendar could not be fetched at all — kept apart from
+  // "the calendar came back empty".
+  const [unavailable, setUnavailable] = useState<FetchFailureReason | undefined>(undefined)
 
   const timelineRef = useRef<HTMLDivElement>(null)
   const lineRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    Promise.all([getCachedMeetings(), getCachedSessions()]).then(([mtgs, sessions]) => {
-      setMeetings(mtgs)
-      setSessionsByMeeting(
-        sessions.reduce<Record<number, Session[]>>((acc, s) => {
-          if (!acc[s.meeting_key]) acc[s.meeting_key] = []
-          acc[s.meeting_key].push(s)
-          return acc
-        }, {})
-      )
-    }).finally(() => setLoading(false))
+    Promise.all([getCachedMeetings(), getCachedSessions()])
+      .then(([mtgRes, sessionRes]) => {
+        // A failed calendar fetch is NOT an empty calendar. Leaving the
+        // state untouched means the "no schedule" copy below can only be
+        // reached by a successful, genuinely empty response.
+        if (!mtgRes.ok || !sessionRes.ok) {
+          setUnavailable((!mtgRes.ok && mtgRes.reason) || (!sessionRes.ok ? sessionRes.reason : undefined))
+          return
+        }
+        setUnavailable(undefined)
+        setMeetings(mtgRes.rows)
+        setSessionsByMeeting(
+          sessionRes.rows.reduce<Record<number, Session[]>>((acc, s) => {
+            if (!acc[s.meeting_key]) acc[s.meeting_key] = []
+            acc[s.meeting_key].push(s)
+            return acc
+          }, {})
+        )
+      })
+      .finally(() => setLoading(false))
   }, [])
 
   useEffect(() => {
     let alive = true
     getCachedSessions()
-      .then(async (allSessions: Session[]) => {
+      .then(async (sessionRes) => {
+        if (!sessionRes.ok) return
         const now = new Date()
-        const raceSessions = allSessions.filter(
+        const raceSessions = sessionRes.rows.filter(
           (s) =>
             s.session_type === 'Race' &&
             s.session_name === 'Race' &&
@@ -93,12 +108,12 @@ export default function SchedulePage() {
         const latest = [...raceSessions].sort(
           (a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime()
         )[0]
-        const [drivers, resultsMap] = await Promise.all([
+        const [driverRes, resultsMap] = await Promise.all([
           getCachedDrivers(latest.session_key),
           fetchAllSessionResults(raceSessions.map((s) => s.session_key), getCachedSessionResult),
         ])
-        if (!alive) return
-        const driverMap = new Map(drivers.map((d) => [d.driver_number, d]))
+        if (!alive || !driverRes.ok) return
+        const driverMap = new Map(driverRes.rows.map((d) => [d.driver_number, d]))
         const map: Record<number, string> = {}
         for (const s of raceSessions) {
           const first = resultsMap.get(s.session_key)?.find((r) => r.position === 1)
@@ -179,7 +194,13 @@ export default function SchedulePage() {
   if (meetings.length === 0) {
     return (
       <div className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
-        {<p className="label-mono text-[var(--text-dim)]">NO SCHEDULE DATA YET</p>}
+        {unavailable ? (
+          <p className="label-mono border-l-2 border-[var(--accent)] pl-4 text-[var(--accent)]" role="status">
+            {unavailableMessage(unavailable, false)}
+          </p>
+        ) : (
+          <p className="label-mono text-[var(--text-dim)]">NO SCHEDULE DATA YET</p>
+        )}
       </div>
     )
   }

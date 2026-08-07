@@ -101,24 +101,80 @@ export function bundleAsOf(bundle: SeasonBundle): string | null {
   })
 }
 
-// One flight per page load, shared by every consumer on the page.
+/**
+ * The ONLY sanctioned way to decide whether a bundle may replace what is
+ * currently on screen: its computedAt must be strictly newer.
+ *
+ * useLiveSnapshot already worked this way; the home and standings clients
+ * did not — they adopted whatever fetchSeasonData handed them. Because that
+ * memo had no TTL, a tab left open across a race could hold a pre-race
+ * bundle for hours and hand it to a component that had since been
+ * server-rendered with NEWER data, overwriting fresh standings with old
+ * ones. Same rule, one implementation, so the two cannot drift.
+ */
+export function isNewerBundle(
+  candidate: SeasonBundle | null | undefined,
+  currentComputedAt: string | null | undefined
+): candidate is SeasonBundle {
+  if (!candidate) return false
+  const t = Date.parse(candidate.computedAt)
+  if (!Number.isFinite(t)) return false
+  if (!currentComputedAt) return true
+  const cur = Date.parse(currentComputedAt)
+  return !Number.isFinite(cur) || t > cur
+}
+
+// How long a successful bundle may be reused without going back to the
+// endpoint. The memo used to have NO expiry: it was scoped to the document,
+// so a long-lived tab served the same standings for as long as it stayed
+// open — across a whole race weekend, if the user never reloaded. 60s
+// matches the bundle route's own ISR window, so re-fetching sooner could
+// not return anything newer anyway.
+export const SEASON_MEMO_TTL_MS = 60 * 1000
+
+// One flight per TTL window, shared by every consumer on the page.
 let inflight: Promise<SeasonBundle | null> | null = null
+let memoizedAt = 0
+
+/** Drop the memo so the next caller goes back to the endpoint. */
+export function invalidateSeasonData(): void {
+  inflight = null
+  memoizedAt = 0
+}
+
+// A tab that has been in the background is exactly the tab most likely to
+// be holding something stale, so returning to it drops the memo. Registered
+// once, at module scope, because there is one memo to invalidate — making
+// each consumer wire its own listener would be several chances to forget.
+let focusHooked = false
+function hookFocusInvalidation() {
+  if (focusHooked || typeof window === 'undefined') return
+  focusHooked = true
+  const drop = () => invalidateSeasonData()
+  window.addEventListener('focus', drop)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') drop()
+  })
+}
 
 export function fetchSeasonData(): Promise<SeasonBundle | null> {
-  if (!inflight) {
-    inflight = fetch('/api/season-data')
-      .then((res) => (res.ok ? (res.json() as Promise<SeasonDataResponse>) : null))
-      .then((body) => {
-        const bundle = body && !body.blocked ? body : null
-        // Only successes are memoized: a failure must not pin every later
-        // consumer on this page to null — the next caller retries.
-        if (!bundle) inflight = null
-        return bundle
-      })
-      .catch(() => {
-        inflight = null
-        return null
-      })
-  }
-  return inflight
+  hookFocusInvalidation()
+  if (inflight && Date.now() - memoizedAt < SEASON_MEMO_TTL_MS) return inflight
+
+  memoizedAt = Date.now()
+  const flight: Promise<SeasonBundle | null> = fetch('/api/season-data')
+    .then((res) => (res.ok ? (res.json() as Promise<SeasonDataResponse>) : null))
+    .then((body) => {
+      const bundle = body && !body.blocked ? body : null
+      // Only successes stay memoized: a failure must not pin every later
+      // consumer on this page to null — the next caller retries.
+      if (!bundle && inflight === flight) invalidateSeasonData()
+      return bundle
+    })
+    .catch(() => {
+      if (inflight === flight) invalidateSeasonData()
+      return null
+    })
+  inflight = flight
+  return flight
 }

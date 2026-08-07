@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { fetchSeasonData } from '@/lib/season-data'
+import { useEffect, useRef, useState } from 'react'
+import { fetchSeasonData, isNewerBundle } from '@/lib/season-data'
 import type { BundleDriverStanding, BundleTeamStanding } from '@/lib/season-data'
 import { ClipReveal, CountUp, FadeUp } from '@/components/motion/reveals'
 
@@ -32,6 +32,11 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
   const [error, setError] = useState<string | null>(null)
   const [completedRaces, setCompletedRaces] = useState(() => initialBundle?.completedRaces ?? 0)
   const [seasonYear, setSeasonYear] = useState<number | null>(() => initialBundle?.seasonYear ?? null)
+  // What the rendered standings were computed from. Starts at the SSR'd
+  // bundle so a memoized client bundle can never overwrite newer server
+  // data. A ref, not state: it gates an adoption rather than driving render,
+  // and reading it inside the effect must not depend on a re-render.
+  const shownAt = useRef<string | null>(initialBundle?.computedAt ?? null)
 
   // One server-computed bundle replaces the ~20-request client pipeline.
   useEffect(() => {
@@ -40,10 +45,13 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
       .then((bundle) => {
         if (!alive) return
         if (!bundle) return // blocked with no cached bundle — banner covers it
+        // Adopt only what is strictly newer than what is on screen.
+        if (!isNewerBundle(bundle, shownAt.current)) return
         setDriverStandings(bundle.driverStandings)
         setTeamStandings(bundle.teamStandings)
         setCompletedRaces(bundle.completedRaces)
         setSeasonYear(bundle.seasonYear)
+        shownAt.current = bundle.computedAt
       })
       .catch(() => {
         if (alive) setError('Failed to load standings')

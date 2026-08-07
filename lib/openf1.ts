@@ -6,6 +6,8 @@ const BASE =
   typeof window !== 'undefined' ? '/api/openf1' : 'https://api.openf1.org/v1'
 
 import { normalizeSessionResults, normalizeDrivers, describeReport } from '@/lib/openf1-normalize'
+import { type FetchResult, okResult, failResult, rowsOrEmpty, isRetryable } from '@/lib/fetch-result'
+export type { FetchResult } from '@/lib/fetch-result'
 
 // ─── TypeScript Interfaces ───────────────────────────────────────────────────
 
@@ -229,11 +231,17 @@ async function classifyFailure() {
 
 // ─── Core Fetch ──────────────────────────────────────────────────────────────
 
+/**
+ * Returns a FetchResult, not T[]. See lib/fetch-result for why: collapsing
+ * every failure to [] made an outage indistinguishable from an empty
+ * session, which both lied to users and forced retry logic to treat EMPTY
+ * as retryable.
+ */
 async function apiFetch<T>(
   path: string,
   params: Record<string, string | number> = {},
   options: RequestInit = {}
-): Promise<T[]> {
+): Promise<FetchResult<T>> {
   // BASE is relative in the browser (the proxy) — anchor it to the origin
   const url = new URL(
     `${BASE}${path}`,
@@ -246,93 +254,101 @@ async function apiFetch<T>(
       // readable only server-side; browsers hit the catch path instead
       setApiBlocked(true)
       console.error(`[OpenF1] 401 (live-session lockout) — ${url}`)
-      return []
+      return failResult<T>('blocked', 401)
+    }
+    if (res.status === 429) {
+      console.error(`[OpenF1] 429 rate limited — ${url}`)
+      return failResult<T>('rate-limited', 429)
     }
     if (!res.ok) {
       console.error(`[OpenF1] ${res.status} ${res.statusText} — ${url}`)
-      return []
+      return failResult<T>('http', res.status)
     }
     setApiBlocked(false)
     const data = await res.json()
-    if (!Array.isArray(data)) return []
-    return data as T[]
+    if (!Array.isArray(data)) {
+      console.error(`[OpenF1] non-array body — ${url}`)
+      return failResult<T>('malformed', res.status)
+    }
+    return okResult(data as T[])
   } catch (err) {
     void classifyFailure()
     console.error(`[OpenF1] fetch failed — ${url}`, err)
-    return []
+    return failResult<T>('network')
   }
 }
 
 // ─── API Functions ───────────────────────────────────────────────────────────
 
-export async function getMeetings(): Promise<Meeting[]> {
+export async function getMeetings(): Promise<FetchResult<Meeting>> {
   return apiFetch<Meeting>('/meetings', { year: 2026 }, { next: { revalidate: 60 } })
 }
 
-export async function getMeetingsByYear(year: number): Promise<Meeting[]> {
+export async function getMeetingsByYear(year: number): Promise<FetchResult<Meeting>> {
   return apiFetch<Meeting>('/meetings', { year }, { next: { revalidate: 3600 } })
 }
 
-export async function getSessions(meetingKey?: number): Promise<Session[]> {
+export async function getSessions(meetingKey?: number): Promise<FetchResult<Session>> {
   const params: Record<string, string | number> = { year: 2026 }
   if (meetingKey !== undefined) params.meeting_key = meetingKey
   return apiFetch<Session>('/sessions', params, { next: { revalidate: 60 } })
 }
 
-export async function getAllSessions(): Promise<Session[]> {
+export async function getAllSessions(): Promise<FetchResult<Session>> {
   return apiFetch<Session>('/sessions', { year: 2026 }, { next: { revalidate: 60 } })
 }
 
-export async function getSessionsByYear(year: number): Promise<Session[]> {
+export async function getSessionsByYear(year: number): Promise<FetchResult<Session>> {
   return apiFetch<Session>('/sessions', { year }, { next: { revalidate: 3600 } })
 }
 
-export async function getDrivers(sessionKey: number): Promise<Driver[]> {
-  const raw = await apiFetch<Driver>('/drivers', { session_key: sessionKey }, { next: { revalidate: 60 } })
+export async function getDrivers(sessionKey: number): Promise<FetchResult<Driver>> {
+  const res = await apiFetch<Driver>('/drivers', { session_key: sessionKey }, { next: { revalidate: 60 } })
+  if (!res.ok) return res
   // THE BOUNDARY — see lib/openf1-normalize. Rows arrive validated and
   // numerically coerced, so no downstream call site can compute on a string.
-  const { rows, report } = normalizeDrivers(raw)
+  const { rows, report } = normalizeDrivers(res.rows)
   const msg = describeReport(`drivers session=${sessionKey}`, report)
   if (msg) console.warn(msg)
-  return rows as unknown as Driver[]
+  return okResult(rows as unknown as Driver[])
 }
 
 export async function getLaps(
   sessionKey: number,
   driverNumber?: number,
   limit?: number
-): Promise<Lap[]> {
+): Promise<FetchResult<Lap>> {
   const params: Record<string, string | number> = { session_key: sessionKey }
   if (driverNumber !== undefined) params.driver_number = driverNumber
   if (limit !== undefined) params.limit = limit
   return apiFetch<Lap>('/laps', params, { cache: 'no-store' })
 }
 
-export async function getPositions(sessionKey: number): Promise<Position[]> {
+export async function getPositions(sessionKey: number): Promise<FetchResult<Position>> {
   return apiFetch<Position>('/position', { session_key: sessionKey }, { cache: 'no-store' })
 }
 
-export async function getPitStops(sessionKey: number): Promise<PitStop[]> {
+export async function getPitStops(sessionKey: number): Promise<FetchResult<PitStop>> {
   return apiFetch<PitStop>('/pit', { session_key: sessionKey }, { cache: 'no-store' })
 }
 
-export async function getWeather(sessionKey: number): Promise<Weather[]> {
+export async function getWeather(sessionKey: number): Promise<FetchResult<Weather>> {
   return apiFetch<Weather>('/weather', { session_key: sessionKey }, { cache: 'no-store' })
 }
 
-export async function getRaceControl(sessionKey: number): Promise<RaceControl[]> {
+export async function getRaceControl(sessionKey: number): Promise<FetchResult<RaceControl>> {
   return apiFetch<RaceControl>('/race_control', { session_key: sessionKey }, { cache: 'no-store' })
 }
 
-export async function getTeamRadio(sessionKey: number): Promise<TeamRadio[]> {
+export async function getTeamRadio(sessionKey: number): Promise<FetchResult<TeamRadio>> {
   return apiFetch<TeamRadio>('/team_radio', { session_key: sessionKey }, { cache: 'no-store' })
 }
 
-export async function getStints(sessionKey: number): Promise<Stint[]> {
+export async function getStints(sessionKey: number): Promise<FetchResult<Stint>> {
   return apiFetch<Stint>('/stints', { session_key: sessionKey }, { cache: 'no-store' })
 }
 
-export async function getIntervals(sessionKey: number): Promise<Interval[]> {
+export async function getIntervals(sessionKey: number): Promise<FetchResult<Interval>> {
   return apiFetch<Interval>('/intervals', { session_key: sessionKey }, { cache: 'no-store' })
 }
 
@@ -343,55 +359,67 @@ export async function getIntervals(sessionKey: number): Promise<Interval[]> {
  * measurably trips openf1's rate limit (a burst of 8 returns 429 for half).
  * meeting_key collapses a whole weekend into one call.
  */
-export async function getSessionResultsForMeeting(meetingKey: number): Promise<SessionResult[]> {
+export async function getSessionResultsForMeeting(meetingKey: number): Promise<FetchResult<SessionResult>> {
   // revalidate-tagged, NOT no-store. A no-store fetch during static
   // generation is "Dynamic server usage" and opts the whole route out of
   // prerendering — it silently cost 5 of 11 team pages. The per-session
   // getSessionResult keeps no-store because it also serves live client
   // polling; this one is build/server-only.
-  const raw = await apiFetch<SessionResult>('/session_result', { meeting_key: meetingKey }, { next: { revalidate: 60 } })
-  const { rows, report } = normalizeSessionResults(raw)
+  const res = await apiFetch<SessionResult>('/session_result', { meeting_key: meetingKey }, { next: { revalidate: 60 } })
+  if (!res.ok) return res
+  const { rows, report } = normalizeSessionResults(res.rows)
   const msg = describeReport(`session_result meeting=${meetingKey}`, report)
   if (msg) console.warn(msg)
-  return rows as unknown as SessionResult[]
+  return okResult(rows as unknown as SessionResult[])
 }
 
 /** Every session's roster for a meeting in ONE request. */
-export async function getDriversForMeeting(meetingKey: number): Promise<Driver[]> {
-  const raw = await apiFetch<Driver>('/drivers', { meeting_key: meetingKey }, { next: { revalidate: 60 } })
-  const { rows, report } = normalizeDrivers(raw)
+export async function getDriversForMeeting(meetingKey: number): Promise<FetchResult<Driver>> {
+  const res = await apiFetch<Driver>('/drivers', { meeting_key: meetingKey }, { next: { revalidate: 60 } })
+  if (!res.ok) return res
+  const { rows, report } = normalizeDrivers(res.rows)
   const msg = describeReport(`drivers meeting=${meetingKey}`, report)
   if (msg) console.warn(msg)
-  return rows as unknown as Driver[]
+  return okResult(rows as unknown as Driver[])
 }
 
-export async function getSessionResult(sessionKey: number): Promise<SessionResult[]> {
-  const raw = await apiFetch<SessionResult>('/session_result', { session_key: sessionKey }, { cache: 'no-store' })
-  const { rows, report } = normalizeSessionResults(raw)
+export async function getSessionResult(sessionKey: number): Promise<FetchResult<SessionResult>> {
+  const res = await apiFetch<SessionResult>('/session_result', { session_key: sessionKey }, { cache: 'no-store' })
+  if (!res.ok) return res
+  const { rows, report } = normalizeSessionResults(res.rows)
   const msg = describeReport(`session_result session=${sessionKey}`, report)
   if (msg) console.warn(msg)
-  return rows as unknown as SessionResult[]
+  return okResult(rows as unknown as SessionResult[])
 }
 
 // ─── Batch Fetch Helper ──────────────────────────────────────────────────────
 
+/**
+ * Fetch results for many sessions, retrying only the ones that actually
+ * FAILED. This used to retry every empty response, because empty was all a
+ * failure looked like — so a session that genuinely had no rows cost an
+ * extra 800ms round trip while a rate-limited one got no special treatment.
+ */
 export async function fetchAllSessionResults(
   sessionKeys: number[],
-  getCached: (key: number) => Promise<SessionResult[]>
+  getCached: (key: number) => Promise<FetchResult<SessionResult>>
 ): Promise<Map<number, SessionResult[]>> {
-  const results = await Promise.all(
-    sessionKeys.map(async (key) => ({ key, data: await getCached(key) }))
+  const settled = await Promise.all(
+    sessionKeys.map(async (key) => ({ key, res: await getCached(key) }))
   )
   const map = new Map<number, SessionResult[]>()
-  const empties: number[] = []
-  for (const { key, data } of results) {
-    if (data.length > 0) map.set(key, data)
-    else empties.push(key)
+  const failed: number[] = []
+  for (const { key, res } of settled) {
+    if (res.ok) {
+      if (res.rows.length > 0) map.set(key, res.rows)
+    } else if (isRetryable(res)) {
+      failed.push(key)
+    }
   }
-  for (const key of empties) {
+  for (const key of failed) {
     await new Promise((r) => setTimeout(r, 800))
-    const data = await getCached(key)
-    if (data.length > 0) map.set(key, data)
+    const res = await getCached(key)
+    if (res.ok && res.rows.length > 0) map.set(key, res.rows)
   }
   return map
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import ReactDOM from 'react-dom'
 import { motion } from 'framer-motion'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
@@ -13,7 +13,7 @@ import {
   getNextMeeting,
   isCancelled,
 } from '@/lib/openf1'
-import { fetchSeasonData } from '@/lib/season-data'
+import { fetchSeasonData, isNewerBundle } from '@/lib/season-data'
 import IntroSequence, { type RevealMode } from '@/components/IntroSequence'
 import { introMayPlay, consumeIntro } from '@/lib/intro-gate'
 import NowSection from '@/components/home/NowSection'
@@ -104,6 +104,9 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
   const [winners, setWinners] = useState<Record<number, string>>(
     () => initialBundle?.winnersByRound ?? {}
   )
+  // computedAt of the bundle the page is currently showing — the floor a
+  // client-fetched bundle must beat before it may replace anything.
+  const shownAt = useRef<string | null>(initialBundle?.computedAt ?? null)
   // Cinematic intro overlay — plays when "/" is opened as a new document
   // (fresh load, reload, new tab, direct link), never on a client-side route
   // change back to "/" mid-session. Data fetching below runs in parallel
@@ -135,11 +138,14 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
   // Phase 1: fetch meetings + sessions, then show the page immediately
   useEffect(() => {
     Promise.all([getCachedMeetings(), getCachedSessions()])
-      .then(([m, s]) => {
-        // fresh data wins; an empty (locked-out) result never clobbers
-        // calendar state the bundle fallback may already have filled
-        setMeetings((cur) => (m.length > 0 ? m : cur))
-        setSessions((cur) => (s.length > 0 ? s : cur))
+      .then(([mtgRes, sessionRes]) => {
+        // Fresh data wins; a FAILED fetch never clobbers calendar state the
+        // bundle fallback may already have filled. This used to guess at
+        // failure from `length > 0`, which also refused a legitimately
+        // empty calendar — harmless here, but the check now says what it
+        // means.
+        if (mtgRes.ok) setMeetings(mtgRes.rows)
+        if (sessionRes.ok) setSessions(sessionRes.rows)
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -154,6 +160,12 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
     let alive = true
     fetchSeasonData().then((bundle) => {
       if (!alive || !bundle) return
+      // The memo is document-scoped and can outlive a server render, so a
+      // bundle it hands back is not necessarily newer than what this page
+      // was rendered with. Adopt only what is strictly newer — the same
+      // rule useLiveSnapshot applies on /drivers and /teams.
+      if (!isNewerBundle(bundle, shownAt.current)) return
+      shownAt.current = bundle.computedAt
       setMeetings((cur) => (cur.length > 0 ? cur : bundle.meetings))
       setSessions((cur) => (cur.length > 0 ? cur : bundle.sessions))
       const top3: FightRow[] = bundle.driverStandings.slice(0, 3).map((d) => ({

@@ -12,76 +12,84 @@ import {
   getTeamRadio,
   getSessionResult,
 } from './openf1'
+import type { FetchResult } from './fetch-result'
 
 const SESSION_TTL = 5 * 60 * 1000   // 5 min — session list rarely changes
 const DATA_TTL    = 3 * 60 * 1000   // 3 min — session data changes slowly
 
-// ─── Generic cache factory ────────────────────────────────────────────────────
+// A FAILURE IS NEVER CACHED.
+//
+// The meetings and sessions caches used to store whatever getMeetings /
+// getAllSessions returned — and under the old contract a 401, a 429, a 500
+// and a dropped connection all returned []. So one blip was written into a
+// 5-minute cache and every consumer for the next five minutes was told, with
+// full confidence, that the season had no meetings. One outage poisoned the
+// next five minutes.
+//
+// The per-session caches sidestepped this with `if (data.length > 0)`, but
+// that rule also refuses to cache a genuinely empty session — it was
+// guessing at failure from emptiness because emptiness was all it had. Now
+// that FetchResult distinguishes the two, every cache in this file uses the
+// same rule, and it is the correct one: cache successes (including empty
+// ones), never cache failures.
 
-function makeCache<T>(fetcher: (key: number) => Promise<T[]>, ttl: number) {
-  const cache = new Map<number, { data: T[]; expiresAt: number }>()
-  const inflight = new Map<number, Promise<T[]>>()
+interface Entry<T> {
+  rows: T[]
+  expiresAt: number
+}
 
-  return async (key: number): Promise<T[]> => {
+export function makeCache<T>(fetcher: (key: number) => Promise<FetchResult<T>>, ttl: number) {
+  const cache = new Map<number, Entry<T>>()
+  const inflight = new Map<number, Promise<FetchResult<T>>>()
+
+  return async (key: number): Promise<FetchResult<T>> => {
     const hit = cache.get(key)
-    if (hit && Date.now() < hit.expiresAt) return hit.data
+    if (hit && Date.now() < hit.expiresAt) return { ok: true, rows: hit.rows }
 
     const pending = inflight.get(key)
     if (pending) return pending
 
-    const promise = fetcher(key).then((data) => {
-      // Only cache non-empty results — empty arrays are likely transient API failures
-      if (data.length > 0) {
-        cache.set(key, { data, expiresAt: Date.now() + ttl })
-      }
-      inflight.delete(key)
-      return data
-    }).catch((err) => {
-      inflight.delete(key)
-      throw err
-    })
+    const promise = fetcher(key)
+      .then((res) => {
+        if (res.ok) cache.set(key, { rows: res.rows, expiresAt: Date.now() + ttl })
+        inflight.delete(key)
+        return res
+      })
+      .catch((err) => {
+        inflight.delete(key)
+        throw err
+      })
     inflight.set(key, promise)
     return promise
   }
 }
 
-// ─── Meetings cache ───────────────────────────────────────────────────────────
+/** Keyless variant of the same cache, for the season-wide lists. */
+export function makeSingleton<T>(fetcher: () => Promise<FetchResult<T>>, ttl: number) {
+  let cache: Entry<T> | null = null
+  let inflight: Promise<FetchResult<T>> | null = null
 
-let meetingsCache: { data: Meeting[]; expiresAt: number } | null = null
-let meetingsInflight: Promise<Meeting[]> | null = null
-
-export async function getCachedMeetings(): Promise<Meeting[]> {
-  if (meetingsCache && Date.now() < meetingsCache.expiresAt) return meetingsCache.data
-  if (meetingsInflight) return meetingsInflight
-  meetingsInflight = getMeetings().then((data) => {
-    meetingsCache = { data, expiresAt: Date.now() + SESSION_TTL }
-    meetingsInflight = null
-    return data
-  }).catch((err) => {
-    meetingsInflight = null
-    throw err
-  })
-  return meetingsInflight
+  return async (): Promise<FetchResult<T>> => {
+    if (cache && Date.now() < cache.expiresAt) return { ok: true, rows: cache.rows }
+    if (inflight) return inflight
+    inflight = fetcher()
+      .then((res) => {
+        if (res.ok) cache = { rows: res.rows, expiresAt: Date.now() + ttl }
+        inflight = null
+        return res
+      })
+      .catch((err) => {
+        inflight = null
+        throw err
+      })
+    return inflight
+  }
 }
 
-// ─── Sessions (shared across all pages) ───────────────────────────────────────
+// ─── Season-wide lists ────────────────────────────────────────────────────────
 
-let sessionsCache: { data: Session[]; expiresAt: number } | null = null
-let sessionsInflight: Promise<Session[]> | null = null
-
-export async function getCachedSessions(): Promise<Session[]> {
-  if (sessionsCache && Date.now() < sessionsCache.expiresAt) return sessionsCache.data
-  if (sessionsInflight) return sessionsInflight
-  sessionsInflight = getAllSessions().then((data) => {
-    sessionsCache = { data, expiresAt: Date.now() + SESSION_TTL }
-    sessionsInflight = null
-    return data
-  }).catch((err) => {
-    sessionsInflight = null
-    throw err
-  })
-  return sessionsInflight
-}
+export const getCachedMeetings = makeSingleton<Meeting>(getMeetings, SESSION_TTL)
+export const getCachedSessions = makeSingleton<Session>(getAllSessions, SESSION_TTL)
 
 // getCachedLatestDrivers used to live here: a preloader-only warm-up that
 // fetched a HARD-CODED session key (11247) with a scan fallback. Its only

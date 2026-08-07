@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useMemo } from 'react'
 import type { Session, Weather } from '@/lib/openf1'
-import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedWeather } from '@/lib/client-cache'
+import { useSessionData, useSessionList } from '@/lib/use-session-data'
 import SessionHeader from '@/components/session/SessionHeader'
+import DataStateNotice from '@/components/session/DataStateNotice'
 import { FadeUp } from '@/components/motion/reveals'
 
 import { asNum } from '@/lib/format'
@@ -23,44 +24,24 @@ function formatTime(dateStr: string): string {
   })
 }
 
+const anySession = () => true
+const latestCompleted = (sorted: Session[]) => sorted.find((s) => new Date(s.date_end) < new Date())
+
 export default function WeatherPage() {
-  const [sessions, setSessions] = useState<Session[]>([])
-  const [selectedKey, setSelectedKey] = useState<number | null>(null)
-  const [weatherData, setWeatherData] = useState<Weather[]>([])
-  const [loading, setLoading] = useState(true)
-  const [fetching, setFetching] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    getCachedSessions()
-      .then((all) => {
-        const sorted = all.sort(
-          (a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime()
-        )
-        setSessions(sorted)
-        const latest = sorted.find((s) => new Date(s.date_end) < new Date())
-        if (latest) setSelectedKey(latest.session_key)
-      })
-      .catch(() => setError('Failed to load sessions'))
-      .finally(() => setLoading(false))
-  }, [])
-
-  const fetchData = useCallback(async (sessionKey: number) => {
-    setFetching(true)
-    setError(null)
-    try {
-      const data = await getCachedWeather(sessionKey)
-      setWeatherData(data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()))
-    } catch {
-      setError('Failed to load weather data')
-    } finally {
-      setFetching(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (selectedKey) fetchData(selectedKey)
-  }, [selectedKey, fetchData])
+  const { sessions, selectedKey, setSelectedKey, loading } = useSessionList(
+    anySession,
+    latestCompleted
+  )
+  const { data, state, message, stale, fetching, refresh } = useSessionData(selectedKey, {
+    weather: getCachedWeather,
+  })
+  const weatherData: Weather[] = useMemo(
+    () =>
+      [...(data?.weather ?? [])].sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      ),
+    [data]
+  )
 
   // Latest reading
   const latest = weatherData[weatherData.length - 1] ?? null
@@ -92,21 +73,22 @@ export default function WeatherPage() {
         onSelect={setSelectedKey}
       />
 
-      {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
+      <DataStateNotice
+        state={state}
+        message={message}
+        stale={stale}
+        onRetry={refresh}
+        emptyLabel={selectedKey ? 'NO WEATHER DATA FOR THIS SESSION' : 'SELECT A SESSION'}
+        className="mt-8"
+      />
 
-      {fetching ? (
+      {fetching && weatherData.length === 0 ? (
         <div className="mt-16 flex flex-wrap gap-14">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="h-24 w-40 animate-pulse rounded bg-white/5" />
           ))}
         </div>
-      ) : weatherData.length === 0 ? (
-        (
-          <p className="label-mono mt-16 text-[var(--text-dim)]">
-            {selectedKey ? 'NO WEATHER DATA FOR THIS SESSION' : 'SELECT A SESSION'}
-          </p>
-        )
-      ) : (
+      ) : weatherData.length === 0 ? null : (
         <>
           {/* ─── current conditions, huge ─── */}
           {latest && (

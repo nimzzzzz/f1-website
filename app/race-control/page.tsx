@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Session, RaceControl } from '@/lib/openf1'
-import { getCachedSessions } from '@/lib/client-cache'
 import { getCachedRaceControl } from '@/lib/client-cache'
+import { useSessionData, useSessionList } from '@/lib/use-session-data'
 import SessionHeader from '@/components/session/SessionHeader'
+import DataStateNotice from '@/components/session/DataStateNotice'
 import { FadeUp } from '@/components/motion/reveals'
 
 // Flag colours are the dataset here (like compounds on /stints).
@@ -38,46 +39,28 @@ function formatTime(dateStr: string): string {
 
 const CATEGORIES = ['All', 'Flag', 'SafetyCar', 'DRS', 'Other'] as const
 
+const anySession = () => true
+const latestCompleted = (sorted: Session[]) => sorted.find((s) => new Date(s.date_end) < new Date())
+
 export default function RaceControlPage() {
-  const [sessions, setSessions] = useState<Session[]>([])
-  const [selectedKey, setSelectedKey] = useState<number | null>(null)
-  const [messages, setMessages] = useState<RaceControl[]>([])
-  const [loading, setLoading] = useState(true)
-  const [fetching, setFetching] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { sessions, selectedKey, setSelectedKey, loading } = useSessionList(
+    anySession,
+    latestCompleted
+  )
+  const { data, state, message, stale, fetching, refresh } = useSessionData(selectedKey, {
+    messages: getCachedRaceControl,
+  })
+  // Newest first
+  const messages: RaceControl[] = useMemo(
+    () =>
+      [...(data?.messages ?? [])].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      ),
+    [data]
+  )
+
   const [filterCat, setFilterCat] = useState<string>('All')
-
-  useEffect(() => {
-    getCachedSessions()
-      .then((all) => {
-        const sorted = all.sort(
-          (a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime()
-        )
-        setSessions(sorted)
-        const latest = sorted.find((s) => new Date(s.date_end) < new Date())
-        if (latest) setSelectedKey(latest.session_key)
-      })
-      .catch(() => setError('Failed to load sessions'))
-      .finally(() => setLoading(false))
-  }, [])
-
-  const fetchData = useCallback(async (sessionKey: number) => {
-    setFetching(true)
-    setError(null)
-    try {
-      const data = await getCachedRaceControl(sessionKey)
-      // Newest first
-      setMessages([...data].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()))
-    } catch {
-      setError('Failed to load race control data')
-    } finally {
-      setFetching(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (selectedKey) fetchData(selectedKey)
-  }, [selectedKey, fetchData])
+  useEffect(() => setFilterCat('All'), [selectedKey])
 
   const filtered = filterCat === 'All'
     ? messages
@@ -123,20 +106,27 @@ export default function RaceControlPage() {
         ))}
       </div>
 
-      {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
+      <DataStateNotice
+        state={state}
+        message={message}
+        stale={stale}
+        onRetry={refresh}
+        emptyLabel={selectedKey ? 'NO RACE CONTROL DATA FOR THIS SESSION' : 'SELECT A SESSION'}
+        className="mt-8"
+      />
 
-      {fetching ? (
+      {fetching && messages.length === 0 ? (
         <div className="mt-16 space-y-4">
           {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="h-8 w-[70%] animate-pulse rounded bg-white/5" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        (
-          <p className="label-mono mt-16 text-[var(--text-dim)]">
-            {selectedKey ? 'NO MESSAGES FOR THIS FILTER' : 'SELECT A SESSION'}
-          </p>
-        )
+        // A filter that matches nothing is NOT the same as a session with no
+        // messages — the notice above covers the latter.
+        messages.length > 0 ? (
+          <p className="label-mono mt-16 text-[var(--text-dim)]">NO MESSAGES FOR THIS FILTER</p>
+        ) : null
       ) : (
         <div className="mt-14">
           <FadeUp>

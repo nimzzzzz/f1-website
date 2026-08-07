@@ -1,58 +1,35 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import type { Session, Lap, Driver } from '@/lib/openf1'
-import { getCachedSessions } from '@/lib/client-cache'
 import { formatDuration } from '@/lib/openf1'
 import { getCachedLaps, getCachedDrivers } from '@/lib/client-cache'
+import { useSessionData, useSessionList } from '@/lib/use-session-data'
 import SessionHeader from '@/components/session/SessionHeader'
+import DataStateNotice from '@/components/session/DataStateNotice'
 import { FadeUp } from '@/components/motion/reveals'
 
+const anySession = () => true
+const latestCompleted = (sorted: Session[]) => sorted.find((s) => new Date(s.date_end) < new Date())
+
 export default function LapsPage() {
-  const [sessions, setSessions] = useState<Session[]>([])
-  const [selectedKey, setSelectedKey] = useState<number | null>(null)
-  const [laps, setLaps] = useState<Lap[]>([])
-  const [drivers, setDrivers] = useState<Driver[]>([])
-  const [loading, setLoading] = useState(true)
-  const [fetchingLaps, setFetchingLaps] = useState(false)
+  const { sessions, selectedKey, setSelectedKey, loading } = useSessionList(
+    anySession,
+    latestCompleted
+  )
+  const {
+    data,
+    state,
+    message,
+    stale,
+    fetching: fetchingLaps,
+    refresh,
+  } = useSessionData(selectedKey, { laps: getCachedLaps, drivers: getCachedDrivers }, 'laps')
+  const laps: Lap[] = data?.laps ?? []
+  const drivers: Driver[] = data?.drivers ?? []
+
   const [filterDriver, setFilterDriver] = useState<number | 'all'>('all')
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    getCachedSessions()
-      .then((all) => {
-        const sorted = all.sort(
-          (a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime()
-        )
-        setSessions(sorted)
-        const latest = sorted.find((s) => new Date(s.date_end) < new Date())
-        if (latest) setSelectedKey(latest.session_key)
-      })
-      .catch(() => setError('Failed to load sessions'))
-      .finally(() => setLoading(false))
-  }, [])
-
-  const fetchLapData = useCallback(async (sessionKey: number) => {
-    setFetchingLaps(true)
-    setError(null)
-    try {
-      const [lapData, driverData] = await Promise.all([
-        getCachedLaps(sessionKey),
-        getCachedDrivers(sessionKey),
-      ])
-      setLaps(lapData)
-      setDrivers(driverData)
-      setFilterDriver('all')
-    } catch {
-      setError('Failed to load lap data')
-    } finally {
-      setFetchingLaps(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (selectedKey) fetchLapData(selectedKey)
-  }, [selectedKey, fetchLapData])
+  useEffect(() => setFilterDriver('all'), [selectedKey])
 
   const validLaps = laps.filter((l) => l.lap_duration !== null && !l.is_pit_out_lap)
   const filteredLaps =
@@ -99,19 +76,22 @@ export default function LapsPage() {
         onSelect={setSelectedKey}
       />
 
-      {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
+      <DataStateNotice
+        state={state}
+        message={message}
+        stale={stale}
+        onRetry={refresh}
+        emptyLabel="NO LAP DATA FOR THIS SESSION"
+        className="mt-8"
+      />
 
-      {fetchingLaps ? (
+      {fetchingLaps && laps.length === 0 ? (
         <div className="mt-16 space-y-5">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-14 w-[55%] animate-pulse rounded bg-white/5" />
           ))}
         </div>
-      ) : laps.length === 0 && selectedKey ? (
-        (
-          <p className="label-mono mt-16 text-[var(--text-dim)]">NO LAP DATA FOR THIS SESSION</p>
-        )
-      ) : (
+      ) : laps.length === 0 ? null : (
         <>
           {/* ─── the fastest lap — the page's one accent moment ─── */}
           {overallFastest && (
