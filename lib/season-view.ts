@@ -77,12 +77,11 @@ export interface SeasonStation {
   position: number | null
   points: number
   /**
-   * Label for an out station. DNF stands in for the bundle's collapsed
-   * DNF/DNS/DSQ bit; NC is a result row with no position and no out flag
-   * (upstream marks some unclassified finishes this way — rendering it as a
-   * position would print "P—").
+   * Distinct outcome label. The bundle now carries DNF / DNS / DSQ / NC
+   * separately (they are different things and were all displayed as "DNF");
+   * the legacy `out` bit remains only as a did-not-finish flag.
    */
-  outLabel?: 'DNF' | 'NC'
+  outLabel?: 'DNF' | 'DNS' | 'DSQ' | 'NC'
 }
 
 export interface DuelView {
@@ -149,7 +148,8 @@ export function toDriverSeason(bundle: SeasonBundle, acronym: string): DriverSea
         status: 'out' as const,
         position: pos,
         points: asNum(mine.pts) ?? 0,
-        outLabel: mine.out ? ('DNF' as const) : ('NC' as const),
+        // prefer the distinct upstream status; fall back for older bundles
+        outLabel: mine.st ?? (mine.out ? ('DNF' as const) : ('NC' as const)),
       }
     }
     return { ...base, status: 'finished' as const, position: pos, points: asNum(mine.pts) ?? 0 }
@@ -162,8 +162,9 @@ export function toDriverSeason(bundle: SeasonBundle, acronym: string): DriverSea
         : best,
     null
   )
-  // NC (unclassified, no out flag) breaks the line but is not counted as a
-  // DNF — the stat says what it counts.
+  // Counts only true retirements. NC (unclassified), DNS (never started)
+  // and DSQ (excluded) break the line too, but none of them is a DNF and
+  // the stat label says DNFS.
   const dnfs = stations.filter((s) => s.outLabel === 'DNF').length
 
   // THE DUEL — highest-scoring other car in the same team (guards a >2-driver
@@ -286,12 +287,22 @@ export function toTeamMachine(bundle: SeasonBundle, slug: string): TeamMachineVi
   ordered.forEach((m, i) => {
     const rows = bundle.resultsByRound[m.meeting_key]
     if (!rows) return
+    // Weekend haul = grand prix points PLUS that weekend's sprint points.
+    // resultsByRound is grand-prix-only, so a sprint weekend's haul used to
+    // read lower than the points those same rounds contributed to the
+    // season total — the two numbers disagreed on the same page.
     let haul = 0
+    const sprint = bundle.sprintPointsByRound?.[m.meeting_key] ?? {}
+    for (const [numStr, pts] of Object.entries(sprint)) {
+      if (nums.has(Number(numStr))) haul += asNum(pts) ?? 0
+    }
     for (const r of rows) {
       if (!nums.has(r.d)) continue
       haul += asNum(r.pts) ?? 0
+      // DNFS means retirements. DNS (never started) and DSQ (excluded)
+      // still stop the car scoring, but neither is a DNF.
       if (r.out) {
-        dnfs++
+        if ((r.st ?? 'DNF') === 'DNF') dnfs++
         continue
       }
       const pos = asNum(r.p)

@@ -5,6 +5,8 @@
 const BASE =
   typeof window !== 'undefined' ? '/api/openf1' : 'https://api.openf1.org/v1'
 
+import { normalizeSessionResults, normalizeDrivers, describeReport } from '@/lib/openf1-normalize'
+
 // ─── TypeScript Interfaces ───────────────────────────────────────────────────
 
 export interface Meeting {
@@ -286,7 +288,13 @@ export async function getSessionsByYear(year: number): Promise<Session[]> {
 }
 
 export async function getDrivers(sessionKey: number): Promise<Driver[]> {
-  return apiFetch<Driver>('/drivers', { session_key: sessionKey }, { next: { revalidate: 60 } })
+  const raw = await apiFetch<Driver>('/drivers', { session_key: sessionKey }, { next: { revalidate: 60 } })
+  // THE BOUNDARY — see lib/openf1-normalize. Rows arrive validated and
+  // numerically coerced, so no downstream call site can compute on a string.
+  const { rows, report } = normalizeDrivers(raw)
+  const msg = describeReport(`drivers session=${sessionKey}`, report)
+  if (msg) console.warn(msg)
+  return rows as unknown as Driver[]
 }
 
 export async function getLaps(
@@ -328,8 +336,41 @@ export async function getIntervals(sessionKey: number): Promise<Interval[]> {
   return apiFetch<Interval>('/intervals', { session_key: sessionKey }, { cache: 'no-store' })
 }
 
+/**
+ * Every session's results for a meeting in ONE request. Per-session roster
+ * attribution needs a roster per session as well as a result set per
+ * session; fetched individually that is two requests per session, which
+ * measurably trips openf1's rate limit (a burst of 8 returns 429 for half).
+ * meeting_key collapses a whole weekend into one call.
+ */
+export async function getSessionResultsForMeeting(meetingKey: number): Promise<SessionResult[]> {
+  // revalidate-tagged, NOT no-store. A no-store fetch during static
+  // generation is "Dynamic server usage" and opts the whole route out of
+  // prerendering — it silently cost 5 of 11 team pages. The per-session
+  // getSessionResult keeps no-store because it also serves live client
+  // polling; this one is build/server-only.
+  const raw = await apiFetch<SessionResult>('/session_result', { meeting_key: meetingKey }, { next: { revalidate: 60 } })
+  const { rows, report } = normalizeSessionResults(raw)
+  const msg = describeReport(`session_result meeting=${meetingKey}`, report)
+  if (msg) console.warn(msg)
+  return rows as unknown as SessionResult[]
+}
+
+/** Every session's roster for a meeting in ONE request. */
+export async function getDriversForMeeting(meetingKey: number): Promise<Driver[]> {
+  const raw = await apiFetch<Driver>('/drivers', { meeting_key: meetingKey }, { next: { revalidate: 60 } })
+  const { rows, report } = normalizeDrivers(raw)
+  const msg = describeReport(`drivers meeting=${meetingKey}`, report)
+  if (msg) console.warn(msg)
+  return rows as unknown as Driver[]
+}
+
 export async function getSessionResult(sessionKey: number): Promise<SessionResult[]> {
-  return apiFetch<SessionResult>('/session_result', { session_key: sessionKey }, { cache: 'no-store' })
+  const raw = await apiFetch<SessionResult>('/session_result', { session_key: sessionKey }, { cache: 'no-store' })
+  const { rows, report } = normalizeSessionResults(raw)
+  const msg = describeReport(`session_result session=${sessionKey}`, report)
+  if (msg) console.warn(msg)
+  return rows as unknown as SessionResult[]
 }
 
 // ─── Batch Fetch Helper ──────────────────────────────────────────────────────
