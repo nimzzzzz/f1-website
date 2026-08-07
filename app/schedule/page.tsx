@@ -184,13 +184,20 @@ export default function SchedulePage() {
     )
   }
 
+  const cancelledCount = raceMeetings.length - activeMeetings.length
   const seasonYear = raceMeetings[0]?.year
 
   return (
     <div className="relative overflow-x-clip px-6 pb-32 pt-20 md:px-14">
       <FadeUp>
+        {/* SCORED rounds are the headline; cancellations are acknowledged,
+            not counted. This used to print raceMeetings.length — every
+            calendar entry including cancelled ones — so the header claimed
+            25 ROUNDS while the season had 23 that score points, two numbers
+            visibly disagreeing on the same site. */}
         <p className="strip-header text-[var(--text-dim)]">
-          THE CALENDAR{seasonYear ? ` — ${seasonYear}` : ''} — {pad2(raceMeetings.length)} ROUNDS
+          THE CALENDAR{seasonYear ? ` — ${seasonYear}` : ''} — {pad2(activeMeetings.length)} ROUNDS
+          {cancelledCount > 0 ? ` · ${cancelledCount} CANCELLED` : ''}
         </p>
       </FadeUp>
 
