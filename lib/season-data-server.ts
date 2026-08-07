@@ -23,6 +23,8 @@ async function of1<T>(query: string): Promise<FetchResult<T>> {
     })
     if (res.status === 401) return failResult<T>('blocked', 401)
     if (res.status === 429) return failResult<T>('rate-limited', 429)
+    // 404 is openf1's "nothing matched" — an empty answer, not a failure.
+    if (res.status === 404) return okResult<T>([])
     if (!res.ok) return failResult<T>('http', res.status)
     const data = await res.json()
     if (!Array.isArray(data)) return failResult<T>('malformed', res.status)

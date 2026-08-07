@@ -69,6 +69,17 @@ describe('the fetch contract distinguishes failure from emptiness', () => {
     }
   })
 
+  it('only promises a retry while one is actually scheduled', () => {
+    // Caught in the browser: the page sat on "RETRYING SHORTLY" with
+    // nothing retrying. Copy must not promise what the code will not do.
+    expect(unavailableMessage('rate-limited', false, true)).toMatch(/RETRYING SHORTLY/)
+    expect(unavailableMessage('rate-limited', false, false)).not.toMatch(/RETRYING/)
+    expect(unavailableMessage('http', false, false)).not.toMatch(/RETRYING/)
+    expect(unavailableMessage('http', false, true)).toMatch(/RETRYING/)
+    // A lockout never claims to be retrying — it is not retryable.
+    expect(unavailableMessage('blocked', false, true)).not.toMatch(/RETRYING/)
+  })
+
   it('before any attempt completes the state is PENDING, not unavailable', () => {
     // Otherwise every first paint would carry an outage banner, and every
     // session with a slow first response would flash "NO DATA".
@@ -77,6 +88,17 @@ describe('the fetch contract distinguishes failure from emptiness', () => {
     expect(dataState(null, false)).not.toBe('empty')
     // With rows already on screen, keep rendering them.
     expect(dataState(null, true)).toBe('data')
+  })
+
+  it("openf1's 404 means NOTHING MATCHED — an empty answer, not a failure", () => {
+    // Observed live: GET /laps?session_key=<future session> answers
+    // 404 {"detail":"No results found."}. Mapping that to a failure made
+    // every not-yet-run session on the picker read "TEMPORARILY
+    // UNAVAILABLE" — the same lie as the original bug, pointing the other
+    // way. Both fetch boundaries convert it to an empty success, so the
+    // state a 404 produces is 'empty'.
+    expect(dataState(okResult<number>([]), false)).toBe('empty')
+    expect(isRetryable(okResult<number>([]))).toBe(false)
   })
 
   it('rowsOrEmpty is the explicit opt-out, not the default', () => {

@@ -24,7 +24,11 @@ export default function LapsPage() {
     stale,
     fetching: fetchingLaps,
     refresh,
-  } = useSessionData(selectedKey, { laps: getCachedLaps, drivers: getCachedDrivers }, 'laps')
+  } = useSessionData(
+    selectedKey,
+    { laps: getCachedLaps, drivers: getCachedDrivers },
+    { primary: 'laps', optional: ['drivers'] }
+  )
   const laps: Lap[] = data?.laps ?? []
   const drivers: Driver[] = data?.drivers ?? []
 

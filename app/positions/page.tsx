@@ -24,7 +24,9 @@ export default function PositionsPage() {
   const { data, state, message, stale, fetching, refresh } = useSessionData(
     selectedKey,
     { positions: getCachedPositions, drivers: getCachedDrivers },
-    'positions'
+    // drivers only supplies acronym + team colour; without it a row reads
+    // "#44" instead of "VER", which is degraded but not untrue.
+    { primary: 'positions', optional: ['drivers'] }
   )
   const rawPositions: Position[] = data?.positions ?? []
   const driverList: Driver[] = data?.drivers ?? []

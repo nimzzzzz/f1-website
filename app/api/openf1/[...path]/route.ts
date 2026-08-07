@@ -37,15 +37,59 @@ export const maxDuration = 30
 // it could say which.
 const STATUS_RE = /^upstream (\d{3})$/
 
+// openf1 rate-limits by CONCURRENCY, not by rate. Measured in a real
+// browser against this proxy with a cold cache: /results asks for four
+// endpoints at once and openf1 429s one or two of them every time. The
+// season compute already worked around this with BATCH=2 + gaps; doing the
+// same here fixes it once for every page instead of per caller.
+//
+// This gate sits INSIDE the cached function, so a cache hit never queues —
+// only genuine upstream calls are throttled, and the common path is
+// untouched.
+const MAX_CONCURRENT = 2
+const STAGGER_MS = 120
+let active = 0
+const waiting: (() => void)[] = []
+
+async function acquire() {
+  if (active >= MAX_CONCURRENT) {
+    await new Promise<void>((resolve) => waiting.push(resolve))
+  }
+  active++
+}
+
+function release() {
+  active--
+  const next = waiting.shift()
+  if (next) next()
+}
+
 async function fetchUpstream(url: string): Promise<string> {
   // Local verification hook (unset in prod): pretend openf1 is locked.
   if (process.env.SIMULATE_OPENF1_DOWN === '1') {
     throw new Error(`upstream ${process.env.SIMULATE_OPENF1_STATUS ?? '401'}`)
   }
+  await acquire()
+  try {
+    return await fetchUpstreamInner(url)
+  } finally {
+    // A short stagger before the slot frees: back-to-back releases would
+    // otherwise re-form the burst this gate exists to break up.
+    setTimeout(release, STAGGER_MS)
+  }
+}
+
+async function fetchUpstreamInner(url: string): Promise<string> {
   const res = await fetch(url, {
     headers: { 'User-Agent': 'lights-out-site/1.0' },
     cache: 'no-store',
   })
+  // openf1 answers a query that matches nothing with 404
+  // {"detail":"No results found."} — that is a genuinely EMPTY result, not
+  // a provider failure. Relaying it as an error would make every future
+  // session on the picker read "DATA TEMPORARILY UNAVAILABLE", which is the
+  // same lie as the one this work exists to remove, pointing the other way.
+  if (res.status === 404) return '[]'
   if (!res.ok) throw new Error(`upstream ${res.status}`)
   const body = await res.text()
   // refuse to cache empty payloads — an empty array during a lockout
@@ -66,7 +110,13 @@ export async function GET(
 ) {
   const endpoint = params.path.join('/')
   if (!ALLOWED.has(endpoint)) {
-    return new Response('not found', { status: 404 })
+    // NOT 404: the client now reads 404 as openf1's "nothing matched", so
+    // a rejected endpoint would masquerade as an empty result. 400 says
+    // the request itself was wrong.
+    return new Response(JSON.stringify({ error: 'endpoint not allowed' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
   }
   const qs = req.nextUrl.searchParams.toString()
   const url = `https://api.openf1.org/v1/${endpoint}${qs ? `?${qs}` : ''}`

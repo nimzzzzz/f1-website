@@ -85,7 +85,12 @@ export default function ResultsPage() {
       pitStops: getCachedPitStops,
       detail: getCachedSessionResult,
     },
-    'positions'
+    // drivers and pitStops are REQUIRED: result rows are keyed on the
+    // roster, and a missing pit count would render "0 STOPS" — a false
+    // claim rather than a blank. detail is pure enrichment (gap, winner
+    // time) and renders "—" when absent, so its frequent 429s must not
+    // take the classification off the page.
+    { primary: 'positions', optional: ['detail'] }
   )
 
   const results: DriverResult[] = useMemo(() => {

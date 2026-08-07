@@ -72,13 +72,28 @@ export function dataState<T>(r: FetchResult<T> | null, hadPrevious: boolean): Da
   return r.rows.length > 0 ? 'data' : 'empty'
 }
 
-/** User-facing copy for an unavailable state — says what is happening. */
-export function unavailableMessage(reason: FetchFailureReason | undefined, stale: boolean): string {
+/**
+ * User-facing copy for an unavailable state.
+ *
+ * The copy must never promise something the code will not do. "RETRYING
+ * SHORTLY" is only shown while a retry is genuinely scheduled — once the
+ * backoff is exhausted the line changes and the RETRY control beside it is
+ * the only thing that will act.
+ */
+export function unavailableMessage(
+  reason: FetchFailureReason | undefined,
+  stale: boolean,
+  retryPending = false
+): string {
   const base =
     reason === 'blocked'
       ? 'LIVE SESSION — TIMING DATA IS LOCKED'
       : reason === 'rate-limited'
-        ? 'RATE LIMITED — RETRYING SHORTLY'
-        : 'DATA TEMPORARILY UNAVAILABLE'
+        ? retryPending
+          ? 'RATE LIMITED — RETRYING SHORTLY'
+          : 'RATE LIMITED — TRY AGAIN IN A MOMENT'
+        : retryPending
+          ? 'DATA TEMPORARILY UNAVAILABLE — RETRYING'
+          : 'DATA TEMPORARILY UNAVAILABLE'
   return stale ? `${base} · SHOWING LAST KNOWN` : base
 }

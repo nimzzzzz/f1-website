@@ -22,7 +22,7 @@ export default function PitStopsPage() {
   const { data, state, message, stale, fetching, refresh } = useSessionData(
     selectedKey,
     { pitStops: getCachedPitStops, drivers: getCachedDrivers },
-    'pitStops'
+    { primary: 'pitStops', optional: ['drivers'] }
   )
   const pitStops: PitStop[] = useMemo(
     () => [...(data?.pitStops ?? [])].sort((a, b) => (a.lap_number ?? 0) - (b.lap_number ?? 0)),

@@ -49,7 +49,7 @@ export default function StintsPage() {
   const { data, state, message, stale, fetching, refresh } = useSessionData(
     selectedKey,
     { stints: getCachedStints, drivers: getCachedDrivers },
-    'stints'
+    { primary: 'stints', optional: ['drivers'] }
   )
   const stints: Stint[] = data?.stints ?? []
   const drivers: Driver[] = data?.drivers ?? []

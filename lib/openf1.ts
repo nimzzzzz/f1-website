@@ -260,6 +260,11 @@ async function apiFetch<T>(
       console.error(`[OpenF1] 429 rate limited — ${url}`)
       return failResult<T>('rate-limited', 429)
     }
+    // openf1 uses 404 {"detail":"No results found."} to mean "nothing
+    // matched", which is an empty ANSWER, not a failure to answer. A
+    // session with no laps yet must render "NO LAP DATA FOR THIS SESSION",
+    // never an outage notice.
+    if (res.status === 404) return okResult<T>([])
     if (!res.ok) {
       console.error(`[OpenF1] ${res.status} ${res.statusText} — ${url}`)
       return failResult<T>('http', res.status)

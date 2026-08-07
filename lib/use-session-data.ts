@@ -8,6 +8,7 @@ import {
   type FetchFailureReason,
   type FetchResult,
   dataState,
+  isRetryable,
   unavailableMessage,
 } from '@/lib/fetch-result'
 
@@ -78,23 +79,46 @@ export interface SessionData<F extends Fetchers> {
   refresh: () => void
 }
 
+export interface SessionDataOptions<F extends Fetchers> {
+  /**
+   * The fetcher whose emptiness means "this session has no data".
+   * Defaults to the first key in `fetchers`.
+   */
+  primary?: keyof F
+  /**
+   * Fetchers whose failure must NOT take the page down.
+   *
+   * The rationale this file was written on — "a session page showing five
+   * panels should be able to keep four and mark one unavailable" — was not
+   * actually honoured until a browser run showed it: openf1 429s
+   * /session_result intermittently even for isolated, spaced requests, and
+   * that one flaky enrichment call was blanking all of /results while
+   * positions, drivers and pit stops had all arrived. A fetcher belongs
+   * here only when its absence renders as something NEUTRAL and true — a
+   * driver roster degrades an acronym to "#44", a missing gap renders "—".
+   * It does NOT belong here when absence would state something false: pit
+   * stop counts would read "0 STOPS", which is a claim, not a blank.
+   */
+  optional?: (keyof F)[]
+}
+
 /**
  * Fetch one or more per-session endpoints for `sessionKey`, ignoring any
  * response that a newer key has superseded.
- *
- * `primary` names the fetcher whose emptiness means "this session has no
- * data" — the others are supporting (drivers, for instance, are usually
- * present even when the panel's own rows are not). Defaults to the first
- * key in `fetchers`.
  */
 export function useSessionData<F extends Fetchers>(
   sessionKey: number | null,
   fetchers: F,
-  primary?: keyof F
+  options: SessionDataOptions<F> = {}
 ): SessionData<F> {
+  const { primary, optional } = options
+  const optionalSig = (optional ?? []).join(',')
   const [data, setData] = useState<RowsOf<F> | null>(null)
   const [result, setResult] = useState<FetchResult<unknown> | null>(null)
   const [fetching, setFetching] = useState(false)
+  // True only while a backoff retry is actually scheduled — drives the
+  // copy, so "RETRYING SHORTLY" is never shown once nothing will retry.
+  const [retryPending, setRetryPending] = useState(false)
 
   // Latest-wins. A ticket is taken per request; a response only commits if
   // its ticket is still the current one.
@@ -107,8 +131,27 @@ export function useSessionData<F extends Fetchers>(
   fetchersRef.current = fetchers
   const keySig = Object.keys(fetchers).join(',')
 
+  // Retryable failures recover on their own. Measured on a cold cache:
+  // /results asks for four endpoints at once and openf1 429s exactly one of
+  // the burst, so without this the page sat on "RATE LIMITED — RETRYING
+  // SHORTLY" while nothing retried — copy promising something the code did
+  // not do. A 'blocked' lockout is NOT retried (openf1 refuses for the
+  // length of the session) and its copy promises nothing.
+  const RETRY_MS = [900, 2600]
+  const retryTimers = useRef<number[]>([])
+  const clearRetries = () => {
+    retryTimers.current.forEach((t) => window.clearTimeout(t))
+    retryTimers.current = []
+  }
+
+  // `optionalOnly` marks a retry that exists purely to fill in enrichment
+  // after everything required already committed. Such a retry may only ever
+  // IMPROVE the page: if it fails, the good data stays and no outage notice
+  // appears. Without this, a background retry for /results' flaky
+  // session_result could 429 on a required endpoint and flip a fully
+  // rendered classification into "unavailable" — worse than not retrying.
   const run = useCallback(
-    async (key: number) => {
+    async (key: number, attempt = 0, optionalOnly = false) => {
       const mine = gate.start()
       setFetching(true)
       const entries = Object.entries(fetchersRef.current) as [string, AnyFetcher][]
@@ -128,25 +171,57 @@ export function useSessionData<F extends Fetchers>(
       // committing here is exactly the bug this hook exists to prevent.
       if (!gate.isCurrent(mine)) return
 
-      const failure = settled.find(([, r]) => !r.ok)?.[1]
+      const isOptional = (name: string) => (optional ?? []).includes(name as keyof F)
+      // Only a REQUIRED failure takes the page down.
+      const failure = settled.find(([name, r]) => !r.ok && !isOptional(name))?.[1]
+      const optionalFailed = settled.filter(([name, r]) => !r.ok && isOptional(name))
       if (failure) {
-        // Keep whatever is already on screen; mark the attempt failed.
-        setResult(failure)
+        // Keep whatever is already on screen; mark the attempt failed —
+        // unless this was a background enrichment retry, which must stay
+        // invisible when it does not succeed.
+        if (!optionalOnly) setResult(failure)
         setFetching(false)
+        const willRetry = isRetryable(failure) && attempt < RETRY_MS.length
+        if (!optionalOnly) setRetryPending(willRetry)
+        if (willRetry) {
+          const t = window.setTimeout(() => {
+            // The ticket check inside the retry drops it if the user has
+            // since selected another session.
+            if (gate.isCurrent(mine)) void run(key, attempt + 1, optionalOnly)
+          }, RETRY_MS[attempt])
+          retryTimers.current.push(t)
+        }
         return
       }
+      clearRetries()
+      setRetryPending(false)
+      // An optional fetcher that failed contributes no rows; the page's
+      // neutral fallback covers it. Retry it quietly in the background so
+      // the enrichment fills in without ever showing an outage notice.
       const rows = Object.fromEntries(
-        settled.map(([name, r]) => [name, (r as { ok: true; rows: unknown[] }).rows])
+        settled.map(([name, r]) => [name, r.ok ? r.rows : []])
       ) as unknown as RowsOf<F>
+      if (optionalFailed.length > 0 && attempt < RETRY_MS.length) {
+        const retryable = optionalFailed.some(([, r]) => isRetryable(r))
+        if (retryable) {
+          const t = window.setTimeout(() => {
+            if (gate.isCurrent(mine)) void run(key, attempt + 1, true)
+          }, RETRY_MS[attempt])
+          retryTimers.current.push(t)
+        }
+      }
       const primaryKey = (primary ?? entries[0][0]) as string
       setData(rows)
       setResult({ ok: true, rows: (rows as Record<string, unknown[]>)[primaryKey] })
       setFetching(false)
     },
-    [primary, gate]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [primary, optionalSig, gate]
   )
 
   useEffect(() => {
+    clearRetries()
+    setRetryPending(false)
     if (sessionKey === null) {
       // Selecting nothing must not leave the previous session's rows up.
       gate.abandon()
@@ -156,12 +231,16 @@ export function useSessionData<F extends Fetchers>(
       return
     }
     void run(sessionKey)
+    return clearRetries
     // keySig stands in for `fetchers`; see the ref above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKey, keySig, run])
 
   const refresh = useCallback(() => {
+    clearRetries()
+    setRetryPending(false)
     if (sessionKey !== null) void run(sessionKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKey, run])
 
   const state = sessionKey === null ? 'empty' : dataState(result, data !== null)
@@ -174,7 +253,7 @@ export function useSessionData<F extends Fetchers>(
     reason,
     stale,
     fetching,
-    message: reason ? unavailableMessage(reason, stale) : null,
+    message: reason ? unavailableMessage(reason, stale, retryPending) : null,
     refresh,
   }
 }

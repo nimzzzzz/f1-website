@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { fetchSeasonData, isNewerBundle } from '@/lib/season-data'
+import { useEffect, useState } from 'react'
+import { useFreshSeasonBundle } from '@/lib/use-season-bundle'
 import type { BundleDriverStanding, BundleTeamStanding } from '@/lib/season-data'
 import { ClipReveal, CountUp, FadeUp } from '@/components/motion/reveals'
 
@@ -29,40 +29,27 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
     () => initialBundle?.teamStandings ?? []
   )
   const [loading, setLoading] = useState(() => !initialBundle)
-  const [error, setError] = useState<string | null>(null)
   const [completedRaces, setCompletedRaces] = useState(() => initialBundle?.completedRaces ?? 0)
   const [seasonYear, setSeasonYear] = useState<number | null>(() => initialBundle?.seasonYear ?? null)
-  // What the rendered standings were computed from. Starts at the SSR'd
-  // bundle so a memoized client bundle can never overwrite newer server
-  // data. A ref, not state: it gates an adoption rather than driving render,
-  // and reading it inside the effect must not depend on a re-render.
-  const shownAt = useRef<string | null>(initialBundle?.computedAt ?? null)
-
   // One server-computed bundle replaces the ~20-request client pipeline.
+  // The hook re-asks on every return to the tab and only ever yields a
+  // bundle strictly newer than what is already rendered.
+  const { bundle, unavailable } = useFreshSeasonBundle(initialBundle?.computedAt ?? null)
+
   useEffect(() => {
-    let alive = true
-    fetchSeasonData()
-      .then((bundle) => {
-        if (!alive) return
-        if (!bundle) return // blocked with no cached bundle — banner covers it
-        // Adopt only what is strictly newer than what is on screen.
-        if (!isNewerBundle(bundle, shownAt.current)) return
-        setDriverStandings(bundle.driverStandings)
-        setTeamStandings(bundle.teamStandings)
-        setCompletedRaces(bundle.completedRaces)
-        setSeasonYear(bundle.seasonYear)
-        shownAt.current = bundle.computedAt
-      })
-      .catch(() => {
-        if (alive) setError('Failed to load standings')
-      })
-      .finally(() => {
-        if (alive) setLoading(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [])
+    if (!bundle) return
+    setDriverStandings(bundle.driverStandings)
+    setTeamStandings(bundle.teamStandings)
+    setCompletedRaces(bundle.completedRaces)
+    setSeasonYear(bundle.seasonYear)
+  }, [bundle])
+
+  // The skeleton only ever gates a cold arrival with no SSR bundle.
+  useEffect(() => {
+    if (bundle || initialBundle) setLoading(false)
+    const t = setTimeout(() => setLoading(false), 8000)
+    return () => clearTimeout(t)
+  }, [bundle, initialBundle])
 
   if (loading) {
     return (
@@ -98,10 +85,17 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
           </p>
         </FadeUp>
 
-        {error && <p className="label-mono mt-8 text-[var(--accent)]">{error}</p>}
-
         {driverStandings.length === 0 ? (
-          (
+          // An outage is not an empty championship. Only say "no standings
+          // yet" when we actually got an answer.
+          unavailable ? (
+            <p
+              className="label-mono mt-16 border-l-2 border-[var(--accent)] pl-4 text-[var(--accent)]"
+              role="status"
+            >
+              STANDINGS TEMPORARILY UNAVAILABLE
+            </p>
+          ) : (
             <p className="label-mono mt-16 text-[var(--text-dim)]">
               NO STANDINGS YET — DATA ARRIVES AS THE SEASON RUNS
             </p>
