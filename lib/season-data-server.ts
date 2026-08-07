@@ -1,5 +1,7 @@
 import type { Driver, Meeting, Session, SessionResult } from '@/lib/openf1'
-import { isCancelled } from '@/lib/openf1'
+import { isCancelled, getSessionResultsForMeeting, getDriversForMeeting } from '@/lib/openf1'
+import { resultStatus } from '@/lib/openf1-normalize'
+import { sortByCountback } from '@/lib/countback'
 import type { SeasonBundle } from '@/lib/season-data'
 
 // Compute-local openf1 fetcher. The bundle route is STATIC (ISR): its
@@ -53,24 +55,77 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 // openf1 429s concurrent bursts (observed live: 8+ of 17 parallel result
 // fetches rejected). Fetch in small batches with gaps, then retry any
 // empties once — the completeness guard still rejects anything missing.
-async function fetchResultsPaced(sessions: Session[]) {
-  const out: { session: Session; results: SessionResult[] }[] = []
-  const BATCH = 4
-  for (let i = 0; i < sessions.length; i += BATCH) {
-    const batch = sessions.slice(i, i + BATCH)
-    const settled = await Promise.all(
-      batch.map(async (s) => ({ session: s, results: await getSessionResult(s.session_key) }))
-    )
-    out.push(...settled)
-    if (i + BATCH < sessions.length) await sleep(400)
-  }
-  for (const row of out) {
-    if (row.results.length === 0) {
-      await sleep(600)
-      row.results = await getSessionResult(row.session.session_key)
+/**
+ * One sweep per MEETING, fetching that weekend's results and roster, then
+ * splitting both by session_key.
+ *
+ * Per-session attribution needs a roster per session as well as results per
+ * session. Fetched per session that is 2 requests × 15 sessions = 30, which
+ * measurably trips openf1's rate limit (a burst of 8 returns 429 for four;
+ * the compute failed with "3/15 sessions incomplete" on sessions that serve
+ * 22 rows perfectly when asked politely). meeting_key collapses a weekend
+ * into one call each, so 15 points sessions cost 2 × 11 meetings = 22.
+ *
+ * Empty is treated as RETRYABLE with backoff: a 429 is indistinguishable
+ * from an empty body through apiFetch's return-[] contract, so nothing is
+ * declared missing until it has been asked for patiently.
+ */
+async function fetchSeasonRows(pointsSessions: Session[]) {
+  const meetingKeys = [...new Set(pointsSessions.map((s) => s.meeting_key))]
+  const BATCH = 2
+  const GAP = 500
+
+  const results = new Map<number, SessionResult[]>()
+  const rosters = new Map<number, Driver[]>()
+
+  const sweep = async (keys: number[]) => {
+    for (let i = 0; i < keys.length; i += BATCH) {
+      const batch = keys.slice(i, i + BATCH)
+      await Promise.all(
+        batch.map(async (mk) => {
+          const [res, drv] = await Promise.all([
+            getSessionResultsForMeeting(mk),
+            getDriversForMeeting(mk),
+          ])
+          results.set(mk, res)
+          rosters.set(mk, drv)
+        })
+      )
+      if (i + BATCH < keys.length) await sleep(GAP)
     }
   }
-  return out
+  await sweep(meetingKeys)
+
+  for (const delay of [800, 1600, 3000]) {
+    const missing = meetingKeys.filter(
+      (mk) => (results.get(mk)?.length ?? 0) === 0 || (rosters.get(mk)?.length ?? 0) === 0
+    )
+    if (missing.length === 0) break
+    console.warn(`[season-data] retrying ${missing.length} meeting(s) in ${delay}ms`)
+    await sleep(delay)
+    for (const mk of missing) {
+      if ((results.get(mk)?.length ?? 0) === 0) results.set(mk, await getSessionResultsForMeeting(mk))
+      await sleep(250)
+      if ((rosters.get(mk)?.length ?? 0) === 0) rosters.set(mk, await getDriversForMeeting(mk))
+      await sleep(250)
+    }
+  }
+
+  // split by session
+  const resultSets = pointsSessions.map((session) => ({
+    session,
+    results: (results.get(session.meeting_key) ?? []).filter(
+      (r) => r.session_key === session.session_key
+    ),
+  }))
+  const rosterBySession = new Map<number, Map<number, Driver>>()
+  for (const session of pointsSessions) {
+    const rows = (rosters.get(session.meeting_key) ?? []).filter(
+      (d) => d.session_key === session.session_key
+    )
+    rosterBySession.set(session.session_key, new Map(rows.map((d) => [d.driver_number, d])))
+  }
+  return { resultSets, rosters: rosterBySession }
 }
 
 // openf1 numeric fields can arrive as strings after post-session data
@@ -148,6 +203,7 @@ async function computeSeasonData(): Promise<SeasonBundle> {
       lastRace: null,
       winnersByRound: {},
       resultsByRound: {},
+      sprintPointsByRound: {},
       meetings,
       sessions,
     }
@@ -157,60 +213,129 @@ async function computeSeasonData(): Promise<SeasonBundle> {
     (a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime()
   )[0]
 
-  const drivers = await getDrivers(latestRace.session_key)
-  if (drivers.length === 0) throw new Error('season-data: drivers unavailable')
-  const driverMap = new Map(drivers.map((d) => [d.driver_number, d]))
+  // ── per-session rosters ──────────────────────────────────────────────
+  // Fetched for every points session, not just the latest race.
+  const { resultSets, rosters } = await fetchSeasonRows(allPointsSessions)
+  const latestRoster = rosters.get(latestRace.session_key)
+  if (!latestRoster || latestRoster.size === 0) throw new Error('season-data: drivers unavailable')
 
-  // Completeness guard: EVERY completed points session must return results.
-  // A single missing set would silently distort the tally, so incomplete
-  // computations throw and the cache keeps the last complete bundle.
-  const resultSets = await fetchResultsPaced(allPointsSessions)
-  const missing = resultSets.filter((r) => r.results.length === 0)
-  if (missing.length > 0) {
-    throw new Error(`season-data: ${missing.length}/${resultSets.length} result sets unavailable`)
+  // ── completeness that means something ────────────────────────────────
+  // "at least one row" used to pass, so a partial post-race publish could
+  // bake in as final. A session is complete only when its result set has a
+  // row per competitor ON THAT SESSION'S ROSTER, no duplicate drivers, and
+  // no driver missing from the roster it is attributed through. Rows are
+  // already shape-validated at the boundary (lib/openf1-normalize), so an
+  // undercount here means genuinely missing data, not malformed data.
+  const incomplete: string[] = []
+  for (const { session, results } of resultSets) {
+    const roster = rosters.get(session.session_key)
+    const expected = roster?.size ?? 0
+    if (expected === 0) {
+      incomplete.push(`${session.session_key}: roster unavailable`)
+      continue
+    }
+    if (results.length === 0) {
+      incomplete.push(`${session.session_key}: no results`)
+      continue
+    }
+    const uniq = new Set(results.map((r) => r.driver_number))
+    if (uniq.size !== results.length) {
+      incomplete.push(`${session.session_key}: ${results.length - uniq.size} duplicate driver rows`)
+      continue
+    }
+    if (results.length < expected) {
+      incomplete.push(`${session.session_key}: ${results.length}/${expected} competitors`)
+      continue
+    }
+    const unknown = [...uniq].filter((n) => !roster!.has(n))
+    if (unknown.length > 0) {
+      incomplete.push(`${session.session_key}: ${unknown.length} rows not on the roster`)
+    }
+  }
+  if (incomplete.length > 0) {
+    throw new Error(
+      `season-data: ${incomplete.length}/${resultSets.length} sessions incomplete — ${incomplete.join('; ')}`
+    )
   }
 
-  const tally = new Map<number, { points: number; wins: number; podiums: number }>()
-  const teamTally = new Map<string, { colour: string; points: number; wins: number }>()
+  // ── tallies ──────────────────────────────────────────────────────────
+  // Driver identity follows the DRIVER (their latest known record supplies
+  // name and current team for display); points follow the driver across
+  // teams. Constructor points accrue to whichever team the driver actually
+  // drove for IN THAT ROUND.
+  const tally = new Map<number, { points: number; wins: number; podiums: number; finishes: number[] }>()
+  const teamTally = new Map<string, { colour: string; points: number; wins: number; finishes: number[] }>()
   const winnersByRound: Record<number, string> = {}
-  // Per-round GP results, compact — powers per-driver season records
-  // without any extra upstream fetches (the data is already in hand).
   const resultsByRound: Record<number, import('@/lib/season-data').RoundResultRow[]> = {}
+  const sprintPointsByRound: Record<number, Record<number, number>> = {}
 
-  for (const d of drivers) {
-    if (!tally.has(d.driver_number)) tally.set(d.driver_number, { points: 0, wins: 0, podiums: 0 })
-    if (!teamTally.has(d.team_name)) {
-      teamTally.set(d.team_name, { colour: d.team_colour, points: 0, wins: 0 })
+  // Display identity: the most recent session in which each driver appeared.
+  const driverMap = new Map<number, Driver>()
+  for (const { session } of [...resultSets].sort(
+    (a, b) => new Date(a.session.date_start).getTime() - new Date(b.session.date_start).getTime()
+  )) {
+    for (const [num, d] of rosters.get(session.session_key) ?? []) driverMap.set(num, d)
+  }
+  for (const [num, d] of driverMap) {
+    if (!tally.has(num)) tally.set(num, { points: 0, wins: 0, podiums: 0, finishes: [] })
+    if (!teamTally.has(d.team_name)) teamTally.set(d.team_name, { colour: d.team_colour, points: 0, wins: 0, finishes: [] })
+  }
+  // Any team that fielded a car in ANY round must exist in the table, even
+  // if its only driver has since moved on.
+  for (const roster of rosters.values()) {
+    for (const d of roster.values()) {
+      if (!teamTally.has(d.team_name)) teamTally.set(d.team_name, { colour: d.team_colour, points: 0, wins: 0, finishes: [] })
+      if (!tally.has(d.driver_number)) tally.set(d.driver_number, { points: 0, wins: 0, podiums: 0, finishes: [] })
     }
   }
 
   for (const { session, results } of resultSets) {
     const isGrandPrix = session.session_name === 'Race'
+    const roster = rosters.get(session.session_key)!
     if (isGrandPrix) {
-      resultsByRound[session.meeting_key] = results.map((r) => ({
-        d: r.driver_number,
-        p: r.position,
-        pts: r.points ?? 0,
-        ...(r.dnf || r.dns || r.dsq ? { out: 1 as const } : {}),
-      }))
+      resultsByRound[session.meeting_key] = results.map((r) => {
+        const st = resultStatus(r)
+        return {
+          d: r.driver_number,
+          p: r.position,
+          pts: r.points ?? 0,
+          // Distinct outcome preserved — DNF/DNS/DSQ are different things
+          // and were previously all displayed as "DNF". `out` stays for
+          // consumers that only ask "did they finish".
+          ...(st !== 'classified' ? { st, out: 1 as const } : {}),
+        }
+      })
+    } else {
+      // Sprint: points only, keyed by meeting, so season totals and the
+      // per-weekend haul agree.
+      const bucket = (sprintPointsByRound[session.meeting_key] ??= {})
+      for (const r of results) {
+        if ((r.points ?? 0) > 0) bucket[r.driver_number] = (bucket[r.driver_number] ?? 0) + (r.points ?? 0)
+      }
     }
     for (const r of results) {
       const t = tally.get(r.driver_number)
       if (!t) continue
       t.points += r.points ?? 0
-      if (r.position === 1) {
-        if (isGrandPrix) {
+      const classified = resultStatus(r) === 'classified' && r.position !== null
+      if (isGrandPrix && classified) {
+        t.finishes.push(r.position as number)
+        if (r.position === 1) {
           t.wins++
-          const info = driverMap.get(r.driver_number)
+          const info = roster.get(r.driver_number) ?? driverMap.get(r.driver_number)
           if (info?.full_name) winnersByRound[session.meeting_key] = surname(info.full_name)
         }
+        if ((r.position as number) <= 3) t.podiums++
       }
-      if (isGrandPrix && r.position !== null && r.position <= 3) t.podiums++
-      const info = driverMap.get(r.driver_number)
+      // ATTRIBUTION: this session's roster, not the latest one.
+      const info = roster.get(r.driver_number)
       const team = info ? teamTally.get(info.team_name) : undefined
       if (team) {
         team.points += r.points ?? 0
-        if (r.position === 1 && isGrandPrix) team.wins++
+        if (isGrandPrix && classified) {
+          team.finishes.push(r.position as number)
+          if (r.position === 1) team.wins++
+        }
       }
     }
   }
@@ -231,21 +356,30 @@ async function computeSeasonData(): Promise<SeasonBundle> {
         ...t,
       }
     })
-    .sort((a, b) => b.points - a.points || b.wins - a.wins)
-    .map((d, i) => ({ position: i + 1, ...d }))
+  // FIA countback: points, then most wins, then most seconds, then thirds…
+  // The old `points, then wins` left genuine ties in upstream fetch order.
+  const driverStandingsSorted = sortByCountback(driverStandings, (d) => d.driverNumber).map(
+    (d, i) => {
+      const { finishes: _f, ...rest } = d
+      return { position: i + 1, ...rest }
+    }
+  )
 
-  const teamStandings = [...teamTally.entries()]
+  const teamStandingsRaw = [...teamTally.entries()]
     .map(([teamName, t]) => ({
       teamName,
       teamColour: t.colour,
       points: t.points,
       wins: t.wins,
-      driverSurnames: driverStandings
+      finishes: t.finishes,
+      driverSurnames: driverStandingsSorted
         .filter((d) => d.teamName === teamName)
         .map((d) => d.surname),
     }))
-    .sort((a, b) => b.points - a.points || b.wins - a.wins)
-    .map((t, i) => ({ position: i + 1, ...t }))
+  const teamStandings = sortByCountback(teamStandingsRaw, (t) => t.teamName).map((t, i) => {
+    const { finishes: _f, ...rest } = t
+    return { position: i + 1, ...rest }
+  })
 
   const latestResults = resultSets.find((r) => r.session.session_key === latestRace.session_key)!
   const latestMeeting = meetings.find((m) => m.meeting_key === latestRace.meeting_key)
@@ -273,7 +407,7 @@ async function computeSeasonData(): Promise<SeasonBundle> {
     computedAt: new Date().toISOString(),
     completedRaces: completedRaceSessions.length,
     seasonYear,
-    driverStandings,
+    driverStandings: driverStandingsSorted,
     teamStandings,
     lastRace: latestMeeting
       ? {
@@ -285,6 +419,7 @@ async function computeSeasonData(): Promise<SeasonBundle> {
       : null,
     winnersByRound,
     resultsByRound,
+    sprintPointsByRound,
     meetings,
     sessions,
   }

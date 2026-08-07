@@ -50,6 +50,11 @@ export interface RoundResultRow {
   d: number
   p: number | null
   pts: number
+  /** Distinct outcome. `out` is kept alongside for back-compat with any
+   *  consumer that only asks "did they finish"; `st` is what should be
+   *  DISPLAYED, since DNF / DNS / DSQ are different things and were
+   *  previously all rendered as "DNF". */
+  st?: 'DNF' | 'DNS' | 'DSQ' | 'NC'
   out?: 1
 }
 
@@ -64,6 +69,14 @@ export interface SeasonBundle {
   lastRace: BundleLastRace | null
   winnersByRound: Record<number, string> // meeting_key → winner surname
   resultsByRound: Record<number, RoundResultRow[]> // meeting_key → GP result rows
+  /**
+   * meeting_key → driver_number → sprint points for that round. Kept
+   * SEPARATE from resultsByRound (which is grand-prix-only, and drives the
+   * per-round station timeline) so a weekend's full points haul can be
+   * reconciled with season totals without sprint rows appearing as extra
+   * "rounds" on a driver's season line.
+   */
+  sprintPointsByRound: Record<number, Record<number, number>>
   meetings: Meeting[]
   sessions: Session[]
 }
