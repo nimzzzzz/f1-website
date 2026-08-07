@@ -57,6 +57,18 @@ export function createLatestWins() {
   }
 }
 
+/**
+ * A session named in the strip grammar the picker already uses:
+ * `RACE · HUNGARORING · JUL 26`.
+ */
+export function sessionStripLabel(s: Session | undefined): string | null {
+  if (!s) return null
+  const date = new Date(s.date_start)
+    .toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    .toUpperCase()
+  return `${s.session_name.toUpperCase()} · ${s.circuit_short_name.toUpperCase()} · ${date}`
+}
+
 type AnyFetcher = (sessionKey: number) => Promise<FetchResult<unknown>>
 type Fetchers = Record<string, (sessionKey: number) => Promise<FetchResult<unknown>>>
 
@@ -67,6 +79,13 @@ type RowsOf<F> = {
 export interface SessionData<F extends Fetchers> {
   /** Last successfully loaded rows. Survives an unavailable state. */
   data: RowsOf<F> | null
+  /**
+   * The session key `data` actually belongs to. When an outage keeps rows
+   * on screen while the user has already selected something else, this is
+   * NOT the selected key — and the page must say so rather than letting the
+   * new heading imply the old rows are its own.
+   */
+  dataKey: number | null
   state: DataState
   reason: FetchFailureReason | undefined
   /** True when `data` is being shown but the latest attempt failed. */
@@ -114,6 +133,7 @@ export function useSessionData<F extends Fetchers>(
   const { primary, optional } = options
   const optionalSig = (optional ?? []).join(',')
   const [data, setData] = useState<RowsOf<F> | null>(null)
+  const [dataKey, setDataKey] = useState<number | null>(null)
   const [result, setResult] = useState<FetchResult<unknown> | null>(null)
   const [fetching, setFetching] = useState(false)
   // True only while a backoff retry is actually scheduled — drives the
@@ -212,6 +232,7 @@ export function useSessionData<F extends Fetchers>(
       }
       const primaryKey = (primary ?? entries[0][0]) as string
       setData(rows)
+      setDataKey(key)
       setResult({ ok: true, rows: (rows as Record<string, unknown[]>)[primaryKey] })
       setFetching(false)
     },
@@ -226,6 +247,7 @@ export function useSessionData<F extends Fetchers>(
       // Selecting nothing must not leave the previous session's rows up.
       gate.abandon()
       setData(null)
+      setDataKey(null)
       setResult(null)
       setFetching(false)
       return
@@ -249,11 +271,12 @@ export function useSessionData<F extends Fetchers>(
 
   return {
     data,
+    dataKey,
     state,
     reason,
     stale,
     fetching,
-    message: reason ? unavailableMessage(reason, stale, retryPending) : null,
+    message: reason ? unavailableMessage(reason, retryPending) : null,
     refresh,
   }
 }
@@ -320,7 +343,7 @@ export function useSessionList(
     state,
     message:
       state === 'unavailable'
-        ? unavailableMessage(result && !result.ok ? result.reason : undefined, sessions.length > 0)
+        ? unavailableMessage(result && !result.ok ? result.reason : undefined)
         : null,
   }
 }

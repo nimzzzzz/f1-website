@@ -11,7 +11,7 @@ import {
 } from '@/lib/fetch-result'
 import { makeCache, makeSingleton } from '@/lib/client-cache'
 import { isNewerBundle } from '@/lib/season-data'
-import { createLatestWins } from '@/lib/use-session-data'
+import { createLatestWins, sessionStripLabel } from '@/lib/use-session-data'
 
 // Batch 3: the site must never claim "no data" when the truth is "we could
 // not ask". Each block below pins one of the four ways that lie used to get
@@ -56,28 +56,49 @@ describe('the fetch contract distinguishes failure from emptiness', () => {
   it('a failure with rows already on screen KEEPS showing them', () => {
     // The persistence principle: a blip must not blank the page.
     expect(dataState(failResult<number>('network'), true)).toBe('unavailable')
-    const msg = unavailableMessage('network', true)
-    expect(msg).toContain('SHOWING LAST KNOWN')
   })
 
   it('says what is happening rather than claiming emptiness', () => {
-    expect(unavailableMessage('blocked', false)).toMatch(/LOCKED/)
-    expect(unavailableMessage('rate-limited', false)).toMatch(/RATE LIMITED/)
-    expect(unavailableMessage('http', false)).toMatch(/UNAVAILABLE/)
+    expect(unavailableMessage('blocked')).toMatch(/LOCKED/)
     for (const reason of ['blocked', 'rate-limited', 'http', 'network', 'malformed'] as const) {
-      expect(unavailableMessage(reason, false)).not.toMatch(/NO DATA/)
+      expect(unavailableMessage(reason)).not.toMatch(/NO DATA/)
+    }
+  })
+
+  it('speaks broadcast, not transport', () => {
+    // A viewer does not know what rate limiting, a 429 or an HTTP status
+    // is. `reason` still drives retry policy and the logs; only the lockout
+    // and "is a retry scheduled" reach the screen.
+    for (const reason of ['rate-limited', 'http', 'network', 'malformed'] as const) {
+      for (const pending of [true, false]) {
+        const msg = unavailableMessage(reason, pending)
+        expect(msg).not.toMatch(/RATE LIMIT|429|HTTP|STATUS|ERROR|NETWORK|MALFORMED/)
+        expect(msg).toMatch(/FEED INTERRUPTED/)
+      }
+    }
+    // Every failure that is not a lockout reads the same to a viewer.
+    expect(unavailableMessage('rate-limited', true)).toBe(unavailableMessage('network', true))
+  })
+
+  it('carries no apology', () => {
+    const all = (['blocked', 'rate-limited', 'http', 'network', 'malformed'] as const).flatMap(
+      (r) => [unavailableMessage(r, true), unavailableMessage(r, false)]
+    )
+    for (const msg of all) {
+      expect(msg).not.toMatch(/SORRY|APOLOG|OOPS|PLEASE|UNFORTUNATELY/)
+      expect(msg).toBe(msg.toUpperCase())
     }
   })
 
   it('only promises a retry while one is actually scheduled', () => {
     // Caught in the browser: the page sat on "RETRYING SHORTLY" with
     // nothing retrying. Copy must not promise what the code will not do.
-    expect(unavailableMessage('rate-limited', false, true)).toMatch(/RETRYING SHORTLY/)
-    expect(unavailableMessage('rate-limited', false, false)).not.toMatch(/RETRYING/)
-    expect(unavailableMessage('http', false, false)).not.toMatch(/RETRYING/)
-    expect(unavailableMessage('http', false, true)).toMatch(/RETRYING/)
-    // A lockout never claims to be retrying — it is not retryable.
-    expect(unavailableMessage('blocked', false, true)).not.toMatch(/RETRYING/)
+    expect(unavailableMessage('rate-limited', true)).toMatch(/RECONNECTING/)
+    expect(unavailableMessage('rate-limited', false)).not.toMatch(/RECONNECT/)
+    expect(unavailableMessage('http', false)).not.toMatch(/RECONNECT/)
+    expect(unavailableMessage('http', true)).toMatch(/RECONNECTING/)
+    // A lockout never claims to be reconnecting — it is not retryable.
+    expect(unavailableMessage('blocked', true)).not.toMatch(/RECONNECT/)
   })
 
   it('before any attempt completes the state is PENDING, not unavailable', () => {
@@ -104,6 +125,42 @@ describe('the fetch contract distinguishes failure from emptiness', () => {
   it('rowsOrEmpty is the explicit opt-out, not the default', () => {
     expect(rowsOrEmpty(okResult([1, 2]))).toEqual([1, 2])
     expect(rowsOrEmpty(failResult<number>('http', 500))).toEqual([])
+  })
+})
+
+describe('kept rows disclose which session they came from', () => {
+  const session = (key: number, name: string, circuit: string, date: string) =>
+    ({
+      session_key: key,
+      session_name: name,
+      circuit_short_name: circuit,
+      date_start: date,
+    }) as never
+
+  it('names the session in the picker/strip grammar', () => {
+    expect(
+      sessionStripLabel(session(11342, 'Race', 'Hungaroring', '2026-07-26T14:00:00+00:00'))
+    ).toBe('RACE · HUNGARORING · JUL 26')
+  })
+
+  it('is null for a session that cannot be resolved', () => {
+    expect(sessionStripLabel(undefined)).toBeNull()
+  })
+
+  // The rule the pages implement: label only when the rows on screen belong
+  // to a DIFFERENT session than the heading names. Same session, nothing to
+  // correct — the heading is already right.
+  const labelFor = (dataKey: number | null, selectedKey: number | null, s: unknown) =>
+    dataKey !== null && dataKey !== selectedKey ? sessionStripLabel(s as never) : null
+
+  it('labels the rows when the heading names a different session', () => {
+    const kept = session(11342, 'Race', 'Hungaroring', '2026-07-26T14:00:00+00:00')
+    expect(labelFor(11342, 11334, kept)).toBe('RACE · HUNGARORING · JUL 26')
+  })
+
+  it('adds no label when the rows match the heading', () => {
+    const kept = session(11342, 'Race', 'Hungaroring', '2026-07-26T14:00:00+00:00')
+    expect(labelFor(11342, 11342, kept)).toBeNull()
   })
 })
 

@@ -196,7 +196,7 @@ export default function SchedulePage() {
       <div className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
         {unavailable ? (
           <p className="label-mono border-l-2 border-[var(--accent)] pl-4 text-[var(--accent)]" role="status">
-            {unavailableMessage(unavailable, false)}
+            {unavailableMessage(unavailable)}
           </p>
         ) : (
           <p className="label-mono text-[var(--text-dim)]">NO SCHEDULE DATA YET</p>

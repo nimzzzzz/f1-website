@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import type { Session, Driver, Position, SessionResult } from '@/lib/openf1'
 import { asNum } from '@/lib/format'
 import { getCachedDrivers, getCachedPositions, getCachedPitStops, getCachedSessionResult } from '@/lib/client-cache'
-import { useSessionData, useSessionList } from '@/lib/use-session-data'
+import { useSessionData, useSessionList, sessionStripLabel } from '@/lib/use-session-data'
 import { ClipReveal, FadeUp } from '@/components/motion/reveals'
 import SessionHeader from '@/components/session/SessionHeader'
 import DataStateNotice from '@/components/session/DataStateNotice'
@@ -70,9 +70,7 @@ export default function ResultsPage() {
   // All four endpoints move together now. The gap/time/status detail used to
   // load in its own effect with its own `alive` flag, which meant the two
   // could disagree about which session was on screen.
-  const {
-    data,
-    state,
+  const { data, dataKey, state,
     message,
     stale,
     fetching: fetchingResults,
@@ -92,6 +90,14 @@ export default function ResultsPage() {
     // take the classification off the page.
     { primary: 'positions', optional: ['detail'] }
   )
+
+  // Rows kept through an outage may belong to a session the user has
+  // already navigated away from — name it, so the heading above cannot
+  // imply they are its own.
+  const staleLabel =
+    dataKey !== null && dataKey !== selectedKey
+      ? sessionStripLabel(sessions.find((s) => s.session_key === dataKey))
+      : null
 
   const results: DriverResult[] = useMemo(() => {
     const positions: Position[] = data?.positions ?? []
@@ -154,6 +160,7 @@ export default function ResultsPage() {
         state={state}
         message={message}
         stale={stale}
+        staleLabel={staleLabel}
         onRetry={refresh}
         emptyLabel={selectedKey ? 'NO POSITION DATA FOR THIS SESSION' : 'SELECT A SESSION'}
         className="mt-8"

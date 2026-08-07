@@ -2,7 +2,7 @@
 
 import type { Session, Stint, Driver } from '@/lib/openf1'
 import { getCachedStints, getCachedDrivers } from '@/lib/client-cache'
-import { useSessionData, useSessionList } from '@/lib/use-session-data'
+import { useSessionData, useSessionList, sessionStripLabel } from '@/lib/use-session-data'
 import SessionHeader from '@/components/session/SessionHeader'
 import DataStateNotice from '@/components/session/DataStateNotice'
 import { FadeUp } from '@/components/motion/reveals'
@@ -46,11 +46,19 @@ export default function StintsPage() {
     anySession,
     latestRaceish
   )
-  const { data, state, message, stale, fetching, refresh } = useSessionData(
+  const { data, dataKey, state, message, stale, fetching, refresh } = useSessionData(
     selectedKey,
     { stints: getCachedStints, drivers: getCachedDrivers },
     { primary: 'stints', optional: ['drivers'] }
   )
+  // Rows kept through an outage may belong to a session the user has
+  // already navigated away from — name it, so the heading above cannot
+  // imply they are its own.
+  const staleLabel =
+    dataKey !== null && dataKey !== selectedKey
+      ? sessionStripLabel(sessions.find((s) => s.session_key === dataKey))
+      : null
+
   const stints: Stint[] = data?.stints ?? []
   const drivers: Driver[] = data?.drivers ?? []
 
@@ -116,6 +124,7 @@ export default function StintsPage() {
         state={state}
         message={message}
         stale={stale}
+        staleLabel={staleLabel}
         onRetry={refresh}
         emptyLabel={selectedKey ? 'NO STINT DATA FOR THIS SESSION' : 'SELECT A SESSION'}
         className="mt-8"

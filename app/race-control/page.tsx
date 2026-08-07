@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Session, RaceControl } from '@/lib/openf1'
 import { getCachedRaceControl } from '@/lib/client-cache'
-import { useSessionData, useSessionList } from '@/lib/use-session-data'
+import { useSessionData, useSessionList, sessionStripLabel } from '@/lib/use-session-data'
 import SessionHeader from '@/components/session/SessionHeader'
 import DataStateNotice from '@/components/session/DataStateNotice'
 import { FadeUp } from '@/components/motion/reveals'
@@ -47,9 +47,17 @@ export default function RaceControlPage() {
     anySession,
     latestCompleted
   )
-  const { data, state, message, stale, fetching, refresh } = useSessionData(selectedKey, {
+  const { data, dataKey, state, message, stale, fetching, refresh } = useSessionData(selectedKey, {
     messages: getCachedRaceControl,
   })
+  // Rows kept through an outage may belong to a session the user has
+  // already navigated away from — name it, so the heading above cannot
+  // imply they are its own.
+  const staleLabel =
+    dataKey !== null && dataKey !== selectedKey
+      ? sessionStripLabel(sessions.find((s) => s.session_key === dataKey))
+      : null
+
   // Newest first
   const messages: RaceControl[] = useMemo(
     () =>
@@ -110,6 +118,7 @@ export default function RaceControlPage() {
         state={state}
         message={message}
         stale={stale}
+        staleLabel={staleLabel}
         onRetry={refresh}
         emptyLabel={selectedKey ? 'NO RACE CONTROL DATA FOR THIS SESSION' : 'SELECT A SESSION'}
         className="mt-8"

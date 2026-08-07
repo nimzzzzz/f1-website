@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import type { Session, Lap, Driver } from '@/lib/openf1'
 import { formatDuration } from '@/lib/openf1'
 import { getCachedLaps, getCachedDrivers } from '@/lib/client-cache'
-import { useSessionData, useSessionList } from '@/lib/use-session-data'
+import { useSessionData, useSessionList, sessionStripLabel } from '@/lib/use-session-data'
 import SessionHeader from '@/components/session/SessionHeader'
 import DataStateNotice from '@/components/session/DataStateNotice'
 import { FadeUp } from '@/components/motion/reveals'
@@ -17,9 +17,7 @@ export default function LapsPage() {
     anySession,
     latestCompleted
   )
-  const {
-    data,
-    state,
+  const { data, dataKey, state,
     message,
     stale,
     fetching: fetchingLaps,
@@ -29,6 +27,14 @@ export default function LapsPage() {
     { laps: getCachedLaps, drivers: getCachedDrivers },
     { primary: 'laps', optional: ['drivers'] }
   )
+  // Rows kept through an outage may belong to a session the user has
+  // already navigated away from — name it, so the heading above cannot
+  // imply they are its own.
+  const staleLabel =
+    dataKey !== null && dataKey !== selectedKey
+      ? sessionStripLabel(sessions.find((s) => s.session_key === dataKey))
+      : null
+
   const laps: Lap[] = data?.laps ?? []
   const drivers: Driver[] = data?.drivers ?? []
 
@@ -84,6 +90,7 @@ export default function LapsPage() {
         state={state}
         message={message}
         stale={stale}
+        staleLabel={staleLabel}
         onRetry={refresh}
         emptyLabel="NO LAP DATA FOR THIS SESSION"
         className="mt-8"
