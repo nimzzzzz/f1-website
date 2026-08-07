@@ -94,10 +94,19 @@ export function dataState<T>(r: FetchResult<T> | null, hadPrevious: boolean): Da
  */
 export function unavailableMessage(
   reason: FetchFailureReason | undefined,
-  retryPending = false
+  retryPending = false,
+  subject?: string
 ): string {
   // A live-session lockout is its own thing: expected, explicable, and not
   // something retrying will fix.
   if (reason === 'blocked') return 'LIVE SESSION — TIMING DATA IS LOCKED'
-  return retryPending ? 'FEED INTERRUPTED — RECONNECTING' : 'FEED INTERRUPTED'
+  // `subject` names WHICH feed, for surfaces where it is not obvious from
+  // context. On a session page it is omitted — you are looking at the laps,
+  // the interrupted feed is self-evidently the timing feed. The standings
+  // and the calendar are not live timing, so they say which feed they mean.
+  // Every one of them stays in this one family: the site must not say
+  // "temporarily unavailable" in one place and "feed interrupted" in
+  // another, which is exactly what a hand-written string on /standings did.
+  const head = subject ? `${subject.toUpperCase()} FEED INTERRUPTED` : 'FEED INTERRUPTED'
+  return retryPending ? `${head} — RECONNECTING` : head
 }

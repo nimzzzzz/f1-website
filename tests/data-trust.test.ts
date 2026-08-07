@@ -65,6 +65,18 @@ describe('the fetch contract distinguishes failure from emptiness', () => {
     }
   })
 
+  // Every string the site can show for "we could not get an answer",
+  // across every reason, retry state and surface.
+  const REASONS = ['blocked', 'rate-limited', 'http', 'network', 'malformed'] as const
+  const SUBJECTS = [undefined, 'CHAMPIONSHIP', 'CALENDAR'] as const
+  const everyMessage = () =>
+    REASONS.flatMap((r) =>
+      SUBJECTS.flatMap((subj) => [
+        unavailableMessage(r, true, subj),
+        unavailableMessage(r, false, subj),
+      ])
+    ).concat(SUBJECTS.map((subj) => unavailableMessage(undefined, false, subj)))
+
   it('speaks broadcast, not transport', () => {
     // A viewer does not know what rate limiting, a 429 or an HTTP status
     // is. `reason` still drives retry policy and the logs; only the lockout
@@ -80,11 +92,34 @@ describe('the fetch contract distinguishes failure from emptiness', () => {
     expect(unavailableMessage('rate-limited', true)).toBe(unavailableMessage('network', true))
   })
 
-  it('carries no apology', () => {
-    const all = (['blocked', 'rate-limited', 'http', 'network', 'malformed'] as const).flatMap(
-      (r) => [unavailableMessage(r, true), unavailableMessage(r, false)]
+  it('says it ONE way across every surface', () => {
+    // /standings carried a hand-written "STANDINGS TEMPORARILY UNAVAILABLE"
+    // — the exact register that had just been retired from the session
+    // pages, so the site said the same thing two different ways. Every
+    // surface now goes through this function, and none of them may
+    // reintroduce the old wording.
+    for (const msg of everyMessage()) {
+      expect(msg).not.toMatch(/TEMPORARILY UNAVAILABLE|UNAVAILABLE/)
+      expect(msg).toMatch(/FEED INTERRUPTED|TIMING DATA IS LOCKED/)
+    }
+  })
+
+  it('names which feed only where the surface is not self-evident', () => {
+    // On a session page the interrupted feed is obviously the timing feed.
+    expect(unavailableMessage('network', false)).toBe('FEED INTERRUPTED')
+    expect(unavailableMessage('network', true)).toBe('FEED INTERRUPTED — RECONNECTING')
+    // The championship and the calendar are not live timing, so they say so.
+    expect(unavailableMessage(undefined, false, 'CHAMPIONSHIP')).toBe(
+      'CHAMPIONSHIP FEED INTERRUPTED'
     )
-    for (const msg of all) {
+    expect(unavailableMessage(undefined, false, 'CALENDAR')).toBe('CALENDAR FEED INTERRUPTED')
+    expect(unavailableMessage('http', true, 'CHAMPIONSHIP')).toBe(
+      'CHAMPIONSHIP FEED INTERRUPTED — RECONNECTING'
+    )
+  })
+
+  it('carries no apology', () => {
+    for (const msg of everyMessage()) {
       expect(msg).not.toMatch(/SORRY|APOLOG|OOPS|PLEASE|UNFORTUNATELY/)
       expect(msg).toBe(msg.toUpperCase())
     }
