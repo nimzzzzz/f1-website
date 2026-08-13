@@ -53,8 +53,17 @@ const GRAIN_URL =
 // Kept single-line, no self-closing slashes, no style attribute: the string
 // must survive browser HTML re-serialization byte-identical, or hydration
 // treats it as a mismatch and recreates the element (restarting playback).
+// media="(prefers-reduced-motion: no-preference)" is what actually SPARES
+// a reduced-motion user the download. motion-reduce:hidden only hides the
+// element, and hiding is a paint-time decision — by the time it applies,
+// and long before the hydration check below runs, the preload scanner has
+// already put half a megabyte of video on the wire for something that will
+// never be shown. The media attribute is read during the resource
+// selection algorithm instead: no source matches, so nothing is fetched
+// and the poster stands alone. A browser that ignores media on <source>
+// simply behaves as it does today, so this cannot regress.
 const VIDEO_HTML =
-  '<video muted autoplay playsinline preload="auto" fetchpriority="high" poster="/intro/poster.jpg" class="h-full w-full object-cover intro-video-poster"><source src="/intro/launch.webm" type="video/webm"><source src="/intro/launch.mp4" type="video/mp4"></video>'
+  '<video muted autoplay playsinline preload="auto" fetchpriority="high" poster="/intro/poster.jpg" class="h-full w-full object-cover intro-video-poster"><source src="/intro/launch.webm" type="video/webm" media="(prefers-reduced-motion: no-preference)"><source src="/intro/launch.mp4" type="video/mp4" media="(prefers-reduced-motion: no-preference)"></video>'
 
 // memo with stable props: renders exactly once, so React never updates the
 // dangerouslySetInnerHTML node after hydration. Without this, React 18's

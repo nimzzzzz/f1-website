@@ -21,6 +21,27 @@ const FILTERS: Record<Treatment, string> = {
   backdrop: 'grayscale(0.85) contrast(1.1) brightness(0.38)',
 }
 
+/**
+ * Encode quality, set by how hard the treatment grades the image.
+ *
+ * A backdrop is pushed to 38% brightness and 85% grey before anyone sees
+ * it, then has a gradient laid over it. Detail that survives that is not
+ * detail a viewer can resolve, so paying q75 for it buys nothing — the
+ * circuit photos are the heaviest images on the site and /schedule draws
+ * one per round. The line art is a flat two-tone invert, which compresses
+ * to almost nothing at any setting.
+ *
+ * The undergraded treatments keep Next's default: mono and team are the
+ * driver and car renders, shown near full brightness, where banding in a
+ * livery gradient WOULD be visible.
+ */
+const QUALITY: Record<Treatment, number | undefined> = {
+  mono: undefined,
+  team: undefined,
+  line: 60,
+  backdrop: 45,
+}
+
 export default function TreatedImage({
   src,
   alt = '',
@@ -71,6 +92,7 @@ export default function TreatedImage({
             alt={alt}
             fill
             sizes={sizes}
+            quality={QUALITY[treatment]}
             priority={priority}
             loading={priority ? undefined : eager ? 'eager' : undefined}
             unoptimized={src.endsWith('.svg')}

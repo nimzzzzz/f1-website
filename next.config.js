@@ -105,6 +105,11 @@ const nextConfig = {
   poweredByHeader: false,
   images: {
     remotePatterns: IMAGE_HOSTS.map((hostname) => ({ protocol: 'https', hostname })),
+    // Next 16 only optimises at qualities named here, so a typo degrades to
+    // the default rather than silently serving something nobody chose.
+    // 75 is the default, kept for the undergraded treatments; 60 and 45 are
+    // the line-art and backdrop settings — see QUALITY in TreatedImage.
+    qualities: [45, 60, 75],
   },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }]
