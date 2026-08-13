@@ -460,6 +460,63 @@ export default function DriversGallery({
         </h1>
       </div>
 
+        {/* DOM ORDER IS THE TAB ORDER. The rail sits here, BEFORE the
+            panels, so a keyboard user tabs Next -> the active panel's link
+            rather than having to Shift+Tab backwards to reach it. The rail
+            is absolutely positioned against the section, so moving it in
+            the DOM costs nothing visually — verified with before/after
+            screenshots and by comparing its rect. */}
+      {/* progress rail — desktop pinned mode only */}
+      <div
+        ref={railRef}
+        className="absolute inset-x-6 bottom-6 z-10 hidden items-center gap-4 md:inset-x-14 mdh:flex motion-reduce:mdh:hidden"
+      >
+        {/* PREV / NEXT — the keyboard path through the gallery. The panels
+            are links and the inactive ones are inert, so without these 21 of
+            22 drivers cannot be reached by keyboard on desktop. Each step
+            un-inerts the panel it lands on, which makes that driver's link
+            the next tab stop. Rendered only in the horizontal mode (the rail
+            is mdh:flex); the stacked layout scrolls normally. */}
+        <button
+          type="button"
+          onClick={() => goToPanelRef.current?.(activeIndex - 1)}
+          disabled={activeIndex <= 0}
+          aria-label="Previous driver"
+          className="label-mono shrink-0 px-2 py-1 text-[var(--text-dim)] transition-colors hover:text-[var(--accent)] disabled:opacity-30 motion-reduce:transition-none"
+        >
+          ←
+        </button>
+        <div className="flex flex-1 items-center gap-1.5">
+          {drivers.map((d, i) => (
+            <span
+              key={d.driverNumber}
+              data-tick
+              className="h-2 flex-1 origin-bottom transition-[transform,background-color] duration-200"
+              style={{
+                backgroundColor: i === 0 ? `#${d.teamColour || 'F5F5F3'}` : 'rgba(245,245,243,0.18)',
+              }}
+            />
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => goToPanelRef.current?.(activeIndex + 1)}
+          disabled={activeIndex >= drivers.length - 1}
+          aria-label="Next driver"
+          className="label-mono shrink-0 px-2 py-1 text-[var(--text-dim)] transition-colors hover:text-[var(--accent)] disabled:opacity-30 motion-reduce:transition-none"
+        >
+          →
+        </button>
+        {/* Announces the panel the controls landed on; the visible counter
+            beside it is aria-hidden so the position is not read twice. */}
+        <span className="sr-only" role="status" aria-live="polite">
+          {drivers[activeIndex]?.surname}, driver {activeIndex + 1} of {drivers.length}
+        </span>
+        <span aria-hidden data-rail-counter className="label-mono shrink-0 text-[var(--text-dim)]">
+          01 / {pad2(drivers.length)}
+        </span>
+      </div>
+
       <div ref={viewportRef} className="mt-6 overflow-x-hidden">
         {/* one full-viewport panel per driver: horizontal on desktop,
             a vertical stack on mobile and under reduced motion */}
@@ -598,57 +655,6 @@ export default function DriversGallery({
             )
           })}
         </div>
-      </div>
-
-      {/* progress rail — desktop pinned mode only */}
-      <div
-        ref={railRef}
-        className="absolute inset-x-6 bottom-6 z-10 hidden items-center gap-4 md:inset-x-14 mdh:flex motion-reduce:mdh:hidden"
-      >
-        {/* PREV / NEXT — the keyboard path through the gallery. The panels
-            are links and the inactive ones are inert, so without these 21 of
-            22 drivers cannot be reached by keyboard on desktop. Each step
-            un-inerts the panel it lands on, which makes that driver's link
-            the next tab stop. Rendered only in the horizontal mode (the rail
-            is mdh:flex); the stacked layout scrolls normally. */}
-        <button
-          type="button"
-          onClick={() => goToPanelRef.current?.(activeIndex - 1)}
-          disabled={activeIndex <= 0}
-          aria-label="Previous driver"
-          className="label-mono shrink-0 px-2 py-1 text-[var(--text-dim)] transition-colors hover:text-[var(--accent)] disabled:opacity-30 motion-reduce:transition-none"
-        >
-          ←
-        </button>
-        <div className="flex flex-1 items-center gap-1.5">
-          {drivers.map((d, i) => (
-            <span
-              key={d.driverNumber}
-              data-tick
-              className="h-2 flex-1 origin-bottom transition-[transform,background-color] duration-200"
-              style={{
-                backgroundColor: i === 0 ? `#${d.teamColour || 'F5F5F3'}` : 'rgba(245,245,243,0.18)',
-              }}
-            />
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() => goToPanelRef.current?.(activeIndex + 1)}
-          disabled={activeIndex >= drivers.length - 1}
-          aria-label="Next driver"
-          className="label-mono shrink-0 px-2 py-1 text-[var(--text-dim)] transition-colors hover:text-[var(--accent)] disabled:opacity-30 motion-reduce:transition-none"
-        >
-          →
-        </button>
-        {/* Announces the panel the controls landed on; the visible counter
-            beside it is aria-hidden so the position is not read twice. */}
-        <span className="sr-only" role="status" aria-live="polite">
-          {drivers[activeIndex]?.surname}, driver {activeIndex + 1} of {drivers.length}
-        </span>
-        <span aria-hidden data-rail-counter className="label-mono shrink-0 text-[var(--text-dim)]">
-          01 / {pad2(drivers.length)}
-        </span>
       </div>
     </section>
   )
