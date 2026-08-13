@@ -42,6 +42,13 @@ export default function SeasonSection({
   const counterRef = useRef<HTMLDivElement>(null)
 
   const total = rounds.length
+  // SCORED rounds are the headline; cancellations are acknowledged, not
+  // counted — the same rule /schedule already applies. The strip still
+  // RENDERS every calendar entry, struck through, so `total` remains the
+  // geometry (how many tiles are on the track) while `scored` is the
+  // arithmetic (how many rounds the season actually has).
+  const scored = rounds.filter((r) => !r.isCancelled).length
+  const cancelledCount = total - scored
   const completed = rounds.filter((r) => r.isPast && !r.isCancelled).length
   const seasonYear = rounds[0]?.meeting.year ?? null
 
@@ -63,6 +70,7 @@ export default function SeasonSection({
         left: number
         center: number
         base: number
+        cancelled: boolean
         dimEls: HTMLElement[]
         winEl: HTMLElement | null
       }
@@ -73,6 +81,7 @@ export default function SeasonSection({
           left: el.offsetLeft,
           center: el.offsetLeft + el.offsetWidth / 2,
           base: parseFloat(el.dataset.dim ?? '1'),
+          cancelled: el.dataset.cancelled === '1',
           dimEls: [...el.querySelectorAll<HTMLElement>('[data-dim-el]')],
           winEl: el.querySelector<HTMLElement>('[data-win]'),
         }))
@@ -94,10 +103,10 @@ export default function SeasonSection({
         const clamped = Math.max(0, Math.min(tipX, width))
         line.style.transform = `scaleX(${clamped / width})`
         counter.style.transform = `translateX(${clamped}px)`
-        const count = measures.filter((m) => m.left + 16 < clamped).length
+        const count = measures.filter((m) => !m.cancelled && m.left + 16 < clamped).length
         if (count !== lastCount) {
           lastCount = count
-          counter.textContent = `${pad2(count)} / ${pad2(total)}`
+          counter.textContent = `${pad2(count)} / ${pad2(scored)}`
         }
         if (reduced) return
         for (const m of measures) {
@@ -119,7 +128,7 @@ export default function SeasonSection({
         measure()
         const next = measures.find((m) => m.el.dataset.round === 'next')
         setTip(next ? next.left : track.scrollWidth * (completed / Math.max(1, total)))
-        counter.textContent = `${pad2(completed)} / ${pad2(total)}`
+        counter.textContent = `${pad2(completed)} / ${pad2(scored)}`
         const onScroll = () => setTip(viewport.scrollLeft + viewport.clientWidth * 0.5)
         viewport.addEventListener('scroll', onScroll, { passive: true })
         return () => viewport.removeEventListener('scroll', onScroll)
@@ -286,7 +295,7 @@ export default function SeasonSection({
 
       return () => mm.revert()
     },
-    { scope: sectionRef, dependencies: [total, completed] }
+    { scope: sectionRef, dependencies: [total, scored, completed] }
   )
 
   return (
@@ -312,7 +321,8 @@ export default function SeasonSection({
       <div className="relative z-10 px-6 pt-24 md:px-14">
         <FadeUp>
           <p className="section-header text-[var(--text-dim)]">
-            THE SEASON — {pad2(total)} ROUNDS
+            THE SEASON — {pad2(scored)} ROUNDS
+            {cancelledCount > 0 ? ` · ${cancelledCount} CANCELLED` : ''}
           </p>
         </FadeUp>
       </div>
@@ -326,6 +336,13 @@ export default function SeasonSection({
           <div ref={trackRef} className="relative w-max pb-10 pl-6 pr-[40vw] md:pl-14">
             <div className="flex items-end">
               {rounds.map(({ meeting, isPast, isNext, isCancelled }, i) => {
+                // Round NUMBER counts scored rounds only; a cancelled entry
+                // occupies its place on the calendar without taking a
+                // number, so "ROUND 12 / 23" can never exceed its own
+                // denominator.
+                const roundNo = rounds
+                  .slice(0, i + 1)
+                  .filter((r) => !r.isCancelled).length
                 const winner = !isCancelled && isPast ? winners[meeting.meeting_key] : undefined
                 const art = circuitImageForMeeting(meeting)
                 // Dim lives on the sub-elements (not the container) so the
@@ -336,6 +353,7 @@ export default function SeasonSection({
                   <div
                     key={meeting.meeting_key}
                     data-round={isNext ? 'next' : ''}
+                    data-cancelled={isCancelled ? '1' : undefined}
                     data-dim={dim}
                     className="shrink-0 pb-5 pr-[7vw]"
                     style={{ transformOrigin: 'left bottom' }}
@@ -369,7 +387,7 @@ export default function SeasonSection({
                         ...(isNext ? { color: 'var(--accent)' } : {}),
                       }}
                     >
-                      {pad2(i + 1)}
+                      {isCancelled ? '—' : pad2(roundNo)}
                     </span>
                     <p
                       data-dim-el
@@ -430,7 +448,7 @@ export default function SeasonSection({
               className="label-mono absolute bottom-4 left-0 whitespace-nowrap pl-2 text-[var(--accent)]"
               style={{ transform: 'translateX(0)' }}
             >
-              {pad2(completed)} / {pad2(total)}
+              {pad2(completed)} / {pad2(scored)}
             </div>
           </div>
         </div>
