@@ -559,26 +559,66 @@ const cachedCompute = unstable_cache(computeSeasonData, ['season-bundle-v1'], {
   revalidate: 60,
 })
 
-// Build-scope memo, unchanged: within a build worker this still short-
-// circuits before the Data Cache, and it is what carries the production-
-// snapshot fallback when a build-time compute fails.
-let buildMemo: SeasonBundle | { blocked: true } | null = null
+// Build-scope memo. It holds the IN-FLIGHT PROMISE, not the settled result,
+// and that distinction is the whole point.
+//
+// Storing the result only helps callers that arrive after one has finished.
+// Next renders routes CONCURRENTLY inside each build worker, so the callers
+// arrive together, all miss a not-yet-written memo, and all compute — the
+// shape tests/shared-compute.test.ts pins as the bug. unstable_cache does
+// not close it either: it serves entries already written, and there is
+// nothing to serve until the first compute returns.
+//
+// CORRECTING THE RECORD, because the number this replaces was wrong. The
+// fix/shared-compute commit reports "28 computes before, 4 after" and
+// attributes the residual 4 to Next's worker model. The 4 was one run. Four
+// builds of that same commit measured afterwards gave 21, 16, 4, 21 — the
+// figure was not a floor, it was the low end of a spread driven by how the
+// scheduler happened to distribute routes across workers, and the "one per
+// worker" explanation it implied was never true. The 28 → 4 improvement was
+// real in direction and overstated in size.
+//
+// Measured across four builds each, same machine, cold .next:
+//   result memo, page routes only        4–21   (this file's previous state)
+//   result memo + 34 card routes         16–32
+//   promise memo + 34 card routes        8–9
+// The spread collapsing is the point as much as the number falling: the
+// count is now a property of the build graph rather than of scheduling luck.
+//
+// A FLOOR REMAINS, and it is a different cause. Instrumenting the module
+// with a per-instance id showed 8 computes across 8 distinct MODULE
+// instances but only 5 processes — the image routes are bundled separately
+// from the page routes, so a worker handling both loads this file twice,
+// each copy with its own buildMemo. One compute per module instance is the
+// floor; workers that draw both kinds of route pay it twice.
+//
+// This is also what carries the production-snapshot fallback when a
+// build-time compute fails.
+let buildMemo: Promise<SeasonBundle | { blocked: true }> | null = null
+
+/** Build-time only: a failed compute degrades to production, never throws. */
+async function loadForBuild(): Promise<SeasonBundle | { blocked: true }> {
+  try {
+    return await cachedCompute()
+  } catch {
+    return (await fetchProductionSnapshot()) ?? { blocked: true }
+  }
+}
 
 async function loadSeasonSnapshot(): Promise<SeasonBundle | { blocked: true }> {
   const isBuild = process.env.NEXT_PHASE === 'phase-production-build'
-  if (isBuild && buildMemo) return buildMemo
-  try {
-    const bundle = await cachedCompute()
-    if (isBuild) buildMemo = bundle
-    return bundle
-  } catch (err) {
-    if (isBuild) {
-      const fromProd = await fetchProductionSnapshot()
-      buildMemo = fromProd ?? { blocked: true }
-      return buildMemo
+  if (isBuild) {
+    // A rejection clears the memo rather than being cached, so the next
+    // caller retries instead of inheriting one bad attempt for the build.
+    if (!buildMemo) {
+      buildMemo = loadForBuild().catch((err) => {
+        buildMemo = null
+        throw err
+      })
     }
-    throw err
+    return buildMemo
   }
+  return cachedCompute()
 }
 
 export const buildSeasonSnapshot = reactCache(loadSeasonSnapshot)
