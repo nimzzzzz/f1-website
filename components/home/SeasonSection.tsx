@@ -331,7 +331,7 @@ export default function SeasonSection({
       <div className="relative z-10 flex flex-1 items-end pb-[12vh]">
         <div
           ref={viewportRef}
-          className="w-full overflow-x-auto md:overflow-x-hidden motion-reduce:md:overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="w-full overflow-x-auto mdh:overflow-x-hidden motion-reduce:mdh:overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           <div ref={trackRef} className="relative w-max pb-10 pl-6 pr-[40vw] md:pl-14">
             <div className="flex items-end">

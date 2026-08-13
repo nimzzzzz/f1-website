@@ -69,7 +69,6 @@ export default function SessionPicker({ sessions, selectedKey, onSelect, label }
   useEffect(() => setMounted(true), [])
 
   const selected = sessions.find((s) => s.session_key === selectedKey) ?? null
-  const selectedStatus = selected ? getSessionStatus(selected) : null
 
   // Group sessions by meeting (existing grouping logic preserved)
   const grouped = sessions.reduce<Record<number, Session[]>>((acc, s) => {
@@ -264,12 +263,15 @@ export default function SessionPicker({ sessions, selectedKey, onSelect, label }
           {selected ? `${selected.location} — ${selected.session_name}` : 'Select session'}
         </span>
         <span className="flex items-center gap-3">
-          {selectedStatus === 'live' && (
-            <span className="label-mono flex items-center gap-1.5 text-[var(--accent)]">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none" />
-              LIVE
-            </span>
-          )}
+        {/* The trigger no longer carries its own LIVE badge. It was a
+            free-running CSS pulse driven purely by the calendar, so it read
+            identically whether data was arriving or the feed had been dead
+            for an hour — the exact "says LIVE while frozen" claim the
+            polling work exists to remove. LiveBeat, on the metadata line
+            directly below, is now the single indicator and is wired to
+            actual data flow. The per-option dots in the list below stay:
+            there, "this session is running" is a true calendar fact and it
+            is precisely what you are choosing between. */}
           <span
             aria-hidden
             className={`label-mono inline-block text-[var(--text-dim)] transition-transform duration-200 group-hover:text-[var(--accent)] motion-reduce:transition-none ${

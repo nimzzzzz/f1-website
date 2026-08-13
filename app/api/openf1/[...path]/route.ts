@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { unstable_cache } from 'next/cache'
-import { buildUpstreamUrl } from '@/lib/openf1-proxy-policy'
+import { buildUpstreamUrl, ttlFor } from '@/lib/openf1-proxy-policy'
 import { clientKey, rateLimit } from '@/lib/rate-limit'
 
 // Browser-facing openf1 proxy with durable last-known-data semantics.
@@ -142,11 +142,20 @@ async function readCapped(res: Response, cap: number): Promise<string> {
   return new TextDecoder().decode(joined)
 }
 
-// One cache entry per full upstream URL; 60s freshness keeps live-weekend
-// data current, and stale survives revalidation throws indefinitely.
-const cachedFetch = unstable_cache(fetchUpstream, ['openf1-proxy-v1'], {
-  revalidate: 60,
-})
+// One cache entry per full upstream URL. Freshness is per-endpoint (see
+// ENDPOINT_TTL): the endpoints that move during a session revalidate faster
+// so client polling can actually see new data, and the rest stay at 60s.
+// unstable_cache fixes its revalidate at creation, so there is one cached
+// function per distinct TTL, created lazily and reused.
+const cacheByTtl = new Map<number, (url: string) => Promise<string>>()
+function cachedFetchFor(ttl: number) {
+  let fn = cacheByTtl.get(ttl)
+  if (!fn) {
+    fn = unstable_cache(fetchUpstream, ['openf1-proxy-v1', String(ttl)], { revalidate: ttl })
+    cacheByTtl.set(ttl, fn)
+  }
+  return fn
+}
 
 export async function GET(req: NextRequest, props: { params: Promise<{ path: string[] }> }) {
   const params = await props.params;
@@ -176,14 +185,16 @@ export async function GET(req: NextRequest, props: { params: Promise<{ path: str
     })
   }
   const url = policy.url
+  const ttl = ttlFor(endpoint)
   try {
-    const body = await cachedFetch(url)
+    const body = await cachedFetchFor(ttl)(url)
     return new Response(body, {
       headers: {
         'Content-Type': 'application/json',
-        // Edge shield: fresh for 60s, then serve stale up to 7 days while
-        // revalidating — a failed revalidation keeps the stale copy alive.
-        'Cache-Control': 's-maxage=60, stale-while-revalidate=604800',
+        // Edge shield mirrors the route's own TTL, then serves stale up to
+        // 7 days while revalidating — a failed revalidation keeps the stale
+        // copy alive.
+        'Cache-Control': `s-maxage=${ttl}, stale-while-revalidate=604800`,
       },
     })
   } catch (err) {

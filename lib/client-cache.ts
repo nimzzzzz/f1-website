@@ -38,14 +38,36 @@ interface Entry<T> {
   expiresAt: number
 }
 
-export function makeCache<T>(fetcher: (key: number) => Promise<FetchResult<T>>, ttl: number) {
+/**
+ * A cached fetcher that can also be asked to go and look again.
+ *
+ * `refresh` exists for live polling. Without it a poll calls the cached
+ * fetcher, gets a hit from this 3-minute TTL, and re-commits the SAME rows
+ * — so the page's freshness clock ticks every 25 seconds while the data
+ * underneath it is minutes old. That is precisely the "says LIVE while
+ * frozen" lie live polling was added to remove, just moved one layer down;
+ * it was caught by a simulated live session showing five poll commits for
+ * three network requests. Refresh bypasses the TTL, and the response still
+ * populates the cache for everyone else.
+ */
+export interface CachedFetcher<T> {
+  (key: number): Promise<FetchResult<T>>
+  refresh: (key: number) => Promise<FetchResult<T>>
+}
+
+export function makeCache<T>(
+  fetcher: (key: number) => Promise<FetchResult<T>>,
+  ttl: number
+): CachedFetcher<T> {
   const cache = new Map<number, Entry<T>>()
   const inflight = new Map<number, Promise<FetchResult<T>>>()
 
-  return async (key: number): Promise<FetchResult<T>> => {
+  const load = async (key: number, force: boolean): Promise<FetchResult<T>> => {
     const hit = cache.get(key)
-    if (hit && Date.now() < hit.expiresAt) return { ok: true, rows: hit.rows }
+    if (!force && hit && Date.now() < hit.expiresAt) return { ok: true, rows: hit.rows }
 
+    // A forced refresh still joins an in-flight request: two pollers for
+    // the same key should not become two upstream calls.
     const pending = inflight.get(key)
     if (pending) return pending
 
@@ -62,6 +84,10 @@ export function makeCache<T>(fetcher: (key: number) => Promise<FetchResult<T>>, 
     inflight.set(key, promise)
     return promise
   }
+
+  const fn = ((key: number) => load(key, false)) as CachedFetcher<T>
+  fn.refresh = (key: number) => load(key, true)
+  return fn
 }
 
 /** Keyless variant of the same cache, for the season-wide lists. */

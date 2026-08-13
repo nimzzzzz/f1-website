@@ -4,8 +4,10 @@ import { useEffect, useState, useMemo } from 'react'
 import type { Session, Position, Driver } from '@/lib/openf1'
 import { getCachedPositions, getCachedDrivers } from '@/lib/client-cache'
 import { useSessionData, useSessionList, sessionStripLabel } from '@/lib/use-session-data'
+import { POLL_FAST } from '@/lib/session-live'
 import SessionHeader from '@/components/session/SessionHeader'
 import DataStateNotice from '@/components/session/DataStateNotice'
+import LiveBeat from '@/components/session/LiveBeat'
 import { FadeUp } from '@/components/motion/reveals'
 
 interface DriverPosition {
@@ -21,12 +23,16 @@ const latestCompleted = (sorted: Session[]) => sorted.find((s) => new Date(s.dat
 
 export default function PositionsPage() {
   const { sessions, selectedKey, setSelectedKey, loading } = useSessionList(isRace, latestCompleted)
-  const { data, dataKey, state, message, stale, fetching, refresh } = useSessionData(
+  const selectedSession = sessions.find((s) => s.session_key === selectedKey) ?? null
+  const { data, dataKey, state, live, liveFlowing, lastUpdateAt, message, stale, fetching, refresh } = useSessionData(
     selectedKey,
     { positions: getCachedPositions, drivers: getCachedDrivers },
     // drivers only supplies acronym + team colour; without it a row reads
     // "#44" instead of "VER", which is degraded but not untrue.
-    { primary: 'positions', optional: ['drivers'] }
+    { primary: 'positions', optional: ['drivers'],
+      pollMs: { positions: POLL_FAST },
+      session: selectedSession,
+    }
   )
   // Rows kept through an outage may belong to a session the user has
   // already navigated away from — name it, so the heading above cannot
@@ -138,6 +144,7 @@ export default function PositionsPage() {
         sessions={sessions}
         selectedKey={selectedKey}
         onSelect={setSelectedKey}
+        live={<LiveBeat live={live} flowing={liveFlowing} updatedAt={lastUpdateAt} message={message} />}
       />
 
       <DataStateNotice
