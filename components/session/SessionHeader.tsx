@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import type { Session } from '@/lib/openf1'
 import SessionPicker from '@/components/SessionPicker'
 
@@ -12,12 +13,15 @@ export default function SessionHeader({
   sessions,
   selectedKey,
   onSelect,
+  live,
 }: {
   ghost: string
   kicker: string
   sessions: Session[]
   selectedKey: number | null
   onSelect: (key: number) => void
+  /** Freshness indicator, shown beside the session metadata during a live window. */
+  live?: ReactNode
 }) {
   const selected = sessions.find((s) => s.session_key === selectedKey) ?? null
   return (
@@ -33,12 +37,15 @@ export default function SessionHeader({
         <p className="strip-header mb-6 text-[var(--text-dim)]">{kicker}</p>
         <SessionPicker sessions={sessions} selectedKey={selectedKey} onSelect={onSelect} />
         {selected && (
-          <p className="strip-header mt-4 text-[var(--text-dim)]">
-            {selected.circuit_short_name.toUpperCase()} —{' '}
-            {new Date(selected.date_start)
-              .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-              .toUpperCase()}
-          </p>
+          <div className="mt-4 flex flex-wrap items-baseline gap-x-5 gap-y-2">
+            <p className="strip-header text-[var(--text-dim)]">
+              {selected.circuit_short_name.toUpperCase()} —{' '}
+              {new Date(selected.date_start)
+                .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                .toUpperCase()}
+            </p>
+            {live}
+          </div>
         )}
       </div>
     </header>

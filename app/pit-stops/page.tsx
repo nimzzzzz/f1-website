@@ -5,8 +5,10 @@ import type { Session, PitStop, Driver } from '@/lib/openf1'
 import { asNum } from '@/lib/format'
 import { getCachedPitStops, getCachedDrivers } from '@/lib/client-cache'
 import { useSessionData, useSessionList, sessionStripLabel } from '@/lib/use-session-data'
+import { POLL_MEDIUM } from '@/lib/session-live'
 import SessionHeader from '@/components/session/SessionHeader'
 import DataStateNotice from '@/components/session/DataStateNotice'
+import LiveBeat from '@/components/session/LiveBeat'
 import { FadeUp } from '@/components/motion/reveals'
 
 function formatPitDuration(seconds: number | null): string {
@@ -19,10 +21,14 @@ const latestCompleted = (sorted: Session[]) => sorted.find((s) => new Date(s.dat
 
 export default function PitStopsPage() {
   const { sessions, selectedKey, setSelectedKey, loading } = useSessionList(isRace, latestCompleted)
-  const { data, dataKey, state, message, stale, fetching, refresh } = useSessionData(
+  const selectedSession = sessions.find((s) => s.session_key === selectedKey) ?? null
+  const { data, dataKey, state, live, liveFlowing, lastUpdateAt, message, stale, fetching, refresh } = useSessionData(
     selectedKey,
     { pitStops: getCachedPitStops, drivers: getCachedDrivers },
-    { primary: 'pitStops', optional: ['drivers'] }
+    { primary: 'pitStops', optional: ['drivers'],
+      pollMs: { pitStops: POLL_MEDIUM },
+      session: selectedSession,
+    }
   )
   // Rows kept through an outage may belong to a session the user has
   // already navigated away from — name it, so the heading above cannot
@@ -73,6 +79,7 @@ export default function PitStopsPage() {
         sessions={sessions}
         selectedKey={selectedKey}
         onSelect={setSelectedKey}
+        live={<LiveBeat live={live} flowing={liveFlowing} updatedAt={lastUpdateAt} message={message} />}
       />
 
       <DataStateNotice

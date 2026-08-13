@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Session, RaceControl } from '@/lib/openf1'
 import { getCachedRaceControl } from '@/lib/client-cache'
 import { useSessionData, useSessionList, sessionStripLabel } from '@/lib/use-session-data'
+import { POLL_FAST } from '@/lib/session-live'
 import SessionHeader from '@/components/session/SessionHeader'
 import DataStateNotice from '@/components/session/DataStateNotice'
+import LiveBeat from '@/components/session/LiveBeat'
 import { FadeUp } from '@/components/motion/reveals'
 
 // Flag colours are the dataset here (like compounds on /stints).
@@ -47,8 +49,12 @@ export default function RaceControlPage() {
     anySession,
     latestCompleted
   )
-  const { data, dataKey, state, message, stale, fetching, refresh } = useSessionData(selectedKey, {
+  const selectedSession = sessions.find((s) => s.session_key === selectedKey) ?? null
+  const { data, dataKey, state, live, liveFlowing, lastUpdateAt, message, stale, fetching, refresh } = useSessionData(selectedKey, {
     messages: getCachedRaceControl,
+  }, {
+    pollMs: { messages: POLL_FAST },
+    session: selectedSession,
   })
   // Rows kept through an outage may belong to a session the user has
   // already navigated away from — name it, so the heading above cannot
@@ -96,6 +102,7 @@ export default function RaceControlPage() {
         sessions={sessions}
         selectedKey={selectedKey}
         onSelect={setSelectedKey}
+        live={<LiveBeat live={live} flowing={liveFlowing} updatedAt={lastUpdateAt} message={message} />}
       />
 
       {/* category filter — menu grammar */}

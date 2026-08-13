@@ -59,6 +59,42 @@ function KEY(): ParamSpec {
   return { min: 1, max: 99_999_999 }
 }
 
+/**
+ * Per-endpoint cache lifetime, in seconds.
+ *
+ * This is the site's REAL freshness floor. The proxy caches per upstream
+ * URL and the CDN shields it with the same s-maxage, so a client polling
+ * faster than this gets byte-identical responses — polling at 20s against a
+ * 60s cache would have burned requests to re-render data that could not
+ * have changed.
+ *
+ * Only the endpoints that actually move during a session are lowered.
+ * Because the cache is SHARED, the upstream cost is bounded by the TTL
+ * alone and does not scale with the number of viewers: at 20s, race_control
+ * costs at most 3 openf1 calls a minute whether one person is watching or
+ * ten thousand. That is what makes live polling affordable without risking
+ * the 429s that this proxy's concurrency gate already exists to avoid.
+ */
+export const ENDPOINT_TTL: Record<string, number> = {
+  // Move constantly during a session — flags, incidents, order changes.
+  race_control: 20,
+  position: 20,
+  // New rows arrive per driver per lap (~90s), so 30s never misses one.
+  laps: 30,
+  pit: 30,
+  // Everything else changes slowly or only at session end; unchanged at 60.
+  weather: 60,
+  stints: 60,
+  session_result: 60,
+  drivers: 60,
+  meetings: 60,
+  sessions: 60,
+}
+
+export const DEFAULT_TTL = 60
+
+export const ttlFor = (endpoint: string): number => ENDPOINT_TTL[endpoint] ?? DEFAULT_TTL
+
 export type PolicyResult =
   | { ok: true; url: string }
   | { ok: false; reason: string }

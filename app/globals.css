@@ -160,3 +160,20 @@ body::after {
     animation: none;
   }
 }
+
+/* The live freshness beat: one flare per data arrival, not a loop.
+   A looping pulse looks the same whether data is flowing or the feed died,
+   so the animation is keyed to remount on each update instead — the rhythm
+   is the status. Reduced motion gets a static dot; the accompanying clock
+   still carries the information. */
+@keyframes live-beat {
+  0%   { transform: scale(1);   box-shadow: 0 0 0 0 var(--accent); opacity: 1; }
+  45%  { transform: scale(1.9); box-shadow: 0 0 0 4px rgba(225, 6, 0, 0); opacity: 1; }
+  100% { transform: scale(1);   box-shadow: 0 0 0 0 rgba(225, 6, 0, 0); opacity: 1; }
+}
+.live-beat {
+  animation: live-beat 900ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-beat { animation: none; }
+}

@@ -5,9 +5,11 @@ import type { Session, Driver, Position, SessionResult } from '@/lib/openf1'
 import { asNum } from '@/lib/format'
 import { getCachedDrivers, getCachedPositions, getCachedPitStops, getCachedSessionResult } from '@/lib/client-cache'
 import { useSessionData, useSessionList, sessionStripLabel } from '@/lib/use-session-data'
+import { POLL_FAST, POLL_MEDIUM, POLL_SLOW } from '@/lib/session-live'
 import { ClipReveal, FadeUp } from '@/components/motion/reveals'
 import SessionHeader from '@/components/session/SessionHeader'
 import DataStateNotice from '@/components/session/DataStateNotice'
+import LiveBeat from '@/components/session/LiveBeat'
 
 interface DriverResult {
   position: number
@@ -67,10 +69,11 @@ export default function ResultsPage() {
     anySession,
     latestCompleted
   )
+  const selectedSession = sessions.find((s) => s.session_key === selectedKey) ?? null
   // All four endpoints move together now. The gap/time/status detail used to
   // load in its own effect with its own `alive` flag, which meant the two
   // could disagree about which session was on screen.
-  const { data, dataKey, state,
+  const { data, dataKey, state, live, liveFlowing, lastUpdateAt,
     message,
     stale,
     fetching: fetchingResults,
@@ -88,7 +91,10 @@ export default function ResultsPage() {
     // claim rather than a blank. detail is pure enrichment (gap, winner
     // time) and renders "—" when absent, so its frequent 429s must not
     // take the classification off the page.
-    { primary: 'positions', optional: ['detail'] }
+    { primary: 'positions', optional: ['detail'],
+      pollMs: { positions: POLL_FAST, pitStops: POLL_MEDIUM, detail: POLL_SLOW },
+      session: selectedSession,
+    }
   )
 
   // Rows kept through an outage may belong to a session the user has
@@ -124,7 +130,6 @@ export default function ResultsPage() {
     return rows.length === 0 ? null : new Map(rows.map((r) => [r.driver_number, r]))
   }, [data])
 
-  const selectedSession = sessions.find((s) => s.session_key === selectedKey)
 
   if (loading) {
     return (
@@ -153,6 +158,7 @@ export default function ResultsPage() {
           sessions={sessions}
           selectedKey={selectedKey}
           onSelect={setSelectedKey}
+          live={<LiveBeat live={live} flowing={liveFlowing} updatedAt={lastUpdateAt} message={message} />}
         />
       </FadeUp>
 

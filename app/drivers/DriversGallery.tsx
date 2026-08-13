@@ -397,7 +397,7 @@ export default function DriversGallery({
             a vertical stack on mobile and under reduced motion */}
         <div
           ref={trackRef}
-          className="flex w-full flex-col md:w-max md:flex-row motion-reduce:md:w-full motion-reduce:md:flex-col"
+          className="flex w-full flex-col mdh:w-max mdh:flex-row motion-reduce:mdh:w-full motion-reduce:mdh:flex-col"
         >
           {drivers.map((d, i) => {
             const teamColor = `#${d.teamColour || 'F5F5F3'}`
@@ -409,7 +409,7 @@ export default function DriversGallery({
                 href={`/drivers/${d.nameAcronym.toLowerCase()}`}
                 data-panel
                 data-idx={i}
-                className="group relative flex min-h-[72vh] w-full shrink-0 flex-col justify-end overflow-hidden border-t border-[var(--line)] px-6 pb-16 pt-10 md:min-h-[calc(100dvh-11rem)] md:w-screen md:border-l md:border-t-0 md:px-14 motion-reduce:md:w-full motion-reduce:md:border-l-0 motion-reduce:md:border-t"
+                className="group relative flex min-h-[72vh] w-full shrink-0 flex-col justify-end overflow-hidden border-t border-[var(--line)] px-6 pb-16 pt-10 md:min-h-[calc(100dvh-11rem)] mdh:w-screen mdh:border-l mdh:border-t-0 md:px-14 motion-reduce:mdh:w-full motion-reduce:mdh:border-l-0 motion-reduce:mdh:border-t"
               >
                 {/* ambient team-colour glow — lowest layer, faint atmosphere */}
                 <div
@@ -535,7 +535,7 @@ export default function DriversGallery({
       {/* progress rail — desktop pinned mode only */}
       <div
         ref={railRef}
-        className="absolute inset-x-6 bottom-6 z-10 hidden items-center gap-4 md:inset-x-14 md:flex motion-reduce:md:hidden"
+        className="absolute inset-x-6 bottom-6 z-10 hidden items-center gap-4 md:inset-x-14 mdh:flex motion-reduce:mdh:hidden"
       >
         <div className="flex flex-1 items-center gap-1.5">
           {drivers.map((d, i) => (

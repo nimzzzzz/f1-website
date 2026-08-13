@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Session } from '@/lib/openf1'
 import { getCachedSessions } from '@/lib/client-cache'
+import { isSessionLive, msUntilLiveChange } from '@/lib/session-live'
 import {
   type DataState,
   type FetchFailureReason,
@@ -49,6 +50,13 @@ export function createLatestWins() {
   let ticket = 0
   return {
     start: () => ++ticket,
+    /**
+     * The current ticket WITHOUT claiming a new one. A background poll must
+     * not call start(): that would invalidate the in-flight foreground load
+     * it is meant to run alongside. It observes the ticket instead, and
+     * commits only if nothing has superseded it in the meantime.
+     */
+    peek: () => ticket,
     isCurrent: (t: number) => t === ticket,
     /** Invalidate everything in flight without starting a new request. */
     abandon: () => {
@@ -96,6 +104,18 @@ export interface SessionData<F extends Fetchers> {
   message: string | null
   /** Re-run the current key (used by the unavailable state's retry). */
   refresh: () => void
+  /** True while the selected session is inside its live window. */
+  live: boolean
+  /**
+   * True only while data is genuinely FLOWING: the session is live, polling
+   * is running, and the most recent poll succeeded. This is what a LIVE
+   * indicator must be wired to — a page that says LIVE while frozen is the
+   * lie this polling exists to kill, so "a session is scheduled" is not
+   * enough to earn the word.
+   */
+  liveFlowing: boolean
+  /** Timestamp of the last successful load or poll, for the freshness beat. */
+  lastUpdateAt: number | null
 }
 
 export interface SessionDataOptions<F extends Fetchers> {
@@ -119,6 +139,21 @@ export interface SessionDataOptions<F extends Fetchers> {
    * stop counts would read "0 STOPS", which is a claim, not a blank.
    */
   optional?: (keyof F)[]
+  /**
+   * Per-fetcher poll interval in milliseconds, applied ONLY while the
+   * selected session is live. A fetcher with no entry is never polled — the
+   * driver roster, for instance, is fixed for the duration of a session, so
+   * re-fetching it during a race would be pure cost.
+   *
+   * Intervals should sit at or just above that endpoint's proxy TTL
+   * (ENDPOINT_TTL): polling faster returns byte-identical responses.
+   */
+  pollMs?: Partial<Record<keyof F, number>>
+  /**
+   * The selected session, used to decide whether we are in a live window.
+   * Without it the hook never polls.
+   */
+  session?: Session | null
 }
 
 /**
@@ -130,8 +165,9 @@ export function useSessionData<F extends Fetchers>(
   fetchers: F,
   options: SessionDataOptions<F> = {}
 ): SessionData<F> {
-  const { primary, optional } = options
+  const { primary, optional, pollMs, session } = options
   const optionalSig = (optional ?? []).join(',')
+  const pollSig = JSON.stringify(pollMs ?? {})
   const [data, setData] = useState<RowsOf<F> | null>(null)
   const [dataKey, setDataKey] = useState<number | null>(null)
   const [result, setResult] = useState<FetchResult<unknown> | null>(null)
@@ -139,6 +175,14 @@ export function useSessionData<F extends Fetchers>(
   // True only while a backoff retry is actually scheduled — drives the
   // copy, so "RETRYING SHORTLY" is never shown once nothing will retry.
   const [retryPending, setRetryPending] = useState(false)
+  // When the last SUCCESSFUL load or poll landed — the freshness beat.
+  const [lastUpdateAt, setLastUpdateAt] = useState<number | null>(null)
+  // Whether the most recent poll attempt succeeded. A failed poll must not
+  // flip the page to 'unavailable' (the rendered rows are still true), but
+  // it must stop the page claiming data is flowing.
+  const [pollHealthy, setPollHealthy] = useState(true)
+  // Re-evaluated on a timer at the window boundary rather than every tick.
+  const [live, setLive] = useState(() => isSessionLive(session ?? null))
 
   // Latest-wins. A ticket is taken per request; a response only commits if
   // its ticket is still the current one.
@@ -233,6 +277,12 @@ export function useSessionData<F extends Fetchers>(
       const primaryKey = (primary ?? entries[0][0]) as string
       setData(rows)
       setDataKey(key)
+      // The freshness clock starts at the FIRST load, not the first poll.
+      // Without this a visitor arriving mid-race saw a bare LIVE for a whole
+      // poll interval before any timestamp appeared — the indicator claiming
+      // liveness while showing nothing to back it up.
+      setLastUpdateAt(Date.now())
+      setPollHealthy(true)
       setResult({ ok: true, rows: (rows as Record<string, unknown[]>)[primaryKey] })
       setFetching(false)
     },
@@ -269,6 +319,121 @@ export function useSessionData<F extends Fetchers>(
   const reason = result && !result.ok ? result.reason : undefined
   const stale = Boolean(reason) && data !== null
 
+  // ─── LIVE WINDOW ───────────────────────────────────────────────────────
+  // Recomputed at the boundary rather than on an interval: a session's live
+  // window has exactly one next transition, so we wake once for it.
+  const sessionRef = useRef(session)
+  sessionRef.current = session
+  const pollMsRef = useRef(pollMs)
+  pollMsRef.current = pollMs
+  const sessionKeyOfSession = session?.session_key ?? null
+  useEffect(() => {
+    const evaluate = () => setLive(isSessionLive(sessionRef.current ?? null))
+    evaluate()
+    const until = msUntilLiveChange(sessionRef.current ?? null)
+    if (until === null) return
+    // Cap the wait: setTimeout saturates past ~24.8 days, and a long wait
+    // also drifts across sleep/wake. Re-arm at most an hour out.
+    const wait = Math.min(until + 1000, 60 * 60 * 1000)
+    const t = window.setTimeout(evaluate, wait)
+    return () => window.clearTimeout(t)
+  }, [sessionKeyOfSession, live])
+
+  // ─── POLLING ───────────────────────────────────────────────────────────
+  // One timer per pollable fetcher. A tick re-fetches ONLY that endpoint and
+  // merges its rows, so polling race control never re-requests the roster.
+  //
+  // Everything Batch 3 established still holds on this path:
+  //   • the monotonic ticket gates every commit, so a poll that lands after
+  //     the user has selected another session is dropped, not rendered;
+  //   • a failed poll leaves the rendered rows exactly as they are and does
+  //     NOT set the failure result — a page showing true data must never be
+  //     flipped to "unavailable" by something happening in the background;
+  //   • rows are merged by key, so React reconciles the existing list rather
+  //     than remounting it, which is what keeps entrance animations from
+  //     re-firing and the scroll position from jumping.
+  const [visibilityTick, setVisibilityTick] = useState(0)
+  const pollTimers = useRef<number[]>([])
+
+  /**
+   * Re-fetch ONE endpoint and merge its rows. Forced past the client cache,
+   * ticket-gated, and deliberately silent on failure: a background poll must
+   * never flip a page that is showing true rows into an outage state.
+   */
+  const pollOnce = useCallback(
+    async (name: string) => {
+      if (sessionKey === null) return
+      const fn = fetchersRef.current[name]
+      if (!fn) return
+      const mine = gate.peek()
+      let res: FetchResult<unknown>
+      try {
+        const withRefresh = fn as typeof fn & {
+          refresh?: (k: number) => Promise<FetchResult<unknown>>
+        }
+        res = withRefresh.refresh ? await withRefresh.refresh(sessionKey) : await fn(sessionKey)
+      } catch {
+        setPollHealthy(false)
+        return
+      }
+      if (!gate.isCurrent(mine)) return
+      if (!res.ok) {
+        setPollHealthy(false)
+        return
+      }
+      setPollHealthy(true)
+      setLastUpdateAt(Date.now())
+      setData((cur) => (cur ? ({ ...cur, [name]: res.ok ? res.rows : [] } as RowsOf<F>) : cur))
+    },
+    [sessionKey, gate]
+  )
+  useEffect(() => {
+    pollTimers.current.forEach((t) => window.clearInterval(t))
+    pollTimers.current = []
+    if (!live || sessionKey === null || !pollMs) return
+    // Nothing to poll for while the tab is hidden: the user cannot see the
+    // page, and a backgrounded tab polling a race is exactly the request
+    // storm this must not become. Resumed on visibilitychange below.
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+
+    const entries = Object.entries(pollMs) as [string, number | undefined][]
+    for (const [name, interval] of entries) {
+      if (!interval || interval <= 0) continue
+      const fn = fetchersRef.current[name]
+      if (!fn) continue
+      const id = window.setInterval(() => {
+        // Do not stack requests on a slow network or a sleeping tab.
+        if (document.visibilityState === 'hidden') return
+        void pollOnce(name)
+      }, interval)
+      pollTimers.current.push(id)
+    }
+    return () => {
+      pollTimers.current.forEach((t) => window.clearInterval(t))
+      pollTimers.current = []
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, sessionKey, pollSig, keySig, gate, visibilityTick, pollOnce])
+
+  // Suspend polling with the tab, and refresh once on return so a user
+  // coming back to a race sees current data immediately rather than waiting
+  // out an interval.
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const onVisibility = () => {
+      setVisibilityTick((n) => n + 1)
+      if (document.visibilityState === 'visible' && live && sessionKey !== null) {
+        // Forced, not run(): a plain reload would be served by the client
+        // cache, so someone returning to a race mid-session would be shown
+        // rows up to three minutes old and then wait out a whole interval
+        // before anything moved.
+        for (const name of Object.keys(pollMsRef.current ?? {})) void pollOnce(name)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [live, sessionKey, pollOnce])
+
   return {
     data,
     dataKey,
@@ -278,6 +443,11 @@ export function useSessionData<F extends Fetchers>(
     fetching,
     message: reason ? unavailableMessage(reason, retryPending) : null,
     refresh,
+    live,
+    // LIVE is earned, not scheduled: the window must be open AND the last
+    // attempt must have succeeded AND we must actually hold rows.
+    liveFlowing: live && pollHealthy && data !== null && !reason,
+    lastUpdateAt,
   }
 }
 

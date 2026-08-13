@@ -5,8 +5,10 @@ import type { Session, Lap, Driver } from '@/lib/openf1'
 import { formatDuration } from '@/lib/openf1'
 import { getCachedLaps, getCachedDrivers } from '@/lib/client-cache'
 import { useSessionData, useSessionList, sessionStripLabel } from '@/lib/use-session-data'
+import { POLL_MEDIUM } from '@/lib/session-live'
 import SessionHeader from '@/components/session/SessionHeader'
 import DataStateNotice from '@/components/session/DataStateNotice'
+import LiveBeat from '@/components/session/LiveBeat'
 import { FadeUp } from '@/components/motion/reveals'
 
 const anySession = () => true
@@ -17,7 +19,8 @@ export default function LapsPage() {
     anySession,
     latestCompleted
   )
-  const { data, dataKey, state,
+  const selectedSession = sessions.find((s) => s.session_key === selectedKey) ?? null
+  const { data, dataKey, state, live, liveFlowing, lastUpdateAt,
     message,
     stale,
     fetching: fetchingLaps,
@@ -25,7 +28,10 @@ export default function LapsPage() {
   } = useSessionData(
     selectedKey,
     { laps: getCachedLaps, drivers: getCachedDrivers },
-    { primary: 'laps', optional: ['drivers'] }
+    { primary: 'laps', optional: ['drivers'],
+      pollMs: { laps: POLL_MEDIUM },
+      session: selectedSession,
+    }
   )
   // Rows kept through an outage may belong to a session the user has
   // already navigated away from — name it, so the heading above cannot
@@ -84,6 +90,7 @@ export default function LapsPage() {
         sessions={sessions}
         selectedKey={selectedKey}
         onSelect={setSelectedKey}
+        live={<LiveBeat live={live} flowing={liveFlowing} updatedAt={lastUpdateAt} message={message} />}
       />
 
       <DataStateNotice
