@@ -528,6 +528,24 @@ async function fetchProductionSnapshot(): Promise<SeasonBundle | null> {
 //     — but in production a fleet of N instances would still do N computes,
 //     which is precisely the failure being fixed.
 //
+//     WHY NOT 'use cache', given Next 16 calls unstable_cache "replaced":
+//     because for THIS job it would be a downgrade, and the 'use cache'
+//     docs say so themselves. Its default handler is an in-memory LRU, and
+//     on serverless "cache entries typically don't persist across requests
+//     (each request can be a different instance)" — a cached function
+//     shared by two pages "executes on each static shell revalidation".
+//     That is exactly the behaviour we are removing. Its cache key also
+//     includes the build ID, so nothing survives a deploy, where
+//     unstable_cache entries do; the docs explicitly send you to
+//     unstable_cache "for data that needs to persist across deploys".
+//     Matching what we have would mean 'use cache: remote', which needs a
+//     platform cache handler, a network roundtrip and platform fees.
+//     Adopting it at all also means cacheComponents: true, an app-wide
+//     migration that "can surface build errors for uncached data outside
+//     of <Suspense>". unstable_cache carries no deprecation warning, is
+//     unchanged since v14 in its version history, and is still documented
+//     as persisting "across requests and deployments" — so it stays.
+//
 //   React cache() — the within-REQUEST layer. /drivers/[acronym] calls
 //     this three times in one render pass (generateStaticParams,
 //     generateMetadata, the page), and React's cache dedupes those to a
