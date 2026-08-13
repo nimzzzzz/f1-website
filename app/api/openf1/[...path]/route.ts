@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server'
 import { unstable_cache } from 'next/cache'
+import { buildUpstreamUrl } from '@/lib/openf1-proxy-policy'
+import { clientKey, rateLimit } from '@/lib/rate-limit'
 
 // Browser-facing openf1 proxy with durable last-known-data semantics.
 //
@@ -12,23 +14,27 @@ import { unstable_cache } from 'next/cache'
 // a page NEVER loses the data it had. Only a key that has never succeeded
 // returns 503 — and the UI's plain empty states cover that honestly.
 //
-// Whitelisted read-only endpoints only — this is not an open proxy.
-
-const ALLOWED = new Set([
-  'meetings',
-  'sessions',
-  'drivers',
-  'laps',
-  'position',
-  'pit',
-  'stints',
-  'race_control',
-  'weather',
-  'session_result',
-  'intervals',
-])
+// Whitelisted read-only endpoints only — this is not an open proxy. The
+// endpoint AND its parameters are allowlisted (lib/openf1-proxy-policy),
+// and the upstream URL is reconstructed from validated values rather than
+// forwarded, so the set of URLs this route can produce is finite.
 
 export const maxDuration = 30
+
+// Upstream must not be able to hold a request open indefinitely. 8s is
+// generous against measured openf1 latency and well inside maxDuration.
+const UPSTREAM_TIMEOUT_MS = 8000
+
+// The largest response the app legitimately needs is /laps for a full race
+// at ~670 KB (measured). 2 MB is ~3x that. This is a backstop against a
+// pathological upstream response, not a tuning knob — anything approaching
+// it means an assumption broke.
+const MAX_BYTES = 2 * 1024 * 1024
+
+// Per-client budget. A page load is ~2-6 proxy calls and the client caches
+// for 3 minutes, so 60/min is far above any legitimate browsing pattern.
+const RATE_LIMIT = 60
+const RATE_WINDOW_MS = 60_000
 
 // The upstream status is carried on the thrown error so the handler can
 // pass it through instead of flattening every failure to 503. Without it a
@@ -83,6 +89,7 @@ async function fetchUpstreamInner(url: string): Promise<string> {
   const res = await fetch(url, {
     headers: { 'User-Agent': 'lights-out-site/1.0' },
     cache: 'no-store',
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   })
   // openf1 answers a query that matches nothing with 404
   // {"detail":"No results found."} — that is a genuinely EMPTY result, not
@@ -91,11 +98,48 @@ async function fetchUpstreamInner(url: string): Promise<string> {
   // same lie as the one this work exists to remove, pointing the other way.
   if (res.status === 404) return '[]'
   if (!res.ok) throw new Error(`upstream ${res.status}`)
-  const body = await res.text()
+
+  // Declared size first — cheap rejection before reading anything.
+  const declared = Number(res.headers.get('content-length') ?? '0')
+  if (declared > MAX_BYTES) throw new Error(`upstream oversize ${declared}`)
+
+  // Then enforce while reading, because content-length may be absent or
+  // wrong. Streaming means an oversize body is abandoned mid-flight rather
+  // than fully buffered and then rejected.
+  const body = await readCapped(res, MAX_BYTES)
   // refuse to cache empty payloads — an empty array during a lockout
   // would overwrite good stale data on some CDNs' revalidation
   if (body.trim() === '' ) throw new Error('upstream empty body')
   return body
+}
+
+/** Read a response body, aborting past `cap` bytes. */
+async function readCapped(res: Response, cap: number): Promise<string> {
+  if (!res.body) return await res.text()
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > cap) {
+        await reader.cancel()
+        throw new Error(`upstream oversize ${total}`)
+      }
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  const joined = new Uint8Array(total)
+  let at = 0
+  for (const c of chunks) {
+    joined.set(c, at)
+    at += c.byteLength
+  }
+  return new TextDecoder().decode(joined)
 }
 
 // One cache entry per full upstream URL; 60s freshness keeps live-weekend
@@ -108,18 +152,32 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { path: string[] } }
 ) {
-  const endpoint = params.path.join('/')
-  if (!ALLOWED.has(endpoint)) {
-    // NOT 404: the client now reads 404 as openf1's "nothing matched", so
-    // a rejected endpoint would masquerade as an empty result. 400 says
-    // the request itself was wrong.
-    return new Response(JSON.stringify({ error: 'endpoint not allowed' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
+  const limited = rateLimit(clientKey(req.headers), RATE_LIMIT, RATE_WINDOW_MS)
+  if (!limited.allowed) {
+    return new Response(JSON.stringify({ error: 'rate limited' }), {
+      status: 429,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        'Retry-After': String(limited.retryAfter),
+      },
     })
   }
-  const qs = req.nextUrl.searchParams.toString()
-  const url = `https://api.openf1.org/v1/${endpoint}${qs ? `?${qs}` : ''}`
+
+  const endpoint = params.path.join('/')
+  // Endpoint AND parameters validated; the URL is CONSTRUCTED from the
+  // validated values in canonical order, never forwarded.
+  const policy = buildUpstreamUrl(endpoint, req.nextUrl.searchParams)
+  if (!policy.ok) {
+    // NOT 404: the client reads 404 as openf1's "nothing matched", so a
+    // rejected request would masquerade as an empty result. 400 says the
+    // request itself was wrong.
+    return new Response(JSON.stringify({ error: policy.reason }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    })
+  }
+  const url = policy.url
   try {
     const body = await cachedFetch(url)
     return new Response(body, {
