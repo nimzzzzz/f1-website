@@ -30,6 +30,7 @@ const config: Config = {
         line: 'var(--line)',
         accent: 'var(--accent)',
         dim: 'var(--text-dim)',
+        muted: 'var(--text-muted)',
       },
     },
   },

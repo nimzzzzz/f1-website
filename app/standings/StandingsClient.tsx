@@ -66,6 +66,7 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
             <div key={i} className="h-20 w-[65%] animate-pulse rounded bg-white/5" />
           ))}
         </div>
+        <h1 data-loading-h1 className="sr-only">DRIVERS&rsquo; CHAMPIONSHIP</h1>
         <p className="label-mono mt-10 text-[var(--text-dim)]">COMPUTING STANDINGS…</p>
       </div>
     )
@@ -109,15 +110,21 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
         ) : (
           <>
             {/* ─── The drivers tower ─── */}
-            <div className="mt-10">
+            {/* Tabular data expressed in divs. ARIA roles give it real table
+                semantics — a screen reader can now announce it as a table
+                with rows and read column context — without changing a single
+                style. Rebuilding it as a real <table> would break the
+                display-scale numerals and the gap dividers between rows. */}
+            <div className="mt-10" role="table" aria-label="Drivers' championship standings">
               {driverStandings.map((d, i) => (
                 <div key={d.driverNumber}>
                   {i > 0 && (
                     <GapDivider gap={driverStandings[i - 1].points - d.points} />
                   )}
                   <ClipReveal>
-                    <div className="flex items-baseline gap-5 py-3 md:gap-9">
+                    <div role="row" className="flex items-baseline gap-5 py-3 md:gap-9">
                       <span
+                        role="cell"
                         aria-label={`Position ${i + 1}`}
                         className={`w-[1.4em] shrink-0 text-right leading-[0.85] ${
                           i === 0 ? '' : 'outline-numeral'
@@ -130,7 +137,7 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
                       >
                         {i + 1}
                       </span>
-                      <div className="min-w-0 flex-1">
+                      <div role="cell" className="min-w-0 flex-1">
                         <p
                           className="truncate uppercase leading-[0.9] text-[var(--text)]"
                           style={{
@@ -151,7 +158,7 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
                           {d.wins > 0 && <span>· {d.wins} WIN{d.wins > 1 ? 'S' : ''}</span>}
                         </p>
                       </div>
-                      <div className="shrink-0 text-right">
+                      <div role="cell" className="shrink-0 text-right">
                         <span
                           className="font-mono tabular-nums text-[var(--text)]"
                           style={{ fontSize: 'clamp(1.3rem, 2.6vw, 2.2rem)' }}

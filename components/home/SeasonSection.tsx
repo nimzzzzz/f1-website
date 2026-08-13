@@ -390,19 +390,26 @@ export default function SeasonSection({
                       {isCancelled ? '—' : pad2(roundNo)}
                     </span>
                     <p
-                      data-dim-el
-                      className={`mt-1 flex items-center gap-2.5 uppercase leading-none text-[var(--text)] ${
+                      /* INFORMATION, so it leaves the opacity system: an opacity
+                         multiplied over the text token is what put this at 2.06:1.
+                         Cancelled still reads as cancelled via the strike-through
+                         and the CANCELLED label below. */
+                      className={`mt-1 flex items-center gap-2.5 uppercase leading-none ${
                         isCancelled ? 'line-through decoration-1' : ''
                       }`}
                       style={{
                         fontFamily: 'var(--font-display)',
                         fontSize: 'clamp(1.6rem, 2.4vw, 2.4rem)',
-                        opacity: dim,
+                        color: dim < 1 ? 'var(--text-muted)' : 'var(--text)',
                       }}
                     >
                       {meeting.circuit_short_name}
                       {isNext && (
                         <span
+                          // A bare <span> may not carry aria-label — it has no
+                          // role for the label to name. role="img" makes the
+                          // dot a legitimate labelled graphic instead.
+                          role="img"
                           className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none"
                           aria-label="Next race"
                         />
@@ -418,9 +425,8 @@ export default function SeasonSection({
                       </p>
                     )}
                     <p
-                      data-dim-el
-                      className="label-mono mt-2 text-[var(--text-dim)]"
-                      style={{ opacity: dim }}
+                      className="label-mono mt-2"
+                      style={{ color: dim < 1 ? 'var(--text-muted)' : 'var(--text-dim)' }}
                     >
                       {isCancelled
                         ? 'CANCELLED'

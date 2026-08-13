@@ -92,7 +92,7 @@ export default function TopBar({
           onClick={onToggleMenu}
           aria-expanded={menuOpen}
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-          className="group flex items-center gap-3 py-2 pl-3"
+          className="tap-44 group flex items-center gap-3 py-2 pl-3"
         >
           <span className="label-mono text-[var(--text)] transition-colors group-hover:text-[var(--accent)]">
             {menuOpen ? 'CLOSE' : 'MENU'}

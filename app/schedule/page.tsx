@@ -321,20 +321,24 @@ export default function SchedulePage() {
                     {meetingCancelled ? '—' : pad2(roundNo)}
                   </span>
 
+                  {/* Information: colour-recessed, never opacity-stacked. */}
                   <p
-                    className={`mt-2 uppercase leading-none text-[var(--text)] ${
+                    className={`mt-2 uppercase leading-none ${
                       meetingCancelled ? 'line-through decoration-1' : ''
                     }`}
                     style={{
                       fontFamily: 'var(--font-display)',
                       fontSize: 'clamp(1.9rem, 3.6vw, 3.2rem)',
-                      opacity: dim,
+                      color: dim < 1 ? 'var(--text-muted)' : 'var(--text)',
                     }}
                   >
                     {m.circuit_short_name}
                   </p>
 
-                  <p className="label-mono mt-3 text-[var(--text-dim)]" style={{ opacity: dim }}>
+                  <p
+                    className="label-mono mt-3"
+                    style={{ color: dim < 1 ? 'var(--text-muted)' : 'var(--text-dim)' }}
+                  >
                     {m.country_name.toUpperCase()} · {formatMeetingDates(m.date_start, m.date_end)}
                     {meetingCancelled ? ' · CANCELLED' : ''}
                   </p>

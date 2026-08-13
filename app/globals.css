@@ -14,7 +14,18 @@
   --surface: #111113;
   --line: rgba(255, 255, 255, 0.08);
   --text: #f5f5f3;
-  --text-dim: rgba(245, 245, 243, 0.55);
+  --text-dim: rgba(245, 245, 243, 0.55); /* 5.81:1 on --bg — passes AA */
+  /* THE CONTRAST FLOOR for de-emphasised text that still carries
+     INFORMATION: 5.01:1, past the 4.5:1 AA minimum (the exact minimum is
+     alpha 0.4702). Past and cancelled rounds, eliminated results and
+     unflagged race-control lines use this INSTEAD of an opacity
+     multiplied over --text-dim. That stacking was the whole bug:
+     0.55 x 0.35 lands at 1.66:1 and 0.55 x 0.25 at 1.38:1 — invisible,
+     not merely quiet. Recession is now carried by strike-through, an
+     explicit label and position in the layout, none of which stop the
+     text being readable. Decorative layers (circuit line art, ghost and
+     outline numerals) keep their opacity and their faintness. */
+  --text-muted: rgba(245, 245, 243, 0.5);
   --accent: #e10600;
 }
 
@@ -275,4 +286,51 @@ body::after {
   :where(a, button, [role='button'], [role='option'], input, select, textarea, summary, [tabindex]):focus-visible {
     transition: none;
   }
+}
+
+/* ─── TOUCH TARGETS ───────────────────────────────────────────────────────
+   WCAG 2.5.8 asks 24x24 minimum; 44x44 is the comfortable figure and what
+   the audit measured against. Several controls here are small by design —
+   11px mono labels, filter chips, footer links — and enlarging them would
+   change the layout, which the design does not want.
+
+   So the HIT AREA grows, not the element. A centred ::after pseudo-element
+   is stretched to 44x44 and sits above the control; it is transparent and
+   pointer-transparent to nothing, so nothing moves and nothing is visible.
+   The parent needs a positioning context and must not clip, which is why
+   this is opt-in per control rather than global.
+
+   Applied via .tap-44. Where a control sits inside an overflow-hidden or
+   tightly-clipped parent the pseudo-element would be cut off; those are
+   listed in the report rather than silently left short. */
+.tap-44 {
+  position: relative;
+}
+.tap-44::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  min-width: 44px;
+  min-height: 44px;
+  transform: translate(-50%, -50%);
+  /* Above the control's own box so the whole area is clickable, but never
+     above a sibling that should receive the pointer first. */
+  z-index: 1;
+}
+
+/* Visually hidden, still announced. Tailwind ships sr-only, but the live
+   regions depend on it, so it is stated here rather than assumed. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
