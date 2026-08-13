@@ -1,3 +1,5 @@
+import { unstable_cache } from 'next/cache'
+import { cache as reactCache } from 'react'
 import type { Driver, Meeting, Session, SessionResult } from '@/lib/openf1'
 import { isCancelled, getSessionResultsForMeeting, getDriversForMeeting } from '@/lib/openf1'
 import { resultStatus } from '@/lib/openf1-normalize'
@@ -38,14 +40,16 @@ const getMeetings = () => of1<Meeting>('meetings?year=2026')
 const getAllSessions = () => of1<Session>('sessions?year=2026')
 
 // Server-computed season bundle: the standings pipeline runs ONCE here
-// instead of in every visitor's browser. Caching is Next's, at two layers:
-// the consuming routes' Full Route Cache (ISR, 60s) and the Data Cache on
-// the openf1 fetches below (also 60s). There is no unstable_cache here —
-// an older comment claimed there was; the only unstable_cache in the repo
-// wraps the openf1 proxy route. Incomplete computations THROW so
-// they are never cached — Next's stale-while-revalidate then keeps serving
-// the last complete bundle through openf1's live-session 401 lockouts.
-// Only a cold cache during a lockout has nothing to serve.
+// instead of in every visitor's browser. Caching is Next's, at three
+// layers: the consuming routes' Full Route Cache (ISR, 60s), the Data
+// Cache on the openf1 fetches below (also 60s), and — added when the
+// share cards made the gap impossible to ignore — a Data Cache entry
+// around the COMPUTE itself, so N consumers cost one sweep rather than N.
+// See buildSeasonSnapshot at the foot of this file.
+// Incomplete computations THROW so they are never cached — Next's
+// stale-while-revalidate then keeps serving the last complete bundle
+// through openf1's live-session 401 lockouts. Only a cold cache during a
+// lockout has nothing to serve.
 //
 // Consumed by /api/season-data (client pages) AND directly by the
 // server-rendered /drivers and /teams pages, which share one cache entry.
@@ -189,7 +193,14 @@ function winnerTime(rawDuration: SessionResult['duration']): string | null {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`
 }
 
+// Counts real computes in this process. The whole point of the shared
+// cache is that this number stays at 1 while N consumers ask, so it is
+// logged rather than inferred — "it seems faster" is not a measurement.
+let computeCount = 0
+
 async function computeSeasonData(): Promise<SeasonBundle> {
+  computeCount += 1
+  console.log(`[season-compute] start #${computeCount} pid=${process.pid}`)
   const [meetingsRes, sessionsRes] = await Promise.all([getMeetings(), getAllSessions()])
   // A FAILED calendar fetch and a genuinely empty calendar both mean we
   // cannot compute — but they are reported differently, and throwing keeps
@@ -495,17 +506,69 @@ async function fetchProductionSnapshot(): Promise<SeasonBundle | null> {
   }
 }
 
-// Build-scope memo: /api/season-data, /drivers, and /teams all prerender
-// from this snapshot. One compute (or one fallback fetch) serves every
-// route in the build worker instead of three full openf1 sweeps — three
-// sweeps back-to-back is exactly the 429 pattern that poisons builds.
+// ONE COMPUTE, SHARED BY EVERY CONSUMER.
+//
+// There was no runtime memo at all: buildMemo below is gated on
+// NEXT_PHASE === 'phase-production-build', so at runtime every consumer —
+// /api/season-data, /, /standings, /drivers, /teams, both detail routes
+// (page AND generateMetadata AND generateStaticParams), /schedule's page
+// and its JSON-LD, and sitemap.ts — ran a full ~22-request openf1 sweep of
+// its own on every revalidation. That is most of the recurring 429
+// pressure, and it is why 34 share-card routes degraded to fallbacks the
+// moment they were added.
+//
+// TWO LAYERS, because they solve different halves:
+//
+//   unstable_cache — the cross-CONSUMER, cross-REQUEST, cross-INSTANCE
+//     layer, and the one that actually matters. It writes to Next's Data
+//     Cache, which on Vercel is external to the lambda, so a second
+//     instance serving a different route reads the same entry rather than
+//     recomputing. A module-level promise memo would have been simpler and
+//     would have looked almost as good locally, where there is one process
+//     — but in production a fleet of N instances would still do N computes,
+//     which is precisely the failure being fixed.
+//
+//     WHY NOT 'use cache', given Next 16 calls unstable_cache "replaced":
+//     because for THIS job it would be a downgrade, and the 'use cache'
+//     docs say so themselves. Its default handler is an in-memory LRU, and
+//     on serverless "cache entries typically don't persist across requests
+//     (each request can be a different instance)" — a cached function
+//     shared by two pages "executes on each static shell revalidation".
+//     That is exactly the behaviour we are removing. Its cache key also
+//     includes the build ID, so nothing survives a deploy, where
+//     unstable_cache entries do; the docs explicitly send you to
+//     unstable_cache "for data that needs to persist across deploys".
+//     Matching what we have would mean 'use cache: remote', which needs a
+//     platform cache handler, a network roundtrip and platform fees.
+//     Adopting it at all also means cacheComponents: true, an app-wide
+//     migration that "can surface build errors for uncached data outside
+//     of <Suspense>". unstable_cache carries no deprecation warning, is
+//     unchanged since v14 in its version history, and is still documented
+//     as persisting "across requests and deployments" — so it stays.
+//
+//   React cache() — the within-REQUEST layer. /drivers/[acronym] calls
+//     this three times in one render pass (generateStaticParams,
+//     generateMetadata, the page), and React's cache dedupes those to a
+//     single call before the Data Cache is even consulted.
+//
+// A THROW IS NEVER CACHED by either layer, which is what keeps the
+// completeness guard's contract intact: an incomplete season still throws,
+// still fails to cache, and Next's stale-while-revalidate keeps serving the
+// last good bundle rather than blanking a page.
+const cachedCompute = unstable_cache(computeSeasonData, ['season-bundle-v1'], {
+  revalidate: 60,
+})
+
+// Build-scope memo, unchanged: within a build worker this still short-
+// circuits before the Data Cache, and it is what carries the production-
+// snapshot fallback when a build-time compute fails.
 let buildMemo: SeasonBundle | { blocked: true } | null = null
 
-export async function buildSeasonSnapshot(): Promise<SeasonBundle | { blocked: true }> {
+async function loadSeasonSnapshot(): Promise<SeasonBundle | { blocked: true }> {
   const isBuild = process.env.NEXT_PHASE === 'phase-production-build'
   if (isBuild && buildMemo) return buildMemo
   try {
-    const bundle = await computeSeasonData()
+    const bundle = await cachedCompute()
     if (isBuild) buildMemo = bundle
     return bundle
   } catch (err) {
@@ -517,3 +580,5 @@ export async function buildSeasonSnapshot(): Promise<SeasonBundle | { blocked: t
     throw err
   }
 }
+
+export const buildSeasonSnapshot = reactCache(loadSeasonSnapshot)
