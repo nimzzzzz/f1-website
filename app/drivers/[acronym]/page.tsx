@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { notFound, redirect } from 'next/navigation'
 import type { Metadata } from 'next'
+import { routeMeta } from '@/lib/seo'
 import { buildSeasonSnapshot } from '@/lib/season-data-server'
 import { toDriverSeason } from '@/lib/season-view'
 import { canonicalDriverSlug } from '@/lib/known-slugs'
@@ -40,7 +41,26 @@ export async function generateMetadata(
   const me = snap.driverStandings.find(
     (d) => d.nameAcronym === params.acronym.toUpperCase()
   )
-  return me ? { title: `${me.surname} — LIGHTS OUT` } : {}
+  if (!me) return {}
+  // Built from the bundle, so it stays current: the description moves
+  // with the driver's championship position and points instead of
+  // freezing whatever was true the day it was written. The title omits
+  // the site name — layout's template appends it, and repeating it here
+  // is how a title ends up reading "— LIGHTS OUT — LIGHTS OUT".
+  const ord = (n: number) => {
+    const su = ['th', 'st', 'nd', 'rd']
+    const v = n % 100
+    return n + (su[(v - 20) % 10] || su[v] || su[0])
+  }
+  const wins = me.wins > 0 ? `, ${me.wins} win${me.wins > 1 ? 's' : ''}` : ''
+  return routeMeta({
+    path: `drivers/${params.acronym}`,
+    title: me.surname.toUpperCase(),
+    description:
+      `${me.fullName}, car ${me.driverNumber}, ${me.teamName}. ` +
+      `${ord(me.position)} in the 2026 drivers' championship on ${Math.floor(me.points)} points${wins}. ` +
+      `Every round of their season, result by result.`,
+  })
 }
 
 function Skeleton() {
