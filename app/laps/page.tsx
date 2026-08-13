@@ -66,6 +66,9 @@ export default function LapsPage() {
       <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
         <div className="h-3 w-32 animate-pulse rounded bg-white/5" />
         <div className="mt-8 h-24 w-[55%] animate-pulse rounded bg-white/5" />
+        {/* The skeleton is still a page and still needs its heading —
+            without one a visitor landing mid-load has no h1 at all. */}
+        <h1 data-loading-h1 className="sr-only">LAP TIMES</h1>
         <p className="label-mono mt-8 text-[var(--text-dim)]">LOADING SESSIONS…</p>
       </div>
     )
@@ -115,7 +118,7 @@ export default function LapsPage() {
           {overallFastest && (
             <FadeUp className="mt-16">
               <div className="border-t border-[var(--line)] pt-8">
-                <p className="section-header flex items-center gap-2.5 text-[var(--accent)]">
+                <p className="section-header flex items-center gap-2.5 text-[var(--accent-text)]">
                   FASTEST LAP
                   <span aria-hidden className="inline-block h-[2px] w-8 bg-[var(--accent)]" />
                 </p>
@@ -166,7 +169,7 @@ export default function LapsPage() {
                       </span>
                       <span
                         className="ml-auto shrink-0 text-right font-mono text-base tabular-nums"
-                        style={{ color: idx === 0 ? 'var(--accent)' : 'var(--text)' }}
+                        style={{ color: idx === 0 ? 'var(--accent-text)' : 'var(--text)' }}
                       >
                         {formatDuration(lap.lap_duration!)}
                       </span>
@@ -191,7 +194,7 @@ export default function LapsPage() {
                   <button
                     type="button"
                     onClick={() => setFilterDriver('all')}
-                    className={`label-mono transition-colors hover:text-[var(--accent)] ${
+                    className={`tap-44 label-mono transition-colors hover:text-[var(--accent)] ${
                       filterDriver === 'all' ? 'text-[var(--text)]' : 'text-[var(--text-dim)]'
                     }`}
                   >
@@ -202,7 +205,7 @@ export default function LapsPage() {
                       key={d.driver_number}
                       type="button"
                       onClick={() => setFilterDriver(d.driver_number)}
-                      className={`label-mono transition-colors hover:text-[var(--accent)] ${
+                      className={`tap-44 label-mono transition-colors hover:text-[var(--accent)] ${
                         filterDriver === d.driver_number ? 'text-[var(--text)]' : 'text-[var(--text-dim)]'
                       }`}
                     >
@@ -212,11 +215,22 @@ export default function LapsPage() {
                 </div>
               </div>
 
-              <div className="mt-6 max-h-[60vh] overflow-y-auto pr-2 [scrollbar-width:thin]">
+              {/* A scrollable region has to be operable by keyboard: without a
+                tabindex it cannot be scrolled without a pointer, so its
+                contents are unreachable. tabIndex={0} makes it focusable and
+                arrow-scrollable; the group role + label stop it being an
+                unnamed stop in the tab order. */}
+            <div
+              tabIndex={0}
+              role="list"
+              aria-label="All lap times"
+              className="mt-6 max-h-[60vh] overflow-y-auto pr-2 [scrollbar-width:thin]"
+            >
                 {filteredLaps.slice(0, 200).map((lap) => {
                   const driver = driverMap.get(lap.driver_number)
                   return (
                     <div
+                      role="listitem"
                       key={`${lap.driver_number}-${lap.lap_number}`}
                       className="label-mono flex items-baseline gap-5 border-t border-[var(--line)] py-2.5 md:gap-8"
                     >

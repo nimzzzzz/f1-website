@@ -98,7 +98,7 @@ export default function NowSection({ meeting, sessions, round, totalRounds, isLi
       <div className="relative">
         <p className="strip-header mb-6 flex items-center gap-3 text-[var(--text-dim)]">
           {isLive ? (
-            <span className="flex items-center gap-2 text-[var(--accent)]">
+            <span className="flex items-center gap-2 text-[var(--accent-text)]">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none" />
               LIVE
             </span>

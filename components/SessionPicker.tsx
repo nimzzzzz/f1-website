@@ -217,7 +217,7 @@ export default function SessionPicker({ sessions, selectedKey, onSelect, label }
                       onSelect(s.session_key)
                       close()
                     }}
-                    className={`label-mono flex w-full items-center justify-between gap-6 px-5 py-2.5 text-left transition-[color,transform] duration-200 hover:translate-x-1 hover:text-[var(--accent)] focus-visible:text-[var(--accent)] focus-visible:outline-none motion-reduce:transition-none ${
+                    className={`label-mono flex w-full items-center justify-between gap-6 px-5 py-2.5 text-left transition-[color,transform] duration-200 hover:translate-x-1 hover:text-[var(--accent)] motion-reduce:transition-none ${
                       isSelected ? 'text-[var(--text)]' : 'text-[var(--text-dim)]'
                     }`}
                   >

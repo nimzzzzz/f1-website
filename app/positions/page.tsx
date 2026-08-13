@@ -131,6 +131,9 @@ export default function PositionsPage() {
       <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
         <div className="h-3 w-32 animate-pulse rounded bg-white/5" />
         <div className="mt-8 h-24 w-[55%] animate-pulse rounded bg-white/5" />
+        {/* The skeleton is still a page and still needs its heading —
+            without one a visitor landing mid-load has no h1 at all. */}
+        <h1 data-loading-h1 className="sr-only">POSITIONS</h1>
         <p className="label-mono mt-8 text-[var(--text-dim)]">LOADING SESSIONS…</p>
       </div>
     )
@@ -199,7 +202,7 @@ export default function PositionsPage() {
                 >
                   <span
                     className="label-mono w-10 shrink-0 tabular-nums"
-                    style={{ color: row.currentPosition === 1 ? 'var(--accent)' : 'var(--text)' }}
+                    style={{ color: row.currentPosition === 1 ? 'var(--accent-text)' : 'var(--text)' }}
                   >
                     P{row.currentPosition}
                   </span>

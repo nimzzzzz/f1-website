@@ -136,6 +136,9 @@ export default function ResultsPage() {
       <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
         <div className="h-3 w-36 animate-pulse rounded bg-white/5" />
         <div className="mt-10 h-40 w-[60%] animate-pulse rounded bg-white/5" />
+        {/* The skeleton is still a page and still needs its heading —
+            without one a visitor landing mid-load has no h1 at all. */}
+        <h1 data-loading-h1 className="sr-only">RESULTS</h1>
         <p className="label-mono mt-10 text-[var(--text-dim)]">LOADING SESSIONS…</p>
       </div>
     )
@@ -184,7 +187,7 @@ export default function ResultsPage() {
           {winner && (
             <ClipReveal className="mt-14">
               <div className="border-t border-[var(--line)] pt-10">
-                <p className="section-header flex items-center gap-2.5 text-[var(--accent)]">
+                <p className="section-header flex items-center gap-2.5 text-[var(--accent-text)]">
                   P1
                   <span aria-hidden className="inline-block h-[2px] w-8 bg-[var(--accent)]" />
                 </p>
@@ -249,7 +252,7 @@ export default function ResultsPage() {
           {field.length > 0 && (
             <div className="mt-20">
               <FadeUp>
-                <p className="label-mono text-[var(--text-dim)]">THE FIELD</p>
+                <p className="label-mono text-[var(--text-dim)]" id="the-field">THE FIELD</p>
               </FadeUp>
               <div className="mt-6">
                 {field.map((row) => {
@@ -259,7 +262,11 @@ export default function ResultsPage() {
                     <ClipReveal key={row.driver.driver_number}>
                       <div
                         className="flex items-baseline gap-5 border-t border-[var(--line)] py-3 md:gap-8"
-                        style={out ? { opacity: 0.35 } : undefined}
+                        // Eliminated rows recede by COLOUR, not by an opacity
+                        // multiplied over already-dim children — that stacking
+                        // put driver names at 2.96:1. DNF/DNS/DSQ is still
+                        // stated in the status column.
+                        style={out ? { color: 'var(--text-muted)' } : undefined}
                       >
                         <span className="label-mono w-8 shrink-0 tabular-nums text-[var(--text-dim)]">
                           P{row.position}

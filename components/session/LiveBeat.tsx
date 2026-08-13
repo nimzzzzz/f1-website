@@ -67,11 +67,19 @@ export default function LiveBeat({
   const interrupted = !flowing
 
   return (
-    <span
-      className={`label-mono inline-flex items-center gap-2.5 ${className}`}
-      role="status"
-      aria-live="polite"
-    >
+    // ANNOUNCEMENT IS KEYED TO STATE, NOT TO THE CLOCK.
+    //
+    // The clock changes every 25 seconds. Inside a live region that is a
+    // screen reader interrupting the user three times a minute to read a
+    // timestamp nobody asked for — the region would be actively hostile.
+    // So the visible clock and the beating dot are aria-hidden (they are a
+    // visual freshness cue), and the live region carries only the words
+    // that change when the STATE changes: "Live, data updating" or "Live,
+    // feed interrupted". Polite, so it waits for a pause either way.
+    <span className={`label-mono inline-flex items-center gap-2.5 ${className}`}>
+      <span className="sr-only" role="status" aria-live="polite">
+        {interrupted ? 'Live session, feed interrupted' : 'Live session, data updating'}
+      </span>
       <span
         key={beat}
         aria-hidden
@@ -81,11 +89,16 @@ export default function LiveBeat({
             : 'live-beat inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]'
         }
       />
-      <span className={interrupted ? 'text-[var(--text-dim)]' : 'text-[var(--accent)]'}>
+      <span
+        aria-hidden
+        className={interrupted ? 'text-[var(--text-dim)]' : 'text-[var(--accent-text)]'}
+      >
         {interrupted ? 'LIVE · FEED INTERRUPTED' : 'LIVE'}
       </span>
       {showClock && updatedAt !== null && (
-        <span className="tabular-nums text-[var(--text-dim)]">{clock(updatedAt)}</span>
+        <span aria-hidden className="tabular-nums text-[var(--text-dim)]">
+          {clock(updatedAt)}
+        </span>
       )}
     </span>
   )

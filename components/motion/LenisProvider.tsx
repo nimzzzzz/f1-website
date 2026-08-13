@@ -33,7 +33,32 @@ export default function LenisProvider({ children }: { children: ReactNode }) {
     const observer = new MutationObserver(syncLock)
     observer.observe(document.body, { attributes: true, attributeFilter: ['style'] })
 
+    // KEYBOARD FOCUS MUST FOLLOW THE SCROLLER.
+    //
+    // Lenis drives scrolling itself, which means the browser's native
+    // "scroll the focused element into view" no longer happens: tabbing to a
+    // footer link or an off-screen driver moved focus there while the page
+    // stayed put, so a keyboard user was looking at content that had nothing
+    // to do with where their focus was. Caught by a per-route tab pass —
+    // every stop had a visible ring, but some of those rings were thousands
+    // of pixels down the page.
+    //
+    // Only fires when the target is actually outside the viewport, so
+    // ordinary tabbing through visible controls is untouched.
+    const onFocusIn = (e: FocusEvent) => {
+      const el = e.target as HTMLElement | null
+      if (!el || typeof el.getBoundingClientRect !== 'function') return
+      const r = el.getBoundingClientRect()
+      const fullyVisible = r.top >= 0 && r.bottom <= window.innerHeight
+      if (fullyVisible) return
+      // Centre it rather than pinning to an edge: an element flush against
+      // the fixed top bar reads as clipped.
+      lenis.scrollTo(el, { offset: -window.innerHeight / 2 + r.height / 2 })
+    }
+    document.addEventListener('focusin', onFocusIn)
+
     return () => {
+      document.removeEventListener('focusin', onFocusIn)
       observer.disconnect()
       gsap.ticker.remove(raf)
       setLenis(null)

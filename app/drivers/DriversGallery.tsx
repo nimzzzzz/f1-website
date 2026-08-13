@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useGSAP } from '@gsap/react'
@@ -48,6 +48,16 @@ export default function DriversGallery({
   const trackRef = useRef<HTMLDivElement>(null)
   const railRef = useRef<HTMLDivElement>(null)
 
+  // KEYBOARD NAVIGATION FOR THE HORIZONTAL GALLERY.
+  //
+  // Making the off-screen panels inert removed the wrong focus but did not
+  // supply the right one: 21 of the 22 driver links became unreachable by
+  // keyboard on desktop. These controls are how a keyboard user moves the
+  // gallery, and each step un-inerts the panel it lands on, so its link
+  // becomes tabbable. Horizontal mode only — the stacked layout is scrolled
+  // normally and needs none of this.
+  const goToPanelRef = useRef<((i: number) => void) | null>(null)
+  const [activeIndex, setActiveIndex] = useState(0)
   useGSAP(
     () => {
       const section = sectionRef.current
@@ -239,6 +249,38 @@ export default function DriversGallery({
         }
       }
 
+      // OFFSCREEN PANELS MUST NOT BE FOCUSABLE.
+
+      //
+
+      // Each panel IS a link, and in the horizontal mode 21 of the 22 sit
+
+      // outside the viewport inside an overflow-hidden box. Left alone, Tab
+
+      // walks through every one: focus lands on a driver nobody can see, the
+
+      // page cannot scroll to it (GSAP owns the transform, not the scroller),
+
+      // and a keyboard user is stranded in invisible content. inert removes
+
+      // them from the tab order AND the accessibility tree, re-synced
+
+      // whenever the active panel changes.
+
+      const syncFocusable = (active: number) => {
+
+        const panels = track.querySelectorAll<HTMLElement>('[data-idx]')
+
+        panels.forEach((el, i) => {
+
+          if (i === active) el.removeAttribute('inert')
+
+          else el.setAttribute('inert', '')
+
+        })
+
+      }
+
       let activeIdx = -1
       let dwellTimer: number | undefined
       const preloadAround = (i: number) => {
@@ -253,6 +295,7 @@ export default function DriversGallery({
       const DWELL = 170
       const onActivate = (i: number, dir: number) => {
         activeIdx = i
+        syncFocusable(i)
         preloadAround(i)
         settleInstant(i)
         if (dwellTimer) window.clearTimeout(dwellTimer)
@@ -294,9 +337,25 @@ export default function DriversGallery({
               })
             }
             onActivate(idx, dir)
+            setActiveIndex(idx)
           }
           lastProg = progress
         }
+        // Exposed to the prev/next controls. The horizontal position is a
+        // scrub of this ScrollTrigger, so moving a panel means moving the page
+        // to the scroll offset that maps to it.
+        const goToPanel = (i: number) => {
+          const clamped = Math.max(0, Math.min(drivers.length - 1, i))
+          const st = tween.scrollTrigger
+          if (!st) return
+          const p = drivers.length > 1 ? clamped / (drivers.length - 1) : 0
+          window.scrollTo({ top: st.start + p * (st.end - st.start) })
+        }
+        goToPanelRef.current = goToPanel
+        cleanups.push(() => {
+          if (goToPanelRef.current === goToPanel) goToPanelRef.current = null
+        })
+
         const tween = gsap.fromTo(
           track,
           { x: 0 },
@@ -348,6 +407,11 @@ export default function DriversGallery({
 
       // ── mobile / touch: vertical stack, blast on scroll-into-view (tamer) ──
       mm.add('(max-width: 767px), (hover: none)', () => {
+        // Entering the stacked layout: clear anything the horizontal branch
+        // marked inert, or panels stay unreachable after a resize.
+        track
+          .querySelectorAll<HTMLElement>('[data-idx][inert]')
+          .forEach((el) => el.removeAttribute('inert'))
         const lastBlast: number[] = new Array(drivers.length).fill(-Infinity)
         const io = new IntersectionObserver(
           (entries) => {
@@ -357,6 +421,10 @@ export default function DriversGallery({
               if (Number.isNaN(i)) continue
               if (e.isIntersecting) {
                 activeIdx = i
+                // NO syncFocusable here: in the stacked layout every panel is on the
+                // page and reachable by ordinary scrolling, so making the inactive
+                // ones inert would hide 21 drivers from keyboard and screen-reader
+                // users entirely.
                 preloadAround(i)
                 // debounce re-entries so scrubbing the stack up and down doesn't
                 // machine-gun the same panel; otherwise each scroll-in blasts
@@ -387,9 +455,9 @@ export default function DriversGallery({
   return (
     <section ref={sectionRef} className="relative overflow-hidden">
       <div className="px-6 pt-10 md:px-14">
-        <p className="strip-header text-[var(--text-dim)]">
+        <h1 className="strip-header text-[var(--text-dim)]">
           THE GRID — {pad2(drivers.length)} DRIVERS — CHAMPIONSHIP ORDER
-        </p>
+        </h1>
       </div>
 
       <div ref={viewportRef} className="mt-6 overflow-x-hidden">
@@ -537,6 +605,21 @@ export default function DriversGallery({
         ref={railRef}
         className="absolute inset-x-6 bottom-6 z-10 hidden items-center gap-4 md:inset-x-14 mdh:flex motion-reduce:mdh:hidden"
       >
+        {/* PREV / NEXT — the keyboard path through the gallery. The panels
+            are links and the inactive ones are inert, so without these 21 of
+            22 drivers cannot be reached by keyboard on desktop. Each step
+            un-inerts the panel it lands on, which makes that driver's link
+            the next tab stop. Rendered only in the horizontal mode (the rail
+            is mdh:flex); the stacked layout scrolls normally. */}
+        <button
+          type="button"
+          onClick={() => goToPanelRef.current?.(activeIndex - 1)}
+          disabled={activeIndex <= 0}
+          aria-label="Previous driver"
+          className="label-mono shrink-0 px-2 py-1 text-[var(--text-dim)] transition-colors hover:text-[var(--accent)] disabled:opacity-30 motion-reduce:transition-none"
+        >
+          ←
+        </button>
         <div className="flex flex-1 items-center gap-1.5">
           {drivers.map((d, i) => (
             <span
@@ -549,7 +632,21 @@ export default function DriversGallery({
             />
           ))}
         </div>
-        <span data-rail-counter className="label-mono shrink-0 text-[var(--text-dim)]">
+        <button
+          type="button"
+          onClick={() => goToPanelRef.current?.(activeIndex + 1)}
+          disabled={activeIndex >= drivers.length - 1}
+          aria-label="Next driver"
+          className="label-mono shrink-0 px-2 py-1 text-[var(--text-dim)] transition-colors hover:text-[var(--accent)] disabled:opacity-30 motion-reduce:transition-none"
+        >
+          →
+        </button>
+        {/* Announces the panel the controls landed on; the visible counter
+            beside it is aria-hidden so the position is not read twice. */}
+        <span className="sr-only" role="status" aria-live="polite">
+          {drivers[activeIndex]?.surname}, driver {activeIndex + 1} of {drivers.length}
+        </span>
+        <span aria-hidden data-rail-counter className="label-mono shrink-0 text-[var(--text-dim)]">
           01 / {pad2(drivers.length)}
         </span>
       </div>

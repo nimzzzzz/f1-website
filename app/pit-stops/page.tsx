@@ -66,6 +66,9 @@ export default function PitStopsPage() {
       <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
         <div className="h-3 w-32 animate-pulse rounded bg-white/5" />
         <div className="mt-8 h-24 w-[55%] animate-pulse rounded bg-white/5" />
+        {/* The skeleton is still a page and still needs its heading —
+            without one a visitor landing mid-load has no h1 at all. */}
+        <h1 data-loading-h1 className="sr-only">PIT STOPS</h1>
         <p className="label-mono mt-8 text-[var(--text-dim)]">LOADING SESSIONS…</p>
       </div>
     )
@@ -104,7 +107,7 @@ export default function PitStopsPage() {
           <div className="mt-16 flex flex-wrap items-baseline gap-x-20 gap-y-10">
             {fastestStop && (
               <FadeUp>
-                <p className="section-header flex items-center gap-2.5 text-[var(--accent)]">
+                <p className="section-header flex items-center gap-2.5 text-[var(--accent-text)]">
                   FASTEST STOP
                   <span aria-hidden className="inline-block h-[2px] w-8 bg-[var(--accent)]" />
                 </p>
@@ -180,7 +183,7 @@ export default function PitStopsPage() {
                     </span>
                     <span
                       className="ml-auto shrink-0 text-right font-mono text-lg tabular-nums"
-                      style={{ color: isFastest ? 'var(--accent)' : 'var(--text)' }}
+                      style={{ color: isFastest ? 'var(--accent-text)' : 'var(--text)' }}
                     >
                       {formatPitDuration(stop.pit_duration)}
                     </span>

@@ -72,6 +72,9 @@ export default function WeatherPage() {
       <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
         <div className="h-3 w-32 animate-pulse rounded bg-white/5" />
         <div className="mt-8 h-24 w-[55%] animate-pulse rounded bg-white/5" />
+        {/* The skeleton is still a page and still needs its heading —
+            without one a visitor landing mid-load has no h1 at all. */}
+        <h1 data-loading-h1 className="sr-only">WEATHER</h1>
         <p className="label-mono mt-8 text-[var(--text-dim)]">LOADING SESSIONS…</p>
       </div>
     )
@@ -163,9 +166,10 @@ export default function WeatherPage() {
                 OVER THE SESSION — {sampled.length} SAMPLES
               </p>
             </FadeUp>
-            <div className="mt-6">
+            <div className="mt-6" role="list" aria-label="Weather readings over the session">
               {sampled.map((w, idx) => (
                 <div
+                  role="listitem"
                   key={idx}
                   className="label-mono flex items-baseline gap-5 border-t border-[var(--line)] py-2.5 md:gap-8"
                 >

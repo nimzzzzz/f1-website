@@ -31,9 +31,11 @@ const TICKER_STYLE: React.CSSProperties = {
 
 export default function TopBar({
   menuOpen,
+  triggerRef,
   onToggleMenu,
 }: {
   menuOpen: boolean
+  triggerRef?: React.RefObject<HTMLButtonElement | null>
   onToggleMenu: () => void
 }) {
   const race = useNextRace()
@@ -69,7 +71,7 @@ export default function TopBar({
               <span className="text-[var(--text)]">{shortRaceName(race.meeting)}</span>
               <span aria-hidden>—</span>
               {race.isLive ? (
-                <span className="flex items-center gap-1.5 text-[var(--accent)]">
+                <span className="flex items-center gap-1.5 text-[var(--accent-text)]">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none" />
                   LIVE
                 </span>
@@ -85,11 +87,12 @@ export default function TopBar({
         </div>
 
         <button
+          ref={triggerRef}
           type="button"
           onClick={onToggleMenu}
           aria-expanded={menuOpen}
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-          className="group flex items-center gap-3 py-2 pl-3"
+          className="tap-44 group flex items-center gap-3 py-2 pl-3"
         >
           <span className="label-mono text-[var(--text)] transition-colors group-hover:text-[var(--accent)]">
             {menuOpen ? 'CLOSE' : 'MENU'}

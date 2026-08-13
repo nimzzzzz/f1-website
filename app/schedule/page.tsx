@@ -195,7 +195,7 @@ export default function SchedulePage() {
     return (
       <div className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
         {unavailable ? (
-          <p className="label-mono border-l-2 border-[var(--accent)] pl-4 text-[var(--accent)]" role="status">
+          <p className="label-mono border-l-2 border-[var(--accent)] pl-4 text-[var(--accent-text)]" role="status">
             {unavailableMessage(unavailable, false, 'CALENDAR')}
           </p>
         ) : (
@@ -216,10 +216,10 @@ export default function SchedulePage() {
             calendar entry including cancelled ones — so the header claimed
             25 ROUNDS while the season had 23 that score points, two numbers
             visibly disagreeing on the same site. */}
-        <p className="strip-header text-[var(--text-dim)]">
+        <h1 className="strip-header text-[var(--text-dim)]">
           THE CALENDAR{seasonYear ? ` — ${seasonYear}` : ''} — {pad2(activeMeetings.length)} ROUNDS
           {cancelledCount > 0 ? ` · ${cancelledCount} CANCELLED` : ''}
-        </p>
+        </h1>
       </FadeUp>
 
       {/* pre-season testing — quiet mono prologue */}
@@ -321,20 +321,24 @@ export default function SchedulePage() {
                     {meetingCancelled ? '—' : pad2(roundNo)}
                   </span>
 
+                  {/* Information: colour-recessed, never opacity-stacked. */}
                   <p
-                    className={`mt-2 uppercase leading-none text-[var(--text)] ${
+                    className={`mt-2 uppercase leading-none ${
                       meetingCancelled ? 'line-through decoration-1' : ''
                     }`}
                     style={{
                       fontFamily: 'var(--font-display)',
                       fontSize: 'clamp(1.9rem, 3.6vw, 3.2rem)',
-                      opacity: dim,
+                      color: dim < 1 ? 'var(--text-muted)' : 'var(--text)',
                     }}
                   >
                     {m.circuit_short_name}
                   </p>
 
-                  <p className="label-mono mt-3 text-[var(--text-dim)]" style={{ opacity: dim }}>
+                  <p
+                    className="label-mono mt-3"
+                    style={{ color: dim < 1 ? 'var(--text-muted)' : 'var(--text-dim)' }}
+                  >
                     {m.country_name.toUpperCase()} · {formatMeetingDates(m.date_start, m.date_end)}
                     {meetingCancelled ? ' · CANCELLED' : ''}
                   </p>
@@ -362,7 +366,7 @@ export default function SchedulePage() {
                             <span
                               className={
                                 status === 'live'
-                                  ? 'flex items-center gap-2 text-[var(--accent)]'
+                                  ? 'flex items-center gap-2 text-[var(--accent-text)]'
                                   : status === 'completed'
                                   ? 'text-[var(--text-dim)]'
                                   : 'text-[var(--text)]'
