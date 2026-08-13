@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { useFocusTrap } from '@/lib/use-focus-trap'
 import gsap from 'gsap'
 import { useGSAP } from '@gsap/react'
 import { TransitionLink } from '@/components/motion/TransitionProvider'
@@ -31,9 +32,12 @@ const ROUTES: Array<{ label: string; href: string }> = [
 export default function MenuOverlay({
   open,
   onClose,
+  returnFocusTo,
 }: {
   open: boolean
   onClose: () => void
+  /** The control that opened the menu; focus returns here on close. */
+  returnFocusTo?: React.RefObject<HTMLElement | null>
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const race = useNextRace()
@@ -49,14 +53,17 @@ export default function MenuOverlay({
     }
   }, [open])
 
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+  // The dialog kept its promise only on paper: role="dialog" and
+  // aria-modal="true" tell assistive tech the rest of the page is inert,
+  // while Tab walked straight out of it into the page behind. The shared
+  // trap (the same one SessionPicker uses) moves focus in, cycles it, marks
+  // the background inert, and returns focus to the trigger on close —
+  // whether that close came from Escape or a click.
+  const trapRef = useFocusTrap<HTMLDivElement>({
+    active: open,
+    onClose,
+    returnFocusTo,
+  })
 
   useGSAP(
     () => {
@@ -114,7 +121,10 @@ export default function MenuOverlay({
 
   return (
     <div
-      ref={ref}
+      ref={(node) => {
+        ref.current = node
+        trapRef.current = node
+      }}
       role="dialog"
       aria-modal="true"
       aria-label="Site menu"

@@ -84,11 +84,11 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
 
       <div className="relative z-10 px-6 pb-28 pt-20 md:px-14">
         <FadeUp>
-          <p className="strip-header text-[var(--text-dim)]">
+          <h1 className="strip-header text-[var(--text-dim)]">
             DRIVERS&rsquo; CHAMPIONSHIP{seasonYear !== null ? ` — ${seasonYear}` : ''} — AFTER{' '}
             {String(completedRaces).padStart(2, '0')} ROUND{completedRaces !== 1 ? 'S' : ''}
             
-          </p>
+          </h1>
         </FadeUp>
 
         {driverStandings.length === 0 ? (

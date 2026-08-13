@@ -216,10 +216,10 @@ export default function SchedulePage() {
             calendar entry including cancelled ones — so the header claimed
             25 ROUNDS while the season had 23 that score points, two numbers
             visibly disagreeing on the same site. */}
-        <p className="strip-header text-[var(--text-dim)]">
+        <h1 className="strip-header text-[var(--text-dim)]">
           THE CALENDAR{seasonYear ? ` — ${seasonYear}` : ''} — {pad2(activeMeetings.length)} ROUNDS
           {cancelledCount > 0 ? ` · ${cancelledCount} CANCELLED` : ''}
-        </p>
+        </h1>
       </FadeUp>
 
       {/* pre-season testing — quiet mono prologue */}

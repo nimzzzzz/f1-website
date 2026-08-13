@@ -12,6 +12,11 @@ import MenuOverlay from './MenuOverlay'
 export default function Shell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const pathname = usePathname()
+  // Owned here so the menu can return focus to the exact control that
+  // opened it. Relying on document.activeElement is unreliable: Safari does
+  // not focus a button on click, so a mouse user closing the menu would
+  // have focus restored to <body> and lose their place entirely.
+  const menuTriggerRef = useRef<HTMLButtonElement>(null)
 
   // The fade belongs to ROUTE CHANGES only. On the document's first paint
   // there is no outgoing page to soften the swap from, and the animation is
@@ -28,14 +33,31 @@ export default function Shell({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <TopBar menuOpen={menuOpen} onToggleMenu={() => setMenuOpen((v) => !v)} />
-      <MenuOverlay open={menuOpen} onClose={() => setMenuOpen(false)} />
+      {/* First focusable thing in the document: lets a keyboard or screen
+          reader user jump the fixed top bar and the ticker instead of tabbing
+          through them on every route. Visually hidden until focused, then it
+          appears in the site's own register. */}
+      <a href="#main" className="skip-link">
+        SKIP TO CONTENT
+      </a>
+      <TopBar
+        menuOpen={menuOpen}
+        onToggleMenu={() => setMenuOpen((v) => !v)}
+        triggerRef={menuTriggerRef}
+      />
+      <MenuOverlay
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        returnFocusTo={menuTriggerRef}
+      />
       {/* keyed per route so the incoming page's fade restarts on navigation.
           The fade lives HERE rather than around the whole tree so the top bar
           and menu stay mounted (the ticker keeps running, menu state holds).
           .route-fade is a plain CSS animation — no JS on the nav path, and it
           is disabled outright under reduced motion. */}
       <main
+        id="main"
+        tabIndex={-1}
         key={pathname}
         className={`min-h-[100dvh] overflow-x-clip pt-16 ${navigated.current ? 'route-fade' : ''}`}
       >

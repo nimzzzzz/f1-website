@@ -1,6 +1,7 @@
 'use client'
 
 import { memo, useEffect, useRef, useState, type RefObject } from 'react'
+import { useFocusTrap } from '@/lib/use-focus-trap'
 import { AnimatePresence, motion } from 'framer-motion'
 
 // How the page content should animate in once the intro hands off.
@@ -99,6 +100,17 @@ export default function IntroSequence({ onReveal, onDone }: Props) {
       callbacksRef.current.onDone()
     }
   }
+
+  // Focus lands on Skip — the only action available — and the homepage
+  // behind stays inert until handoff. Escape skips, which is what a modal
+  // dismissal should do and what a keyboard user will try first. The trap
+  // releases as soon as the fade begins so focus is free for the page.
+  const skipRef = useRef<HTMLButtonElement>(null)
+  const introRef = useFocusTrap<HTMLDivElement>({
+    active: !fading,
+    onClose: () => handoff('fade'),
+    initialFocus: skipRef,
+  })
 
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -241,6 +253,20 @@ export default function IntroSequence({ onReveal, onDone }: Props) {
 
   return (
     <motion.div
+      ref={introRef}
+      // Marks the overlay for the no-JS / failed-hydration escape hatch in
+      // app/layout.tsx — without it this fixed, full-viewport element sits
+      // over the homepage forever and the site reads as a black screen.
+      data-intro-overlay=""
+      // The intro covers the entire homepage, so it IS a modal whether or
+      // not it was labelled one. Without these, a keyboard user tabbed
+      // straight into the page underneath while it was still hidden behind
+      // the overlay, and a screen reader read the homepage aloud over the
+      // film. Focus lands on Skip — the only thing there is to do — and the
+      // page behind is inert until handoff.
+      role="dialog"
+      aria-modal="true"
+      aria-label="Intro sequence"
       className={`fixed inset-0 z-[200] bg-black ${fading ? 'pointer-events-none' : ''}`}
       initial={false}
       animate={{ opacity: fading ? 0 : 1 }}
@@ -366,6 +392,7 @@ export default function IntroSequence({ onReveal, onDone }: Props) {
           </div>
 
           <motion.button
+            ref={skipRef}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 1, duration: 0.4 }}

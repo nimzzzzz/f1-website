@@ -34,7 +34,9 @@ export default function SessionHeader({
         {ghost}
       </span>
       <div className="relative z-10">
-        <p className="strip-header mb-6 text-[var(--text-dim)]">{kicker}</p>
+        {/* The route's h1. Tailwind preflight strips UA heading styles, so
+            this is a semantics change only — the type is unchanged. */}
+        <h1 className="strip-header mb-6 text-[var(--text-dim)]">{kicker}</h1>
         <SessionPicker sessions={sessions} selectedKey={selectedKey} onSelect={onSelect} />
         {selected && (
           <div className="mt-4 flex flex-wrap items-baseline gap-x-5 gap-y-2">

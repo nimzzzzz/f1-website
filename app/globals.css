@@ -26,6 +26,57 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Reduced motion means reduced motion, including the motion the browser
+   does on our behalf. Native smooth scrolling animates every in-page jump
+   and every skip-link activation, which is exactly the vestibular trigger
+   the preference exists to avoid. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* THE INTRO'S ESCAPE HATCH.
+   IntroSequence is a fixed, full-viewport overlay that only ever goes away
+   when its own JavaScript hands off. With JS disabled, or if hydration
+   fails, it would sit over the homepage permanently with no way past — the
+   site would look like a black screen. The overlay is rendered inside
+   <noscript>-visible markup, so this rule removes it when scripts cannot
+   run, revealing the page underneath. */
+.no-js [data-intro-overlay] {
+  display: none !important;
+}
+
+/* SKIP LINK — first thing in the tab order, invisible until focused.
+   Not `display: none`, which would take it out of the tab order entirely;
+   clipped instead, so it is reachable but occupies no space until it
+   matters. */
+.skip-link {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 300;
+  transform: translateY(-120%);
+  padding: 0.75rem 1.25rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  transition: transform 160ms ease-out;
+}
+.skip-link:focus-visible,
+.skip-link:focus {
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .skip-link {
+    transition: none;
+  }
+}
+
 body {
   background-color: var(--bg);
   color: var(--text);
@@ -176,4 +227,52 @@ body::after {
 }
 @media (prefers-reduced-motion: reduce) {
   .live-beat { animation: none; }
+}
+
+/* ─── FOCUS VISIBILITY ────────────────────────────────────────────────────
+   There was no system: a handful of controls defined hover states only, and
+   SessionPicker removed the native outline and substituted red TEXT, which
+   is far too weak at 11px — colour alone, on small type, on a dark ground.
+
+   The vocabulary the site already speaks is hairlines and the accent, so
+   the indicator is an accent hairline ring rather than a browser outline.
+   Two rings: the accent line, and a dark line just inside it so the
+   indicator survives on top of a team livery, a car photograph or a bright
+   panel — a single ring can vanish against a mid-tone image.
+
+   Contrast: focus indicators are NON-TEXT (WCAG 1.4.11), which asks 3:1
+   against adjacent colour. #E10600 on #0A0A0A measures 3.98:1, so the
+   accent is legitimate here even though it fails the 4.5:1 that normal-size
+   TEXT would demand. That distinction is the whole reason this treatment
+   can use the signature colour when body copy cannot.
+
+   :focus-visible only — never :focus — so a mouse click never draws a ring
+   the pointer user did not ask for. */
+:where(a, button, [role='button'], [role='option'], input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: none;
+  border-radius: 1px;
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--accent);
+}
+
+/* Controls sitting ON a livery, photo or light panel: the inner dark ring
+   is what keeps the accent legible there. Opt in with .focus-on-media. */
+:where(.focus-on-media):focus-visible {
+  box-shadow:
+    0 0 0 2px rgba(0, 0, 0, 0.85),
+    0 0 0 4px var(--accent);
+}
+
+/* The picker's options are full-bleed rows; a ring inset from the panel
+   edge reads better than one clipped by it. */
+[role='listbox'] [role='option']:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  border-radius: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(a, button, [role='button'], [role='option'], input, select, textarea, summary, [tabindex]):focus-visible {
+    transition: none;
+  }
 }

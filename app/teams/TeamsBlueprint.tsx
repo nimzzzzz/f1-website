@@ -503,9 +503,9 @@ export default function TeamsBlueprint({
   return (
     <div ref={rootRef} className="relative">
       <div className="px-6 pt-10 md:px-14">
-        <p className="strip-header text-[var(--text-dim)]">
+        <h1 className="strip-header text-[var(--text-dim)]">
           CONSTRUCTORS&rsquo; CHAMPIONSHIP{seasonYear ? ` — ${seasonYear}` : ''} — {pad2(teams.length)} TEAMS
-        </p>
+        </h1>
       </div>
 
       {teams.map((team, i) => {

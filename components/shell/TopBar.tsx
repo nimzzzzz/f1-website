@@ -31,9 +31,11 @@ const TICKER_STYLE: React.CSSProperties = {
 
 export default function TopBar({
   menuOpen,
+  triggerRef,
   onToggleMenu,
 }: {
   menuOpen: boolean
+  triggerRef?: React.RefObject<HTMLButtonElement | null>
   onToggleMenu: () => void
 }) {
   const race = useNextRace()
@@ -85,6 +87,7 @@ export default function TopBar({
         </div>
 
         <button
+          ref={triggerRef}
           type="button"
           onClick={onToggleMenu}
           aria-expanded={menuOpen}

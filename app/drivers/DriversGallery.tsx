@@ -387,9 +387,9 @@ export default function DriversGallery({
   return (
     <section ref={sectionRef} className="relative overflow-hidden">
       <div className="px-6 pt-10 md:px-14">
-        <p className="strip-header text-[var(--text-dim)]">
+        <h1 className="strip-header text-[var(--text-dim)]">
           THE GRID — {pad2(drivers.length)} DRIVERS — CHAMPIONSHIP ORDER
-        </p>
+        </h1>
       </div>
 
       <div ref={viewportRef} className="mt-6 overflow-x-hidden">
