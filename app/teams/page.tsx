@@ -3,6 +3,18 @@ import { buildSeasonSnapshot } from '@/lib/season-data-server'
 import { toBlueprintTeams } from '@/lib/season-view'
 import WarmingRetry from '@/components/WarmingRetry'
 import TeamsBlueprint from './TeamsBlueprint'
+import type { Metadata } from 'next'
+import { routeMeta } from '@/lib/seo'
+
+// Search and share copy for this route. Written as the first words
+// anyone sees in a result or a shared link, in the site's own register.
+export const metadata: Metadata = routeMeta({
+  path: 'teams',
+  title: 'THE CONSTRUCTORS',
+  description:
+    "All 11 teams in championship order, each with its livery, its drivers and its best finish of the season.",
+})
+
 
 // STATIC with ISR, same regime as /api/season-data and /drivers: built
 // from the bundle, background-revalidated every 60 seconds, failed

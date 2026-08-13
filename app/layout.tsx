@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { SITE_NAME, SITE_URL, canonical } from '@/lib/seo'
+import JsonLd from '@/components/seo/JsonLd'
 import { Bebas_Neue, Space_Grotesk, Syne } from 'next/font/google'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
@@ -38,9 +40,31 @@ const syne = Syne({
 })
 
 export const metadata: Metadata = {
-  title: 'LIGHTS OUT — F1 2026',
+  metadataBase: new URL(SITE_URL),
+  // The template gives every route a consistent tail without each one
+  // repeating the site name; `default` covers routes that set no title.
+  title: {
+    default: 'LIGHTS OUT — THE 2026 FORMULA 1 SEASON',
+    template: '%s — LIGHTS OUT',
+  },
   description:
-    'Live 2026 F1 championship standings, race calendar, lap times, and session data powered by OpenF1.',
+    'The 2026 Formula 1 season as it happens — championship standings, the calendar, race results and live session timing.',
+  applicationName: SITE_NAME,
+  alternates: { canonical: canonical('/') },
+  openGraph: {
+    type: 'website',
+    siteName: SITE_NAME,
+    title: 'LIGHTS OUT — THE 2026 FORMULA 1 SEASON',
+    description:
+      'The 2026 Formula 1 season as it happens — championship standings, the calendar, race results and live session timing.',
+    url: canonical('/'),
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'LIGHTS OUT — THE 2026 FORMULA 1 SEASON',
+    description:
+      'The 2026 Formula 1 season as it happens — championship standings, the calendar, race results and live session timing.',
+  },
 }
 
 export default function RootLayout({
@@ -72,6 +96,15 @@ export default function RootLayout({
         }}
       />
       <body>
+        <JsonLd
+          data={{
+            '@context': 'https://schema.org',
+            '@type': 'WebSite',
+            name: SITE_NAME,
+            alternateName: 'LIGHTS OUT — The 2026 Formula 1 Season',
+            url: SITE_URL,
+          }}
+        />
         <SessionsPreloader />
         <LenisProvider>
           <TransitionProvider>

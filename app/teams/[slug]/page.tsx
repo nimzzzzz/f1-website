@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { notFound, redirect } from 'next/navigation'
 import type { Metadata } from 'next'
+import { routeMeta } from '@/lib/seo'
 import { buildSeasonSnapshot } from '@/lib/season-data-server'
 import { toTeamMachine } from '@/lib/season-view'
 import { teamToSlug } from '@/lib/team-data'
@@ -38,7 +39,21 @@ export async function generateMetadata(
   const snap = await buildSeasonSnapshot()
   if (snap.blocked) return {}
   const team = snap.teamStandings.find((t) => teamToSlug(t.teamName) === params.slug)
-  return team ? { title: `${team.teamName} — LIGHTS OUT` } : {}
+  if (!team) return {}
+  const ord = (n: number) => {
+    const su = ['th', 'st', 'nd', 'rd']
+    const v = n % 100
+    return n + (su[(v - 20) % 10] || su[v] || su[0])
+  }
+  const pair = team.driverSurnames.length ? `${team.driverSurnames.join(' and ')}. ` : ''
+  const wins = team.wins > 0 ? `, ${team.wins} win${team.wins > 1 ? 's' : ''}` : ''
+  return routeMeta({
+    path: `teams/${params.slug}`,
+    title: team.teamName.toUpperCase(),
+    description:
+      `${team.teamName} in the 2026 Formula 1 season. ${pair}` +
+      `${ord(team.position)} in the constructors' championship on ${Math.floor(team.points)} points${wins}.`,
+  })
 }
 
 function Skeleton() {

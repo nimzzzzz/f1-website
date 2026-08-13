@@ -1,3 +1,15 @@
+
+import type { Metadata } from 'next'
+import { routeMeta } from '@/lib/seo'
+
+// Search and share copy for this route. Written as the first words
+// anyone sees in a result or a shared link, in the site's own register.
+export const metadata: Metadata = routeMeta({
+  path: 'sports-cards',
+  title: 'SPORTS CARDS',
+  description:
+    "A set of collectible driver cards from the 2026 season.",
+})
 export default function SportsCardsPage() {
   return (
     <div className="relative flex min-h-[calc(100dvh-4rem)] flex-col justify-center overflow-x-clip px-6 md:px-14">

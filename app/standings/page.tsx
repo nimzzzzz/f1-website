@@ -1,5 +1,17 @@
 import { buildSeasonSnapshot } from '@/lib/season-data-server'
 import StandingsClient from './StandingsClient'
+import type { Metadata } from 'next'
+import { routeMeta } from '@/lib/seo'
+
+// Search and share copy for this route. Written as the first words
+// anyone sees in a result or a shared link, in the site's own register.
+export const metadata: Metadata = routeMeta({
+  path: 'standings',
+  title: 'STANDINGS',
+  description:
+    "Both championships, current. Every driver and every constructor in order, with the points gap between them.",
+})
+
 
 // STATIC with ISR — see the note on app/page.tsx. This route was
 // force-dynamic only because its server shell HTTP-fetched its own

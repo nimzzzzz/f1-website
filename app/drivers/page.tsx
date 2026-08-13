@@ -3,6 +3,18 @@ import { buildSeasonSnapshot } from '@/lib/season-data-server'
 import WarmingRetry from '@/components/WarmingRetry'
 import DriversGallery from './DriversGallery'
 import { toGalleryDrivers } from '@/lib/season-view'
+import type { Metadata } from 'next'
+import { routeMeta } from '@/lib/seo'
+
+// Search and share copy for this route. Written as the first words
+// anyone sees in a result or a shared link, in the site's own register.
+export const metadata: Metadata = routeMeta({
+  path: 'drivers',
+  title: 'THE GRID',
+  description:
+    "All 22 drivers in championship order — car number, constructor and points, one driver at a time.",
+})
+
 
 // STATIC with ISR, same regime as /api/season-data: the page is generated
 // at build time from the season bundle and re-generated in the background
