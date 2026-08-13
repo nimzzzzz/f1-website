@@ -60,7 +60,14 @@ const VIDEO_HTML =
 // post-hydration update path re-assigns the innerHTML on every parent
 // re-render (e.g. each beat change), recreating the video and restarting
 // playback in a loop.
-const VideoLayer = memo(function VideoLayer({ wrapRef }: { wrapRef: RefObject<HTMLDivElement> }) {
+// React 19's useRef<T>(null) yields RefObject<T | null> rather than
+// RefObject<T>, so a prop receiving one must admit null. This is a types
+// change only — the ref is still assigned before any effect reads it.
+const VideoLayer = memo(function VideoLayer({
+  wrapRef,
+}: {
+  wrapRef: RefObject<HTMLDivElement | null>
+}) {
   return (
     <div
       ref={wrapRef}

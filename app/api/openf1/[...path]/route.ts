@@ -148,10 +148,8 @@ const cachedFetch = unstable_cache(fetchUpstream, ['openf1-proxy-v1'], {
   revalidate: 60,
 })
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { path: string[] } }
-) {
+export async function GET(req: NextRequest, props: { params: Promise<{ path: string[] }> }) {
+  const params = await props.params;
   const limited = rateLimit(clientKey(req.headers), RATE_LIMIT, RATE_WINDOW_MS)
   if (!limited.allowed) {
     return new Response(JSON.stringify({ error: 'rate limited' }), {
