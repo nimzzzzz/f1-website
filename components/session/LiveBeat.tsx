@@ -91,7 +91,7 @@ export default function LiveBeat({
       />
       <span
         aria-hidden
-        className={interrupted ? 'text-[var(--text-dim)]' : 'text-[var(--accent)]'}
+        className={interrupted ? 'text-[var(--text-dim)]' : 'text-[var(--accent-text)]'}
       >
         {interrupted ? 'LIVE · FEED INTERRUPTED' : 'LIVE'}
       </span>

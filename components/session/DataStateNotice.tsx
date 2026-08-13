@@ -63,7 +63,7 @@ export default function DataStateNotice({
   return (
     <div className={className} role="status" aria-live="polite">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2 border-l-2 border-[var(--accent)] pl-4">
-        <p className="label-mono text-[var(--accent)]">{message ?? 'FEED INTERRUPTED'}</p>
+        <p className="label-mono text-[var(--accent-text)]">{message ?? 'FEED INTERRUPTED'}</p>
         {onRetry && (
           <button
             type="button"

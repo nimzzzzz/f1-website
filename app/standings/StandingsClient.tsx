@@ -97,7 +97,7 @@ export default function StandingsClient({ initialBundle }: { initialBundle: Seas
           // yet" when we actually got an answer.
           unavailable ? (
             <p
-              className="label-mono mt-16 border-l-2 border-[var(--accent)] pl-4 text-[var(--accent)]"
+              className="label-mono mt-16 border-l-2 border-[var(--accent)] pl-4 text-[var(--accent-text)]"
               role="status"
             >
               {unavailableMessage(undefined, false, 'CHAMPIONSHIP')}

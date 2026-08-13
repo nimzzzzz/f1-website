@@ -71,7 +71,7 @@ export default function TopBar({
               <span className="text-[var(--text)]">{shortRaceName(race.meeting)}</span>
               <span aria-hidden>—</span>
               {race.isLive ? (
-                <span className="flex items-center gap-1.5 text-[var(--accent)]">
+                <span className="flex items-center gap-1.5 text-[var(--accent-text)]">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none" />
                   LIVE
                 </span>

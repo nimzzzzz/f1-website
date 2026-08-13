@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useGSAP } from '@gsap/react'
@@ -48,6 +48,16 @@ export default function DriversGallery({
   const trackRef = useRef<HTMLDivElement>(null)
   const railRef = useRef<HTMLDivElement>(null)
 
+  // KEYBOARD NAVIGATION FOR THE HORIZONTAL GALLERY.
+  //
+  // Making the off-screen panels inert removed the wrong focus but did not
+  // supply the right one: 21 of the 22 driver links became unreachable by
+  // keyboard on desktop. These controls are how a keyboard user moves the
+  // gallery, and each step un-inerts the panel it lands on, so its link
+  // becomes tabbable. Horizontal mode only — the stacked layout is scrolled
+  // normally and needs none of this.
+  const goToPanelRef = useRef<((i: number) => void) | null>(null)
+  const [activeIndex, setActiveIndex] = useState(0)
   useGSAP(
     () => {
       const section = sectionRef.current
@@ -327,9 +337,25 @@ export default function DriversGallery({
               })
             }
             onActivate(idx, dir)
+            setActiveIndex(idx)
           }
           lastProg = progress
         }
+        // Exposed to the prev/next controls. The horizontal position is a
+        // scrub of this ScrollTrigger, so moving a panel means moving the page
+        // to the scroll offset that maps to it.
+        const goToPanel = (i: number) => {
+          const clamped = Math.max(0, Math.min(drivers.length - 1, i))
+          const st = tween.scrollTrigger
+          if (!st) return
+          const p = drivers.length > 1 ? clamped / (drivers.length - 1) : 0
+          window.scrollTo({ top: st.start + p * (st.end - st.start) })
+        }
+        goToPanelRef.current = goToPanel
+        cleanups.push(() => {
+          if (goToPanelRef.current === goToPanel) goToPanelRef.current = null
+        })
+
         const tween = gsap.fromTo(
           track,
           { x: 0 },
@@ -579,6 +605,21 @@ export default function DriversGallery({
         ref={railRef}
         className="absolute inset-x-6 bottom-6 z-10 hidden items-center gap-4 md:inset-x-14 mdh:flex motion-reduce:mdh:hidden"
       >
+        {/* PREV / NEXT — the keyboard path through the gallery. The panels
+            are links and the inactive ones are inert, so without these 21 of
+            22 drivers cannot be reached by keyboard on desktop. Each step
+            un-inerts the panel it lands on, which makes that driver's link
+            the next tab stop. Rendered only in the horizontal mode (the rail
+            is mdh:flex); the stacked layout scrolls normally. */}
+        <button
+          type="button"
+          onClick={() => goToPanelRef.current?.(activeIndex - 1)}
+          disabled={activeIndex <= 0}
+          aria-label="Previous driver"
+          className="label-mono shrink-0 px-2 py-1 text-[var(--text-dim)] transition-colors hover:text-[var(--accent)] disabled:opacity-30 motion-reduce:transition-none"
+        >
+          ←
+        </button>
         <div className="flex flex-1 items-center gap-1.5">
           {drivers.map((d, i) => (
             <span
@@ -591,7 +632,21 @@ export default function DriversGallery({
             />
           ))}
         </div>
-        <span data-rail-counter className="label-mono shrink-0 text-[var(--text-dim)]">
+        <button
+          type="button"
+          onClick={() => goToPanelRef.current?.(activeIndex + 1)}
+          disabled={activeIndex >= drivers.length - 1}
+          aria-label="Next driver"
+          className="label-mono shrink-0 px-2 py-1 text-[var(--text-dim)] transition-colors hover:text-[var(--accent)] disabled:opacity-30 motion-reduce:transition-none"
+        >
+          →
+        </button>
+        {/* Announces the panel the controls landed on; the visible counter
+            beside it is aria-hidden so the position is not read twice. */}
+        <span className="sr-only" role="status" aria-live="polite">
+          {drivers[activeIndex]?.surname}, driver {activeIndex + 1} of {drivers.length}
+        </span>
+        <span aria-hidden data-rail-counter className="label-mono shrink-0 text-[var(--text-dim)]">
           01 / {pad2(drivers.length)}
         </span>
       </div>
