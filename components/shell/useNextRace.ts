@@ -38,9 +38,13 @@ export function useNextRace(): NextRaceInfo | null {
         const current = getCurrentMeeting(active)
         const target = current ?? getNextMeeting(active)
         if (!target) return
-        const raceMeetings = getRaceMeetings(meetings).sort(
-          (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime()
-        )
+        // Scored rounds only — cancelled entries are acknowledged on the
+        // calendar but never numbered. The shell ticker, the NOW section and
+        // the season strip all read from this same rule, so they cannot
+        // print different round numbers for the same weekend.
+        const raceMeetings = getRaceMeetings(meetings)
+          .filter((m) => !isCancelled(m))
+          .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime())
         const race = sessions.find(
           (s) => s.meeting_key === target.meeting_key && s.session_name === 'Race'
         )

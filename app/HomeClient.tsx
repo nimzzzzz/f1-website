@@ -222,8 +222,15 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
   const targetMeeting = currentMeeting ?? nextMeeting
   const isLiveWeekend = currentMeeting !== null
 
+  // Round NUMBER and round TOTAL both count scored rounds only. Indexing
+  // into raceMeetings (which includes cancelled entries, struck through on
+  // the strip) inflated both: a cancelled round earlier in the calendar
+  // pushed every later round's number up by one, and the denominator
+  // claimed 25 while the season scores 23 — the same two-numbers-
+  // disagreeing problem /schedule and the season strip already fixed.
+  const scoredMeetings = raceMeetings.filter((m) => !isCancelled(m))
   const roundNumber = targetMeeting
-    ? raceMeetings.findIndex((m) => m.meeting_key === targetMeeting.meeting_key) + 1
+    ? scoredMeetings.findIndex((m) => m.meeting_key === targetMeeting.meeting_key) + 1
     : null
 
   const seasonRounds = raceMeetings.map((m) => ({
@@ -258,7 +265,7 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
                 meeting={targetMeeting}
                 sessions={sessions}
                 round={roundNumber}
-                totalRounds={raceMeetings.length}
+                totalRounds={scoredMeetings.length}
                 isLive={isLiveWeekend}
               />
             ) : seasonGenuinelyOver ? (

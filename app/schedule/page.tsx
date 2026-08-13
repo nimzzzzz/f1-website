@@ -248,6 +248,12 @@ export default function SchedulePage() {
         <div className="space-y-20 md:space-y-28">
           {raceMeetings.map((m, i) => {
             const meetingCancelled = isCancelled(m)
+            // Round NUMBER counts scored rounds only. A cancelled weekend
+            // keeps its place on the calendar and its CANCELLED label, but
+            // takes no number — otherwise the numbering disagrees with the
+            // "23 ROUNDS" header directly above it, and with the shell
+            // ticker and the home strip.
+            const roundNo = raceMeetings.slice(0, i + 1).filter((x) => !isCancelled(x)).length
             const isPast = new Date(m.date_end).getTime() < Date.now()
             const isNext = targetMeeting?.meeting_key === m.meeting_key
             const winner = !meetingCancelled && isPast ? winners[m.meeting_key] : undefined
@@ -303,7 +309,7 @@ export default function SchedulePage() {
                   )}
 
                   <span
-                    aria-label={`Round ${i + 1}`}
+                    aria-label={meetingCancelled ? 'Cancelled round' : `Round ${roundNo}`}
                     className={isNext ? 'block leading-[0.85]' : 'outline-numeral block leading-[0.85]'}
                     style={{
                       fontFamily: 'var(--font-display)',
@@ -312,7 +318,7 @@ export default function SchedulePage() {
                       ...(isNext ? { color: 'var(--accent)' } : {}),
                     }}
                   >
-                    {pad2(i + 1)}
+                    {meetingCancelled ? '—' : pad2(roundNo)}
                   </span>
 
                   <p
