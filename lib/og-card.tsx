@@ -147,8 +147,16 @@ export function DriverCard(d: {
   surname: string
   team: string
   colour: string
-  position: number
-  points: number
+  /**
+   * The ONLY part that needs the season compute. Omitted when the bundle is
+   * unavailable, which drops one line rather than collapsing the card: the
+   * numeral, the name and the livery all come from the committed roster, so
+   * the card is still unmistakably this site and still worth sharing.
+   * This matters because social platforms cache an OG image on first fetch
+   * and never re-read it — a wordmark baked during one bad build would sit
+   * in their caches long after the route healed.
+   */
+  standing?: { position: number; points: number }
 }) {
   const colour = d.colour.startsWith('#') ? d.colour : `#${d.colour}`
   const Numeral = SolidNumeral
@@ -178,9 +186,11 @@ export function DriverCard(d: {
         >
           <div style={{ display: 'flex', width: 26, height: 3, background: colour }} />
           <div style={{ display: 'flex' }}>{d.team.toUpperCase()}</div>
-          <div style={{ display: 'flex', color: TEXT }}>
-            P{d.position} · {Math.floor(d.points)} PTS
-          </div>
+          {d.standing && (
+            <div style={{ display: 'flex', color: TEXT }}>
+              P{d.standing.position} · {Math.floor(d.standing.points)} PTS
+            </div>
+          )}
         </div>
       </div>
     </Frame>
@@ -190,17 +200,31 @@ export function DriverCard(d: {
 export function TeamCard(t: {
   name: string
   colour: string
-  position: number
-  points: number
-  drivers: string[]
+  /** Compute-derived; omitted when unavailable. See DriverCard.standing. */
+  standing?: { position: number; points: number; drivers: string[] }
 }) {
   const colour = t.colour.startsWith('#') ? t.colour : `#${t.colour}`
+  // Unlike a driver's car number, a constructor's numeral IS the standing —
+  // there is no static equivalent to fall back to. So when the standing is
+  // gone the numeral goes with it, and the name centres rather than sitting
+  // at the foot of an empty card. A hole where a numeral belongs reads as a
+  // broken render; a centred wordplate reads as a deliberate one.
   return (
     <Frame wash={liveryWash(colour, 0.22)}>
-      <div style={{ position: 'absolute', right: 54, top: 96, display: 'flex' }}>
-        <SolidNumeral value={`P${t.position}`} colour={colour} size={300} />
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', marginTop: 'auto', position: 'relative' }}>
+      {t.standing && (
+        <div style={{ position: 'absolute', right: 54, top: 96, display: 'flex' }}>
+          <SolidNumeral value={`P${t.standing.position}`} colour={colour} size={300} />
+        </div>
+      )}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          marginTop: 'auto',
+          marginBottom: t.standing ? 0 : 'auto',
+          position: 'relative',
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontFamily: 'GeistMono', fontSize: 21, letterSpacing: 6, color: DIM }}>
           <div style={{ display: 'flex', width: 30, height: 3, background: colour }} />
           <div style={{ display: 'flex' }}>CONSTRUCTOR</div>
@@ -208,10 +232,14 @@ export function TeamCard(t: {
         <div style={{ display: 'flex', fontSize: 112, fontWeight: 900, color: TEXT, lineHeight: 1, marginTop: 10, letterSpacing: -2 }}>
           {t.name.toUpperCase()}
         </div>
-        <div style={{ display: 'flex', gap: 20, marginTop: 26, fontFamily: 'GeistMono', fontSize: 23, letterSpacing: 4, color: DIM }}>
-          <div style={{ display: 'flex' }}>{t.drivers.map((d) => d.toUpperCase()).join(' · ')}</div>
-          <div style={{ display: 'flex', color: TEXT }}>{Math.floor(t.points)} PTS</div>
-        </div>
+        {t.standing && (
+          <div style={{ display: 'flex', gap: 20, marginTop: 26, fontFamily: 'GeistMono', fontSize: 23, letterSpacing: 4, color: DIM }}>
+            <div style={{ display: 'flex' }}>
+              {t.standing.drivers.map((d) => d.toUpperCase()).join(' · ')}
+            </div>
+            <div style={{ display: 'flex', color: TEXT }}>{Math.floor(t.standing.points)} PTS</div>
+          </div>
+        )}
       </div>
     </Frame>
   )
@@ -239,5 +267,31 @@ export function RaceCard(r: { round: number; name: string; circuit: string; date
         </div>
       </div>
     </Frame>
+  )
+}
+
+/**
+ * The last resort, and it should be near-unreachable: it means even the
+ * committed roster had no row for this slug.
+ */
+export function Wordmark() {
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: BG,
+        color: TEXT,
+        fontFamily: 'Geist',
+        fontSize: 84,
+        fontWeight: 900,
+        letterSpacing: -2,
+      }}
+    >
+      LIGHTS OUT
+    </div>
   )
 }

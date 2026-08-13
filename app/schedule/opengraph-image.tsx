@@ -1,7 +1,8 @@
 import { ImageResponse } from 'next/og'
 import { buildSeasonSnapshot } from '@/lib/season-data-server'
 import { isCancelled } from '@/lib/openf1'
-import { RaceCard, OG_SIZE, OG_CONTENT_TYPE, ogFonts } from '@/lib/og-card'
+import { FALLBACK_CALENDAR } from '@/lib/roster-fallback'
+import { RaceCard, OG_SIZE, OG_CONTENT_TYPE, ogFonts, Wordmark } from '@/lib/og-card'
 
 export const size = OG_SIZE
 export const contentType = OG_CONTENT_TYPE
@@ -13,12 +14,33 @@ const fmt = (a: string, b: string) => {
   return `${new Date(a).toLocaleDateString('en-US', o)} — ${new Date(b).toLocaleDateString('en-US', o)}`.toUpperCase()
 }
 
+/** The round in progress or the one ahead; the finale once the season ends. */
+function pickNext<T extends { start: string; end: string }>(rounds: T[], now: number): T | undefined {
+  return rounds.find((r) => +new Date(r.end) > now) ?? rounds[rounds.length - 1]
+}
+
 // The calendar's card shows the NEXT round, so a shared /schedule link is
 // about the weekend ahead rather than the season in the abstract.
+//
+// WHICH round is a published fact months out, so it comes from the
+// committed calendar snapshot and does not need the compute at all. A live
+// bundle only refines it — a renamed or newly-cancelled round. Same reason
+// as the driver card: a wordmark baked here would be cached by every
+// platform that saw it first, long after the route recovered.
 export default async function Image() {
-  const snap = await buildSeasonSnapshot()
   const now = Date.now()
-  let card = { round: 0, name: '', circuit: '', dates: '' }
+
+  const stat = pickNext([...FALLBACK_CALENDAR], now)
+  let card = stat
+    ? { round: stat.round, name: stat.name, circuit: stat.circuit, dates: fmt(stat.start, stat.end) }
+    : { round: 0, name: '', circuit: '', dates: '' }
+
+  let snap: Awaited<ReturnType<typeof buildSeasonSnapshot>> | { blocked: true } = { blocked: true }
+  try {
+    snap = await buildSeasonSnapshot()
+  } catch {
+    // Compute unavailable — the snapshot above already carries the round.
+  }
 
   if (!snap.blocked) {
     const rounds = snap.meetings
@@ -40,17 +62,7 @@ export default async function Image() {
     }
   }
 
-  if (!card.circuit) {
-    return new ImageResponse(
-      (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center',
-                      justifyContent: 'center', background: '#0a0a0a', color: '#f5f5f3',
-                      fontSize: 84, fontWeight: 900, letterSpacing: -2, fontFamily: 'Geist' }}>
-          LIGHTS OUT
-        </div>
-      ),
-      { ...size, fonts: ogFonts }
-    )
-  }
+  // Only reachable if the committed calendar is empty too.
+  if (!card.circuit) return new ImageResponse(Wordmark(), { ...size, fonts: ogFonts })
   return new ImageResponse(RaceCard(card), { ...size, fonts: ogFonts })
 }

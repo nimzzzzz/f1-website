@@ -559,26 +559,56 @@ const cachedCompute = unstable_cache(computeSeasonData, ['season-bundle-v1'], {
   revalidate: 60,
 })
 
-// Build-scope memo, unchanged: within a build worker this still short-
-// circuits before the Data Cache, and it is what carries the production-
-// snapshot fallback when a build-time compute fails.
-let buildMemo: SeasonBundle | { blocked: true } | null = null
+// Build-scope memo. It holds the IN-FLIGHT PROMISE, not the settled result,
+// and that distinction is the whole point.
+//
+// Storing the result only helps callers that arrive after one has finished.
+// Next renders routes CONCURRENTLY inside each build worker, so the callers
+// arrive together, all miss a not-yet-written memo, and all compute — the
+// shape tests/shared-compute.test.ts pins as the bug. It stayed invisible
+// while the build was page routes only: those are few enough that most
+// workers took one apiece. Adding 34 share-card routes handed single
+// workers a dozen concurrent renders each, and the count went from ~4 to
+// 4–32 across runs, varying purely with how the scheduler happened to
+// distribute them. unstable_cache does not close this either — it serves
+// entries already written, and has nothing to serve until the first compute
+// returns.
+//
+// A FLOOR REMAINS, and it is a different cause: instrumenting the module
+// with a per-instance id showed each build worker loading this module
+// TWICE — the image routes are bundled separately from the page routes, so
+// each bundle carries its own copy and its own buildMemo. That is why the
+// count settles near 2x the worker count rather than 1x. unstable_cache
+// does not collapse it either, for the same reason as above: the two
+// instances start together, before either has written an entry to read.
+//
+// This is also what carries the production-snapshot fallback when a
+// build-time compute fails.
+let buildMemo: Promise<SeasonBundle | { blocked: true }> | null = null
+
+/** Build-time only: a failed compute degrades to production, never throws. */
+async function loadForBuild(): Promise<SeasonBundle | { blocked: true }> {
+  try {
+    return await cachedCompute()
+  } catch {
+    return (await fetchProductionSnapshot()) ?? { blocked: true }
+  }
+}
 
 async function loadSeasonSnapshot(): Promise<SeasonBundle | { blocked: true }> {
   const isBuild = process.env.NEXT_PHASE === 'phase-production-build'
-  if (isBuild && buildMemo) return buildMemo
-  try {
-    const bundle = await cachedCompute()
-    if (isBuild) buildMemo = bundle
-    return bundle
-  } catch (err) {
-    if (isBuild) {
-      const fromProd = await fetchProductionSnapshot()
-      buildMemo = fromProd ?? { blocked: true }
-      return buildMemo
+  if (isBuild) {
+    // A rejection clears the memo rather than being cached, so the next
+    // caller retries instead of inheriting one bad attempt for the build.
+    if (!buildMemo) {
+      buildMemo = loadForBuild().catch((err) => {
+        buildMemo = null
+        throw err
+      })
     }
-    throw err
+    return buildMemo
   }
+  return cachedCompute()
 }
 
 export const buildSeasonSnapshot = reactCache(loadSeasonSnapshot)

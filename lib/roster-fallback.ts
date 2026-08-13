@@ -7,7 +7,7 @@
 // prerendering nothing. ISR still fetches fresh data at request time — only
 // the SET OF PAGES comes from here.
 //
-// Snapshot taken: 2026-08-06
+// Snapshot taken: 2026-08-13
 
 export const FALLBACK_DRIVER_ACRONYMS: readonly string[] = [
   "ALB",
@@ -46,4 +46,373 @@ export const FALLBACK_TEAM_SLUGS: readonly string[] = [
   "racing-bulls",
   "red-bull-racing",
   "williams"
+]
+
+/**
+ * Enough to draw a share card WITHOUT the season compute: number, name,
+ * team and livery. Social platforms cache an OG image on first fetch and
+ * never re-read it, so a card baked during a failed compute would sit in
+ * Slack and X caches for weeks — "ISR heals it" is not true from the
+ * sharer's side. With this, a failed compute costs the card its
+ * position/points line and nothing else.
+ */
+export interface FallbackDriverCard {
+  acronym: string
+  number: number
+  first: string
+  surname: string
+  team: string
+  colour: string
+}
+
+export const FALLBACK_DRIVER_CARDS: readonly FallbackDriverCard[] = [
+  {
+    "acronym": "ALB",
+    "number": 23,
+    "first": "Alexander",
+    "surname": "ALBON",
+    "team": "Williams",
+    "colour": "1868DB"
+  },
+  {
+    "acronym": "ALO",
+    "number": 14,
+    "first": "Fernando",
+    "surname": "ALONSO",
+    "team": "Aston Martin",
+    "colour": "229971"
+  },
+  {
+    "acronym": "ANT",
+    "number": 12,
+    "first": "Kimi",
+    "surname": "ANTONELLI",
+    "team": "Mercedes",
+    "colour": "00D7B6"
+  },
+  {
+    "acronym": "BEA",
+    "number": 87,
+    "first": "Oliver",
+    "surname": "BEARMAN",
+    "team": "Haas F1 Team",
+    "colour": "9C9FA2"
+  },
+  {
+    "acronym": "BOR",
+    "number": 5,
+    "first": "Gabriel",
+    "surname": "BORTOLETO",
+    "team": "Audi",
+    "colour": "F50537"
+  },
+  {
+    "acronym": "BOT",
+    "number": 77,
+    "first": "Valtteri",
+    "surname": "BOTTAS",
+    "team": "Cadillac",
+    "colour": "909090"
+  },
+  {
+    "acronym": "COL",
+    "number": 43,
+    "first": "Franco",
+    "surname": "COLAPINTO",
+    "team": "Alpine",
+    "colour": "00A1E8"
+  },
+  {
+    "acronym": "GAS",
+    "number": 10,
+    "first": "Pierre",
+    "surname": "GASLY",
+    "team": "Alpine",
+    "colour": "00A1E8"
+  },
+  {
+    "acronym": "HAD",
+    "number": 6,
+    "first": "Isack",
+    "surname": "HADJAR",
+    "team": "Red Bull Racing",
+    "colour": "4781D7"
+  },
+  {
+    "acronym": "HAM",
+    "number": 44,
+    "first": "Lewis",
+    "surname": "HAMILTON",
+    "team": "Ferrari",
+    "colour": "ED1131"
+  },
+  {
+    "acronym": "HUL",
+    "number": 27,
+    "first": "Nico",
+    "surname": "HULKENBERG",
+    "team": "Audi",
+    "colour": "F50537"
+  },
+  {
+    "acronym": "LAW",
+    "number": 30,
+    "first": "Liam",
+    "surname": "LAWSON",
+    "team": "Racing Bulls",
+    "colour": "6C98FF"
+  },
+  {
+    "acronym": "LEC",
+    "number": 16,
+    "first": "Charles",
+    "surname": "LECLERC",
+    "team": "Ferrari",
+    "colour": "ED1131"
+  },
+  {
+    "acronym": "LIN",
+    "number": 41,
+    "first": "Arvid",
+    "surname": "LINDBLAD",
+    "team": "Racing Bulls",
+    "colour": "6C98FF"
+  },
+  {
+    "acronym": "NOR",
+    "number": 1,
+    "first": "Lando",
+    "surname": "NORRIS",
+    "team": "McLaren",
+    "colour": "F47600"
+  },
+  {
+    "acronym": "OCO",
+    "number": 31,
+    "first": "Esteban",
+    "surname": "OCON",
+    "team": "Haas F1 Team",
+    "colour": "9C9FA2"
+  },
+  {
+    "acronym": "PER",
+    "number": 11,
+    "first": "Sergio",
+    "surname": "PEREZ",
+    "team": "Cadillac",
+    "colour": "909090"
+  },
+  {
+    "acronym": "PIA",
+    "number": 81,
+    "first": "Oscar",
+    "surname": "PIASTRI",
+    "team": "McLaren",
+    "colour": "F47600"
+  },
+  {
+    "acronym": "RUS",
+    "number": 63,
+    "first": "George",
+    "surname": "RUSSELL",
+    "team": "Mercedes",
+    "colour": "00D7B6"
+  },
+  {
+    "acronym": "SAI",
+    "number": 55,
+    "first": "Carlos",
+    "surname": "SAINZ",
+    "team": "Williams",
+    "colour": "1868DB"
+  },
+  {
+    "acronym": "STR",
+    "number": 18,
+    "first": "Lance",
+    "surname": "STROLL",
+    "team": "Aston Martin",
+    "colour": "229971"
+  },
+  {
+    "acronym": "VER",
+    "number": 3,
+    "first": "Max",
+    "surname": "VERSTAPPEN",
+    "team": "Red Bull Racing",
+    "colour": "4781D7"
+  }
+]
+
+/** Scored rounds, already numbered. See FALLBACK_DRIVER_CARDS. */
+export interface FallbackRound {
+  round: number
+  name: string
+  circuit: string
+  start: string
+  end: string
+}
+
+export const FALLBACK_CALENDAR: readonly FallbackRound[] = [
+  {
+    "round": 1,
+    "name": "Australian Grand Prix",
+    "circuit": "Melbourne",
+    "start": "2026-03-06T01:30:00+00:00",
+    "end": "2026-03-08T06:00:00+00:00"
+  },
+  {
+    "round": 2,
+    "name": "Chinese Grand Prix",
+    "circuit": "Shanghai",
+    "start": "2026-03-13T03:30:00+00:00",
+    "end": "2026-03-15T09:00:00+00:00"
+  },
+  {
+    "round": 3,
+    "name": "Japanese Grand Prix",
+    "circuit": "Suzuka",
+    "start": "2026-03-27T02:30:00+00:00",
+    "end": "2026-03-29T07:00:00+00:00"
+  },
+  {
+    "round": 4,
+    "name": "Miami Grand Prix",
+    "circuit": "Miami",
+    "start": "2026-05-01T16:00:00+00:00",
+    "end": "2026-05-03T19:00:00+00:00"
+  },
+  {
+    "round": 5,
+    "name": "Canadian Grand Prix",
+    "circuit": "Montreal",
+    "start": "2026-05-22T16:30:00+00:00",
+    "end": "2026-05-24T22:00:00+00:00"
+  },
+  {
+    "round": 6,
+    "name": "Monaco Grand Prix",
+    "circuit": "Monte Carlo",
+    "start": "2026-06-05T11:30:00+00:00",
+    "end": "2026-06-07T15:00:00+00:00"
+  },
+  {
+    "round": 7,
+    "name": "Barcelona Grand Prix",
+    "circuit": "Catalunya",
+    "start": "2026-06-12T11:30:00+00:00",
+    "end": "2026-06-14T15:00:00+00:00"
+  },
+  {
+    "round": 8,
+    "name": "Austrian Grand Prix",
+    "circuit": "Spielberg",
+    "start": "2026-06-26T11:30:00+00:00",
+    "end": "2026-06-28T15:00:00+00:00"
+  },
+  {
+    "round": 9,
+    "name": "British Grand Prix",
+    "circuit": "Silverstone",
+    "start": "2026-07-03T11:30:00+00:00",
+    "end": "2026-07-05T16:00:00+00:00"
+  },
+  {
+    "round": 10,
+    "name": "Belgian Grand Prix",
+    "circuit": "Spa-Francorchamps",
+    "start": "2026-07-17T11:30:00+00:00",
+    "end": "2026-07-19T15:00:00+00:00"
+  },
+  {
+    "round": 11,
+    "name": "Hungarian Grand Prix",
+    "circuit": "Hungaroring",
+    "start": "2026-07-24T11:30:00+00:00",
+    "end": "2026-07-26T15:00:00+00:00"
+  },
+  {
+    "round": 12,
+    "name": "Dutch Grand Prix",
+    "circuit": "Zandvoort",
+    "start": "2026-08-21T10:30:00+00:00",
+    "end": "2026-08-23T15:00:00+00:00"
+  },
+  {
+    "round": 13,
+    "name": "Italian Grand Prix",
+    "circuit": "Monza",
+    "start": "2026-09-04T10:30:00+00:00",
+    "end": "2026-09-06T15:00:00+00:00"
+  },
+  {
+    "round": 14,
+    "name": "Spanish Grand Prix",
+    "circuit": "Madring",
+    "start": "2026-09-11T11:30:00+00:00",
+    "end": "2026-09-13T15:00:00+00:00"
+  },
+  {
+    "round": 15,
+    "name": "Azerbaijan Grand Prix",
+    "circuit": "Baku",
+    "start": "2026-09-24T08:30:00+00:00",
+    "end": "2026-09-26T13:00:00+00:00"
+  },
+  {
+    "round": 16,
+    "name": "Bahrain Grand Prix",
+    "circuit": "Kuala Lumpur",
+    "start": "2026-10-02T04:30:00+00:00",
+    "end": "2026-10-04T09:00:00+00:00"
+  },
+  {
+    "round": 17,
+    "name": "Singapore Grand Prix",
+    "circuit": "Singapore",
+    "start": "2026-10-09T08:30:00+00:00",
+    "end": "2026-10-11T14:00:00+00:00"
+  },
+  {
+    "round": 18,
+    "name": "United States Grand Prix",
+    "circuit": "Austin",
+    "start": "2026-10-23T17:30:00+00:00",
+    "end": "2026-10-25T22:00:00+00:00"
+  },
+  {
+    "round": 19,
+    "name": "Mexico City Grand Prix",
+    "circuit": "Mexico City",
+    "start": "2026-10-30T18:30:00+00:00",
+    "end": "2026-11-01T22:00:00+00:00"
+  },
+  {
+    "round": 20,
+    "name": "São Paulo Grand Prix",
+    "circuit": "Interlagos",
+    "start": "2026-11-06T15:30:00+00:00",
+    "end": "2026-11-08T19:00:00+00:00"
+  },
+  {
+    "round": 21,
+    "name": "Las Vegas Grand Prix",
+    "circuit": "Las Vegas",
+    "start": "2026-11-20T00:30:00+00:00",
+    "end": "2026-11-22T06:00:00+00:00"
+  },
+  {
+    "round": 22,
+    "name": "Qatar Grand Prix",
+    "circuit": "Lusail",
+    "start": "2026-11-27T13:30:00+00:00",
+    "end": "2026-11-29T18:00:00+00:00"
+  },
+  {
+    "round": 23,
+    "name": "Abu Dhabi Grand Prix",
+    "circuit": "Yas Marina Circuit",
+    "start": "2026-12-04T09:30:00+00:00",
+    "end": "2026-12-06T15:00:00+00:00"
+  }
 ]
