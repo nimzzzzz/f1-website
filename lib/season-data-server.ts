@@ -565,22 +565,32 @@ const cachedCompute = unstable_cache(computeSeasonData, ['season-bundle-v1'], {
 // Storing the result only helps callers that arrive after one has finished.
 // Next renders routes CONCURRENTLY inside each build worker, so the callers
 // arrive together, all miss a not-yet-written memo, and all compute — the
-// shape tests/shared-compute.test.ts pins as the bug. It stayed invisible
-// while the build was page routes only: those are few enough that most
-// workers took one apiece. Adding 34 share-card routes handed single
-// workers a dozen concurrent renders each, and the count went from ~4 to
-// 4–32 across runs, varying purely with how the scheduler happened to
-// distribute them. unstable_cache does not close this either — it serves
-// entries already written, and has nothing to serve until the first compute
-// returns.
+// shape tests/shared-compute.test.ts pins as the bug. unstable_cache does
+// not close it either: it serves entries already written, and there is
+// nothing to serve until the first compute returns.
 //
-// A FLOOR REMAINS, and it is a different cause: instrumenting the module
-// with a per-instance id showed each build worker loading this module
-// TWICE — the image routes are bundled separately from the page routes, so
-// each bundle carries its own copy and its own buildMemo. That is why the
-// count settles near 2x the worker count rather than 1x. unstable_cache
-// does not collapse it either, for the same reason as above: the two
-// instances start together, before either has written an entry to read.
+// CORRECTING THE RECORD, because the number this replaces was wrong. The
+// fix/shared-compute commit reports "28 computes before, 4 after" and
+// attributes the residual 4 to Next's worker model. The 4 was one run. Four
+// builds of that same commit measured afterwards gave 21, 16, 4, 21 — the
+// figure was not a floor, it was the low end of a spread driven by how the
+// scheduler happened to distribute routes across workers, and the "one per
+// worker" explanation it implied was never true. The 28 → 4 improvement was
+// real in direction and overstated in size.
+//
+// Measured across four builds each, same machine, cold .next:
+//   result memo, page routes only        4–21   (this file's previous state)
+//   result memo + 34 card routes         16–32
+//   promise memo + 34 card routes        8–9
+// The spread collapsing is the point as much as the number falling: the
+// count is now a property of the build graph rather than of scheduling luck.
+//
+// A FLOOR REMAINS, and it is a different cause. Instrumenting the module
+// with a per-instance id showed 8 computes across 8 distinct MODULE
+// instances but only 5 processes — the image routes are bundled separately
+// from the page routes, so a worker handling both loads this file twice,
+// each copy with its own buildMemo. One compute per module instance is the
+// floor; workers that draw both kinds of route pay it twice.
 //
 // This is also what carries the production-snapshot fallback when a
 // build-time compute fails.
