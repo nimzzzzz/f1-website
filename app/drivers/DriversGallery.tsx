@@ -239,6 +239,38 @@ export default function DriversGallery({
         }
       }
 
+      // OFFSCREEN PANELS MUST NOT BE FOCUSABLE.
+
+      //
+
+      // Each panel IS a link, and in the horizontal mode 21 of the 22 sit
+
+      // outside the viewport inside an overflow-hidden box. Left alone, Tab
+
+      // walks through every one: focus lands on a driver nobody can see, the
+
+      // page cannot scroll to it (GSAP owns the transform, not the scroller),
+
+      // and a keyboard user is stranded in invisible content. inert removes
+
+      // them from the tab order AND the accessibility tree, re-synced
+
+      // whenever the active panel changes.
+
+      const syncFocusable = (active: number) => {
+
+        const panels = track.querySelectorAll<HTMLElement>('[data-idx]')
+
+        panels.forEach((el, i) => {
+
+          if (i === active) el.removeAttribute('inert')
+
+          else el.setAttribute('inert', '')
+
+        })
+
+      }
+
       let activeIdx = -1
       let dwellTimer: number | undefined
       const preloadAround = (i: number) => {
@@ -253,6 +285,7 @@ export default function DriversGallery({
       const DWELL = 170
       const onActivate = (i: number, dir: number) => {
         activeIdx = i
+        syncFocusable(i)
         preloadAround(i)
         settleInstant(i)
         if (dwellTimer) window.clearTimeout(dwellTimer)
@@ -348,6 +381,11 @@ export default function DriversGallery({
 
       // ── mobile / touch: vertical stack, blast on scroll-into-view (tamer) ──
       mm.add('(max-width: 767px), (hover: none)', () => {
+        // Entering the stacked layout: clear anything the horizontal branch
+        // marked inert, or panels stay unreachable after a resize.
+        track
+          .querySelectorAll<HTMLElement>('[data-idx][inert]')
+          .forEach((el) => el.removeAttribute('inert'))
         const lastBlast: number[] = new Array(drivers.length).fill(-Infinity)
         const io = new IntersectionObserver(
           (entries) => {
@@ -357,6 +395,10 @@ export default function DriversGallery({
               if (Number.isNaN(i)) continue
               if (e.isIntersecting) {
                 activeIdx = i
+                // NO syncFocusable here: in the stacked layout every panel is on the
+                // page and reachable by ordinary scrolling, so making the inactive
+                // ones inert would hide 21 drivers from keyboard and screen-reader
+                // users entirely.
                 preloadAround(i)
                 // debounce re-entries so scrubbing the stack up and down doesn't
                 // machine-gun the same panel; otherwise each scroll-in blasts

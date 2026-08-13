@@ -187,7 +187,7 @@ export default function ResultsPage() {
           {winner && (
             <ClipReveal className="mt-14">
               <div className="border-t border-[var(--line)] pt-10">
-                <p className="section-header flex items-center gap-2.5 text-[var(--accent)]">
+                <p className="section-header flex items-center gap-2.5 text-[var(--accent-text)]">
                   P1
                   <span aria-hidden className="inline-block h-[2px] w-8 bg-[var(--accent)]" />
                 </p>
@@ -252,7 +252,7 @@ export default function ResultsPage() {
           {field.length > 0 && (
             <div className="mt-20">
               <FadeUp>
-                <p className="label-mono text-[var(--text-dim)]">THE FIELD</p>
+                <p className="label-mono text-[var(--text-dim)]" id="the-field">THE FIELD</p>
               </FadeUp>
               <div className="mt-6">
                 {field.map((row) => {

@@ -107,7 +107,7 @@ export default function PitStopsPage() {
           <div className="mt-16 flex flex-wrap items-baseline gap-x-20 gap-y-10">
             {fastestStop && (
               <FadeUp>
-                <p className="section-header flex items-center gap-2.5 text-[var(--accent)]">
+                <p className="section-header flex items-center gap-2.5 text-[var(--accent-text)]">
                   FASTEST STOP
                   <span aria-hidden className="inline-block h-[2px] w-8 bg-[var(--accent)]" />
                 </p>
@@ -183,7 +183,7 @@ export default function PitStopsPage() {
                     </span>
                     <span
                       className="ml-auto shrink-0 text-right font-mono text-lg tabular-nums"
-                      style={{ color: isFastest ? 'var(--accent)' : 'var(--text)' }}
+                      style={{ color: isFastest ? 'var(--accent-text)' : 'var(--text)' }}
                     >
                       {formatPitDuration(stop.pit_duration)}
                     </span>

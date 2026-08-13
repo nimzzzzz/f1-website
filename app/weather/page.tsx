@@ -166,9 +166,10 @@ export default function WeatherPage() {
                 OVER THE SESSION — {sampled.length} SAMPLES
               </p>
             </FadeUp>
-            <div className="mt-6">
+            <div className="mt-6" role="list" aria-label="Weather readings over the session">
               {sampled.map((w, idx) => (
                 <div
+                  role="listitem"
                   key={idx}
                   className="label-mono flex items-baseline gap-5 border-t border-[var(--line)] py-2.5 md:gap-8"
                 >

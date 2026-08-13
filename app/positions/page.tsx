@@ -202,7 +202,7 @@ export default function PositionsPage() {
                 >
                   <span
                     className="label-mono w-10 shrink-0 tabular-nums"
-                    style={{ color: row.currentPosition === 1 ? 'var(--accent)' : 'var(--text)' }}
+                    style={{ color: row.currentPosition === 1 ? 'var(--accent-text)' : 'var(--text)' }}
                   >
                     P{row.currentPosition}
                   </span>

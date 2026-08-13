@@ -451,7 +451,7 @@ export default function SeasonSection({
             />
             <div
               ref={counterRef}
-              className="label-mono absolute bottom-4 left-0 whitespace-nowrap pl-2 text-[var(--accent)]"
+              className="label-mono absolute bottom-4 left-0 whitespace-nowrap pl-2 text-[var(--accent-text)]"
               style={{ transform: 'translateX(0)' }}
             >
               {pad2(completed)} / {pad2(scored)}

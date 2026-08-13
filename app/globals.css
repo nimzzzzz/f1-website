@@ -26,7 +26,18 @@
      text being readable. Decorative layers (circuit line art, ghost and
      outline numerals) keep their opacity and their faintness. */
   --text-muted: rgba(245, 245, 243, 0.5);
-  --accent: #e10600;
+  --accent: #e10600; /* 3.99:1 — the brand red. */
+  /* TWO accent tokens, because one value cannot serve both jobs.
+     --accent is the brand: large display type (which needs only the 3:1
+     of WCAG large text and passes), non-text indicators (focus rings,
+     dots, rules, borders — 1.4.11, also 3:1), and the intro.
+     --accent-text is the same red lifted to 5.05:1 for SMALL accent
+     TEXT, where AA demands 4.5:1 and #e10600 falls short at 3.99:1.
+     Checked before committing to it: at display scale the lifted value
+     is clearly NOT invisible — on the standings P1 numeral at 176px it
+     reads coral rather than racing red and loses the brand entirely.
+     So the lift is confined to the six small-text sites that need it. */
+  --accent-text: #e94440; /* 5.05:1 — small accent text only. */
 }
 
 * {

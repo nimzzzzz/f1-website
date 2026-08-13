@@ -29,6 +29,7 @@ const config: Config = {
         surface: 'var(--surface)',
         line: 'var(--line)',
         accent: 'var(--accent)',
+        'accent-text': 'var(--accent-text)',
         dim: 'var(--text-dim)',
         muted: 'var(--text-muted)',
       },

@@ -118,7 +118,7 @@ export default function LapsPage() {
           {overallFastest && (
             <FadeUp className="mt-16">
               <div className="border-t border-[var(--line)] pt-8">
-                <p className="section-header flex items-center gap-2.5 text-[var(--accent)]">
+                <p className="section-header flex items-center gap-2.5 text-[var(--accent-text)]">
                   FASTEST LAP
                   <span aria-hidden className="inline-block h-[2px] w-8 bg-[var(--accent)]" />
                 </p>
@@ -169,7 +169,7 @@ export default function LapsPage() {
                       </span>
                       <span
                         className="ml-auto shrink-0 text-right font-mono text-base tabular-nums"
-                        style={{ color: idx === 0 ? 'var(--accent)' : 'var(--text)' }}
+                        style={{ color: idx === 0 ? 'var(--accent-text)' : 'var(--text)' }}
                       >
                         {formatDuration(lap.lap_duration!)}
                       </span>
@@ -222,7 +222,7 @@ export default function LapsPage() {
                 unnamed stop in the tab order. */}
             <div
               tabIndex={0}
-              role="group"
+              role="list"
               aria-label="All lap times"
               className="mt-6 max-h-[60vh] overflow-y-auto pr-2 [scrollbar-width:thin]"
             >
@@ -230,6 +230,7 @@ export default function LapsPage() {
                   const driver = driverMap.get(lap.driver_number)
                   return (
                     <div
+                      role="listitem"
                       key={`${lap.driver_number}-${lap.lap_number}`}
                       className="label-mono flex items-baseline gap-5 border-t border-[var(--line)] py-2.5 md:gap-8"
                     >
