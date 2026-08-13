@@ -29,11 +29,12 @@ export async function generateStaticParams() {
   return resolveDriverParams(snap).values
 }
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { acronym: string }
-}): Promise<Metadata> {
+export async function generateMetadata(
+  props: {
+    params: Promise<{ acronym: string }>
+  }
+): Promise<Metadata> {
+  const params = await props.params;
   const snap = await buildSeasonSnapshot()
   if (snap.blocked) return {}
   const me = snap.driverStandings.find(
@@ -74,7 +75,8 @@ async function SeasonLine({ acronym }: { acronym: string }) {
   return <DriverSeasonLine view={view} />
 }
 
-export default function DriverPage({ params }: { params: { acronym: string } }) {
+export default async function DriverPage(props: { params: Promise<{ acronym: string }> }) {
+  const params = await props.params;
   // Validate BEFORE the Suspense boundary and before any season work.
   // Inside Suspense the response has already started streaming, so
   // notFound() there cannot set a status — unknown slugs used to return

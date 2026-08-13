@@ -47,7 +47,13 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${bebasNeue.variable} ${spaceGrotesk.variable} ${syne.variable} ${GeistSans.variable} ${GeistMono.variable}`}>
+    // data-scroll-behavior: globals.css sets html { scroll-behavior: smooth }
+    // for in-page anchors. Through Next 15 the router temporarily forced
+    // scroll-behavior:auto during a route change so navigation jumped to the
+    // top instantly; Next 16 no longer does that unless this attribute opts
+    // in. Without it, every route change would SMOOTH-SCROLL to the top —
+    // visibly wrong on a site that already runs Lenis for its own scrolling.
+    <html lang="en" data-scroll-behavior="smooth" className={`${bebasNeue.variable} ${spaceGrotesk.variable} ${syne.variable} ${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
         <SessionsPreloader />
         <LenisProvider>

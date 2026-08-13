@@ -29,11 +29,12 @@ export async function generateStaticParams() {
   return resolveTeamParams(snap).values
 }
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { slug: string }
-}): Promise<Metadata> {
+export async function generateMetadata(
+  props: {
+    params: Promise<{ slug: string }>
+  }
+): Promise<Metadata> {
+  const params = await props.params;
   const snap = await buildSeasonSnapshot()
   if (snap.blocked) return {}
   const team = snap.teamStandings.find((t) => teamToSlug(t.teamName) === params.slug)
@@ -72,7 +73,8 @@ async function Machine({ slug }: { slug: string }) {
   return <TeamMachine view={view} facts={teamFacts(slug)} />
 }
 
-export default function TeamPage({ params }: { params: { slug: string } }) {
+export default async function TeamPage(props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   // Real 404 for unknown slugs, before Suspense and before any season
   // computation — see the note in app/drivers/[acronym]/page.tsx.
   const canonical = canonicalTeamSlug(params.slug)
