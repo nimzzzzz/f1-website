@@ -104,9 +104,16 @@ export function degradedMeta(path: string, title: string): Metadata {
 // Indexing them would put six near-identical, near-empty results in front
 // of someone searching for lap times and satisfy none of them. They stay
 // crawlable (follow: true) so the links out of them still count; they are
-// simply not themselves search destinations. /results is the exception —
-// it defaults to the most recent completed session, so it always has real
-// content and a reason to be found.
+// simply not themselves search destinations.
+//
+// /results was once the exception, on the grounds that it defaults to the
+// most recent completed session and so always has real content. That
+// reasoning was reversed: defaulting to the latest session is exactly what
+// makes it a tool rather than a document — the URL still carries no
+// session, and a crawler still gets the same shell as the other six. It
+// sets noindex in app/results/page.tsx with the rest of them. This list is
+// unchanged because /results reaches the same decision by its own route
+// rather than through TELEMETRY_ROUTES.
 export const TELEMETRY_ROUTES = [
   'laps',
   'positions',
