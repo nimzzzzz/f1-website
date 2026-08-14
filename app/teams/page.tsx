@@ -8,12 +8,24 @@ import { routeMeta } from '@/lib/seo'
 
 // Search and share copy for this route. Written as the first words
 // anyone sees in a result or a shared link, in the site's own register.
-export const metadata: Metadata = routeMeta({
+const META = {
   path: 'teams',
   title: 'THE CONSTRUCTORS',
   description:
     "All 11 teams in championship order, each with its livery, its drivers and its best finish of the season.",
-})
+} as const
+
+// Metadata is GENERATED rather than static so it can see whether this
+// page has its bundle. A data-less render is still a real URL with a
+// correct canonical, but it is not something a search engine should keep
+// — see degradedMeta in lib/seo. lib/season-data-server refuses to build
+// in that state at all now; this is the second line of defence, and it
+// costs nothing because the snapshot is already memoised for the render
+// below.
+export async function generateMetadata(): Promise<Metadata> {
+  const snap = await buildSeasonSnapshot()
+  return routeMeta({ ...META, noindex: snap.blocked })
+}
 
 
 // STATIC with ISR, same regime as /api/season-data and /drivers: built
@@ -43,9 +55,19 @@ async function Blueprint() {
   const snap = await buildSeasonSnapshot()
   const bundle = snap.blocked ? null : snap
 
-  // Truly nothing to show (a brand-new project's first-ever deploy built
-  // mid-outage — the only path that bakes blocked). Honest, present, and
-  // self-healing: WarmingRetry re-renders until a revalidation lands.
+  // No bundle at all. The build now REFUSES to bake this state — see
+  // loadForBuild in lib/season-data-server — so reaching it means a path
+  // nobody predicted, and the metadata above marks the page noindex to
+  // bound the damage.
+  //
+  // The claim that used to sit here, that a brand-new project's first
+  // deploy was "the only path that bakes blocked", was false. Every local
+  // build with a failing compute reached it, because the production
+  // snapshot needed a Vercel-only env var and returned null off-platform;
+  // and a real main build reached it too, when openf1 rate-limited five
+  // meetings. It was found during a perf baseline, by accident, weeks
+  // later. WarmingRetry still heals it for a visitor with JS — which is
+  // exactly who was never the problem.
   if (!bundle) {
     return (
       <div className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
