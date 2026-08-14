@@ -131,7 +131,14 @@ export default function MenuOverlay({
       // pure black takeover — allowed here by the token rules
       className="fixed inset-0 z-[150] hidden flex-col bg-black pt-20"
     >
-      <nav className="flex-1 overflow-y-auto px-6 md:px-14">
+      {/* data-lenis-prevent: the menu locks page scroll, LenisProvider
+          answers with lenis.stop(), and a stopped Lenis preventDefaults
+          EVERY wheel event on the document — including ones aimed at this
+          nav. Without it the wheel is dead in here wherever the list
+          overflows, which at 1440x900 it does not, so the bug only
+          surfaces on short windows and phones in landscape. Measured
+          scrollable and unscrollable-by-wheel at 1280x420 and 390x560. */}
+      <nav data-lenis-prevent className="flex-1 overflow-y-auto overscroll-contain px-6 md:px-14">
         <ul>
           {ROUTES.map(({ label, href }, i) => (
             <li key={href} data-menu-item className="overflow-hidden">

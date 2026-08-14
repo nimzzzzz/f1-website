@@ -15,7 +15,7 @@
     "measure:js": "node scripts/measure-js.mjs",
     "measure:load": "node scripts/measure-load.mjs",
     "subset-fonts": "node scripts/subset-fonts.mjs",
-    "verify:picker": "node scripts/verify-picker-scroll.mjs"
+    "verify:scroll": "node scripts/verify-nested-scroll.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",

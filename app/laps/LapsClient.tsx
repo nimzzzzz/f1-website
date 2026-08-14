@@ -224,7 +224,20 @@ export default function LapsClient() {
               tabIndex={0}
               role="list"
               aria-label="All lap times"
-              className="mt-6 max-h-[60vh] overflow-y-auto pr-2 [scrollbar-width:thin]"
+              // data-lenis-prevent: without it the wheel over this list
+              // scrolled the PAGE and left the list where it was. Lenis is
+              // running here — nothing is locked — and its default
+              // allowNestedScroll:false makes it claim every wheel event
+              // for the page.
+              //
+              // The global option is on now (see LenisProvider) and fixes
+              // this on its own. The attribute stays because it is
+              // deterministic where the option is a heuristic, and because
+              // this class of bug has already shipped twice.
+              // overscroll-contain keeps the native scroll from chaining to
+              // the page at the ends.
+              className="mt-6 max-h-[60vh] overflow-y-auto overscroll-contain pr-2 [scrollbar-width:thin]"
+              data-lenis-prevent
             >
                 {filteredLaps.slice(0, 200).map((lap) => {
                   const driver = driverMap.get(lap.driver_number)
