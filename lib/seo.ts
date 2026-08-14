@@ -62,6 +62,36 @@ export function routeMeta(opts: {
   }
 }
 
+/**
+ * Metadata for a route rendering WITHOUT its season bundle.
+ *
+ * Two things go wrong when a page bakes data-less, and only one of them
+ * is visible. The visible one is the warming-up copy. The invisible one
+ * is that generateMetadata used to `return {}`, so the page inherited the
+ * root layout's canonical — every driver and team page declaring the
+ * HOMEPAGE as its canonical, which reads to a crawler as "these 33 pages
+ * are duplicates of /". ISR heals the copy on the next revalidation; it
+ * cannot un-tell a crawler that already read the tag.
+ *
+ * So a degraded page states two things instead: don't index this, and if
+ * you index it anyway, THIS is its address. follow stays true because the
+ * links out of it are still good.
+ *
+ * lib/season-data-server now refuses to build rather than emit this state
+ * at all. This is the belt to that brace — if a blocked state ever
+ * reaches a page by a path nobody predicted, it must not carry canonical
+ * damage with it.
+ */
+export function degradedMeta(path: string, title: string): Metadata {
+  const url = canonical(path)
+  return {
+    title,
+    alternates: { canonical: url },
+    robots: { index: false, follow: true },
+    openGraph: { title: `${title} — ${SITE_NAME}`, url, siteName: SITE_NAME, type: 'website' },
+  }
+}
+
 // THE TELEMETRY ROUTES ARE DELIBERATELY NOT INDEXED.
 //
 // laps, positions, pit-stops, stints, weather and race-control are session

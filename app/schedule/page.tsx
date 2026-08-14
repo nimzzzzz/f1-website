@@ -9,12 +9,24 @@ import { SITE_URL } from '@/lib/seo'
 // Server shell so this route can carry metadata: a 'use client' module
 // cannot export it. The page itself is unchanged — it moved into
 // ScheduleClient and is rendered here untouched.
-export const metadata: Metadata = routeMeta({
+const META = {
   path: 'schedule',
   title: 'THE CALENDAR',
   description:
     "All 23 scored rounds of the 2026 season, the two that were cancelled, and every session time for the weekend ahead.",
-})
+} as const
+
+// Metadata is GENERATED rather than static so it can see whether this
+// page has its bundle. A data-less render is still a real URL with a
+// correct canonical, but it is not something a search engine should keep
+// — see degradedMeta in lib/seo. lib/season-data-server refuses to build
+// in that state at all now; this is the second line of defence, and it
+// costs nothing because the snapshot is already memoised for the render
+// below.
+export async function generateMetadata(): Promise<Metadata> {
+  const snap = await buildSeasonSnapshot()
+  return routeMeta({ ...META, noindex: snap.blocked })
+}
 
 // SportsEvent per round, built on the server from the same bundle the page
 // renders — so the markup cannot disagree with what a visitor sees.

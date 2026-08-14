@@ -5,12 +5,24 @@ import { routeMeta } from '@/lib/seo'
 
 // Search and share copy for this route. Written as the first words
 // anyone sees in a result or a shared link, in the site's own register.
-export const metadata: Metadata = routeMeta({
+const META = {
   path: 'standings',
   title: 'STANDINGS',
   description:
     "Both championships, current. Every driver and every constructor in order, with the points gap between them.",
-})
+} as const
+
+// Metadata is GENERATED rather than static so it can see whether this
+// page has its bundle. A data-less render is still a real URL with a
+// correct canonical, but it is not something a search engine should keep
+// — see degradedMeta in lib/seo. lib/season-data-server refuses to build
+// in that state at all now; this is the second line of defence, and it
+// costs nothing because the snapshot is already memoised for the render
+// below.
+export async function generateMetadata(): Promise<Metadata> {
+  const snap = await buildSeasonSnapshot()
+  return routeMeta({ ...META, noindex: snap.blocked })
+}
 
 
 // STATIC with ISR — see the note on app/page.tsx. This route was

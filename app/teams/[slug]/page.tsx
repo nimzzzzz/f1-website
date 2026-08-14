@@ -1,10 +1,10 @@
 import { Suspense } from 'react'
 import { notFound, redirect } from 'next/navigation'
 import type { Metadata } from 'next'
-import { routeMeta } from '@/lib/seo'
+import { routeMeta, degradedMeta } from '@/lib/seo'
 import { buildSeasonSnapshot } from '@/lib/season-data-server'
 import { toTeamMachine } from '@/lib/season-view'
-import { teamToSlug } from '@/lib/team-data'
+import { teamToSlug, slugToTeam } from '@/lib/team-data'
 import { teamFacts } from '@/lib/team-facts'
 import { canonicalTeamSlug } from '@/lib/known-slugs'
 import { resolveTeamParams } from '@/lib/static-params'
@@ -37,9 +37,13 @@ export async function generateMetadata(
 ): Promise<Metadata> {
   const params = await props.params;
   const snap = await buildSeasonSnapshot()
-  if (snap.blocked) return {}
+  // See the driver route: {} inherited the homepage canonical, and the
+  // not-in-bundle path is reachable whenever a page came from the
+  // committed roster rather than the standings.
+  const fallbackTitle = (slugToTeam(params.slug) ?? params.slug).toUpperCase()
+  if (snap.blocked) return degradedMeta(`teams/${params.slug}`, fallbackTitle)
   const team = snap.teamStandings.find((t) => teamToSlug(t.teamName) === params.slug)
-  if (!team) return {}
+  if (!team) return degradedMeta(`teams/${params.slug}`, fallbackTitle)
   const ord = (n: number) => {
     const su = ['th', 'st', 'nd', 'rd']
     const v = n % 100

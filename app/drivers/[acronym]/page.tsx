@@ -1,7 +1,7 @@
 import { Suspense } from 'react'
 import { notFound, redirect } from 'next/navigation'
 import type { Metadata } from 'next'
-import { routeMeta } from '@/lib/seo'
+import { routeMeta, degradedMeta } from '@/lib/seo'
 import { buildSeasonSnapshot } from '@/lib/season-data-server'
 import { toDriverSeason } from '@/lib/season-view'
 import { canonicalDriverSlug } from '@/lib/known-slugs'
@@ -37,11 +37,15 @@ export async function generateMetadata(
 ): Promise<Metadata> {
   const params = await props.params;
   const snap = await buildSeasonSnapshot()
-  if (snap.blocked) return {}
-  const me = snap.driverStandings.find(
-    (d) => d.nameAcronym === params.acronym.toUpperCase()
-  )
-  if (!me) return {}
+  const acronym = params.acronym.toUpperCase()
+  // Both degraded paths carry their OWN canonical. Returning {} let the
+  // root layout's canonical through, which pointed every one of these
+  // pages at the homepage. The second path is not hypothetical: pages
+  // generated from the committed roster exist before the bundle knows
+  // about that driver, so `!me` is reachable on a perfectly healthy build.
+  if (snap.blocked) return degradedMeta(`drivers/${params.acronym}`, acronym)
+  const me = snap.driverStandings.find((d) => d.nameAcronym === acronym)
+  if (!me) return degradedMeta(`drivers/${params.acronym}`, acronym)
   // Built from the bundle, so it stays current: the description moves
   // with the driver's championship position and points instead of
   // freezing whatever was true the day it was written. The title omits

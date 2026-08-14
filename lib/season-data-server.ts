@@ -487,7 +487,16 @@ async function computeSeasonData(): Promise<SeasonBundle> {
 // so a deploy can never bake the blocked placeholder unless this is the
 // project's first-ever deploy (no production URL to fall back to).
 async function fetchProductionSnapshot(): Promise<SeasonBundle | null> {
-  const host = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  // NEXT_PUBLIC_SITE_URL is accepted as a second source so a LOCAL build
+  // behaves like a Vercel one. Without it this function returned null on
+  // line one off-platform, which meant the entire fallback was inert on
+  // the machine where builds are actually watched: a poisoned local build
+  // baked the warming state while the identical failure on Vercel healed
+  // itself from production. That mismatch is why this went unseen — the
+  // one environment that could show the bug was the one where the safety
+  // net did not exist.
+  const explicit = process.env.NEXT_PUBLIC_SITE_URL?.replace(/^https?:\/\//, '').replace(/\/$/, '')
+  const host = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? explicit
   if (!host) return null
   try {
     const res = await fetch(`https://${host}/api/season-data`, {
@@ -596,13 +605,49 @@ const cachedCompute = unstable_cache(computeSeasonData, ['season-bundle-v1'], {
 // build-time compute fails.
 let buildMemo: Promise<SeasonBundle | { blocked: true }> | null = null
 
-/** Build-time only: a failed compute degrades to production, never throws. */
+/**
+ * Build-time only: a failed compute degrades to the live production
+ * snapshot, and REFUSES TO BUILD if that is unavailable too.
+ *
+ * It used to return { blocked: true } here, which shipped. A build that
+ * bakes the blocked state produces static HTML that says "STANDINGS DATA
+ * IS WARMING UP — HOLD ON A MOMENT" and, far worse, hands all 22 driver
+ * and 11 team pages the HOMEPAGE as their canonical, because their
+ * generateMetadata returned {} and the root layout's canonical was
+ * inherited. That tells a crawler those 33 pages are duplicates of /.
+ *
+ * The asymmetry is the argument. A rate-limited openf1 blocking a deploy
+ * is loud, immediate and retryable — re-run the build. A deploy that
+ * quietly deindexes a third of the site is silent, and ISR cannot undo it
+ * because ISR heals the page, not the crawl that already read it.
+ *
+ * Same shape as resolveSlugs in lib/static-params: prefer live, fall back
+ * to a known-good source, and throw rather than ship a plausible-looking
+ * lie.
+ */
 async function loadForBuild(): Promise<SeasonBundle | { blocked: true }> {
+  let why: string
   try {
     return await cachedCompute()
-  } catch {
-    return (await fetchProductionSnapshot()) ?? { blocked: true }
+  } catch (err) {
+    why = err instanceof Error ? err.message : String(err)
   }
+
+  const fromProd = await fetchProductionSnapshot()
+  if (fromProd) return fromProd
+
+  const host = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.NEXT_PUBLIC_SITE_URL
+  throw new Error(
+    `[season-data] refusing to build. The season compute failed (${why}) and ` +
+      `the production-snapshot fallback could not supply a bundle either ` +
+      `(${host ? `tried https://${String(host).replace(/^https?:\/\//, '')}/api/season-data` : 'no VERCEL_PROJECT_PRODUCTION_URL or NEXT_PUBLIC_SITE_URL set, so no fallback was attempted'}). ` +
+      `Building now would bake the warming-up state into static HTML and give ` +
+      `all 33 driver and team pages the homepage as their canonical — a ` +
+      `silent, semi-permanent deindexing that ISR cannot repair. ` +
+      `Most often this is openf1 rate-limiting the build: wait and re-run. ` +
+      `If it persists, check that the fallback URL is not answering with ` +
+      `challenge HTML, an SSO redirect or a blocked placeholder of its own.`
+  )
 }
 
 async function loadSeasonSnapshot(): Promise<SeasonBundle | { blocked: true }> {
