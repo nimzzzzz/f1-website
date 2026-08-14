@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Session } from '@/lib/openf1'
 
@@ -25,38 +25,56 @@ function formatSessionDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase()
 }
 
-// The session picker in the design language: the selected session IS the
-// page title (Bebas button), and the list opens as a compact overlay in
-// menu grammar — mono, dim, hover accent.
-//
-// THE PANEL IS PORTALLED TO document.body, and that is load-bearing.
-//
-// Rendered in place, the panel was unreadable on every page that uses it:
-// page content painted straight through it (measured on /results — the
-// podium surnames drawing over the session rows). The cause is NOT a
-// missing background; the surface class resolves correctly to
-// rgba(10,10,10,.98) and is present in the shipped CSS. It is paint order.
-// The site's reveal utilities (FadeUp / ClipReveal) leave a GSAP transform
-// on their wrapper, and a transform creates a STACKING CONTEXT. On
-// /results both the header and the podium block sit in their own
-// transformed reveal wrappers, siblings with z-index:auto — so they paint
-// in DOM ORDER, and the podium, being later, wins. No z-index the panel
-// could carry would help: z-[140] only ever competed inside the header's
-// own trapped subtree.
-//
-// This is the third appearance of this landmine in this codebase (an
-// animation-created stacking context trapped the intro under the top bar;
-// a GSAP transform stacked with an inline one on the page-transition
-// panel). Portalling to the body root is the only fix that cannot be
-// re-broken by a reveal wrapper being added or moved later.
-//
-// Positioning is therefore `fixed`, measured from the trigger, and body
-// scroll is locked while open — which also keeps the panel anchored to its
-// trigger (LenisProvider watches body[style] and stops its virtual scroll
-// when overflow goes hidden, so no explicit Lenis call is needed here).
+/**
+ * Broadcast shorthand. A weekend has at most five sessions and the world
+ * already calls them FP1, SQ, SPR, QUALI and RACE — spelling out "PRACTICE
+ * 1" costs the row the horizontal space it needs to fit a phone.
+ */
+function shortName(name: string): string {
+  const n = name.toUpperCase()
+  const fp = n.match(/^PRACTICE\s*(\d)$/)
+  if (fp) return `FP${fp[1]}`
+  if (n === 'SPRINT QUALIFYING') return 'SQ'
+  if (n === 'SPRINT') return 'SPR'
+  if (n === 'QUALIFYING') return 'QUALI'
+  return n
+}
 
-const PANEL_GAP = 20 // px below the trigger
+// TWO CONTROLS, BECAUSE THERE ARE TWO QUESTIONS.
+//
+// This was one listbox holding every session of every round: measured at
+// 131 options across 27 groups, 540x621px — 69% of the viewport on desktop
+// and 70% on a phone. Choosing "the race at Zandvoort" meant scrolling a
+// list of a hundred-odd rows to find a weekend, then a session inside it.
+// That is two different questions wearing one control, and the big one
+// (which weekend, 27 answers) was hiding the small one (which session, 3-5).
+//
+// So: the ROUND is the page title and opens a panel of rounds only. The
+// SESSION is an inline row under it, always visible, one tap, no panel —
+// which is how a broadcast lower-third does it, and it fits because a
+// weekend never has more than five sessions.
+//
+// WHAT THE PANEL MUST STILL SATISFY. It is portalled to document.body and
+// that is load-bearing, not stylistic. The site's reveal utilities
+// (FadeUp / ClipReveal) leave a GSAP transform on their wrapper, and a
+// transform creates a STACKING CONTEXT — so a panel rendered in place
+// paints under later siblings no matter what z-index it carries. This was
+// measured on /results, where the podium surnames drew straight through
+// the session rows. Portalling to the body root is the only fix a future
+// reveal wrapper cannot re-break.
+//
+// Portalling forces `fixed` positioning measured from the trigger, which
+// is only correct while the trigger does not move. Scroll is therefore
+// locked while open AND the panel re-measures on scroll and resize. The
+// lock alone was in fact holding — wheel, PageDown, End and a real touch
+// drag were all measured as blocked, on desktop and mobile — but it does
+// not survive a programmatic window.scrollTo, which the router and any
+// scrollIntoView can produce. Re-measuring costs nothing and removes the
+// dependency on the lock being perfect.
+
+const PANEL_GAP = 12
 const VIEWPORT_PAD = 16
+const PANEL_WIDTH = 340
 
 export default function SessionPicker({ sessions, selectedKey, onSelect, label }: Props) {
   const [open, setOpen] = useState(false)
@@ -70,35 +88,61 @@ export default function SessionPicker({ sessions, selectedKey, onSelect, label }
 
   const selected = sessions.find((s) => s.session_key === selectedKey) ?? null
 
-  // Group sessions by meeting (existing grouping logic preserved)
-  const grouped = sessions.reduce<Record<number, Session[]>>((acc, s) => {
-    if (!acc[s.meeting_key]) acc[s.meeting_key] = []
-    acc[s.meeting_key].push(s)
-    return acc
-  }, {})
-  const sortedMeetingKeys = Object.keys(grouped)
-    .map(Number)
-    .sort((a, b) => {
-      const aFirst = grouped[a][0]
-      const bFirst = grouped[b][0]
-      return new Date(bFirst.date_start).getTime() - new Date(aFirst.date_start).getTime()
-    })
-  const flatKeys = sortedMeetingKeys.flatMap((mk) =>
-    [...grouped[mk]]
-      .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime())
-      .map((s) => s.session_key)
+  // ── rounds, newest first; sessions within a round in running order ──
+  const rounds = useMemo(() => {
+    const byMeeting = new Map<number, Session[]>()
+    for (const s of sessions) {
+      const list = byMeeting.get(s.meeting_key)
+      if (list) list.push(s)
+      else byMeeting.set(s.meeting_key, [s])
+    }
+    return [...byMeeting.entries()]
+      .map(([meetingKey, list]) => {
+        const ordered = [...list].sort(
+          (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime()
+        )
+        return { meetingKey, sessions: ordered, first: ordered[0] }
+      })
+      .sort((a, b) => new Date(b.first.date_start).getTime() - new Date(a.first.date_start).getTime())
+  }, [sessions])
+
+  const currentRound = useMemo(
+    () => rounds.find((r) => r.sessions.some((s) => s.session_key === selectedKey)) ?? rounds[0] ?? null,
+    [rounds, selectedKey]
+  )
+
+  /**
+   * Changing round keeps the session TYPE where it exists. Someone
+   * comparing the race at Spa with the race at Monza should not be handed
+   * FP1 for their trouble; falling back to the race, then to the last
+   * session, covers a test weekend that has neither.
+   */
+  const pickWithinRound = useCallback(
+    (round: { sessions: Session[] }) => {
+      const want = selected?.session_name?.toUpperCase()
+      const same = want ? round.sessions.find((s) => s.session_name.toUpperCase() === want) : undefined
+      const race = round.sessions.find((s) => s.session_name.toUpperCase() === 'RACE')
+      return (same ?? race ?? round.sessions[round.sessions.length - 1])?.session_key ?? null
+    },
+    [selected]
   )
 
   const place = useCallback(() => {
     const t = triggerRef.current
     if (!t) return
     const r = t.getBoundingClientRect()
-    const top = r.bottom + PANEL_GAP
+    const width = Math.min(PANEL_WIDTH, window.innerWidth - VIEWPORT_PAD * 2)
+    const below = window.innerHeight - r.bottom - PANEL_GAP - VIEWPORT_PAD
+    const above = r.top - PANEL_GAP - VIEWPORT_PAD
+    // Flip above the trigger when there is materially more room there —
+    // a trigger low in the viewport would otherwise get a panel squeezed
+    // into a sliver.
+    const flip = below < 220 && above > below
     setRect({
-      top,
-      left: Math.max(VIEWPORT_PAD, Math.min(r.left, window.innerWidth - VIEWPORT_PAD - 320)),
-      width: Math.min(540, window.innerWidth - VIEWPORT_PAD * 2),
-      maxH: Math.max(180, window.innerHeight - top - VIEWPORT_PAD),
+      top: flip ? Math.max(VIEWPORT_PAD, r.top - PANEL_GAP - Math.min(above, 420)) : r.bottom + PANEL_GAP,
+      left: Math.max(VIEWPORT_PAD, Math.min(r.left, window.innerWidth - VIEWPORT_PAD - width)),
+      width,
+      maxH: Math.max(180, Math.min(420, flip ? above : below)),
     })
   }, [])
 
@@ -120,10 +164,9 @@ export default function SessionPicker({ sessions, selectedKey, onSelect, label }
         close()
         return
       }
+      const items = [...(panelRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])]
+      if (!items.length) return
       if (e.key === 'Tab') {
-        // keep focus inside the open panel
-        const items = panelRef.current?.querySelectorAll<HTMLElement>('[role="option"]')
-        if (!items || items.length === 0) return
         const first = items[0]
         const last = items[items.length - 1]
         if (!e.shiftKey && document.activeElement === last) {
@@ -137,11 +180,15 @@ export default function SessionPicker({ sessions, selectedKey, onSelect, label }
       }
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault()
-        const items = [...(panelRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])]
-        if (!items.length) return
         const i = items.indexOf(document.activeElement as HTMLElement)
-        const next = e.key === 'ArrowDown' ? (i + 1) % items.length : (i - 1 + items.length) % items.length
-        items[next < 0 ? 0 : next].focus()
+        const next =
+          e.key === 'ArrowDown' ? (i + 1) % items.length : (i - 1 + items.length) % items.length
+        items[next < 0 ? 0 : next]?.focus()
+        return
+      }
+      if (e.key === 'Home' || e.key === 'End') {
+        e.preventDefault()
+        ;(e.key === 'Home' ? items[0] : items[items.length - 1])?.focus()
       }
     }
     const onPointer = (e: MouseEvent) => {
@@ -153,10 +200,23 @@ export default function SessionPicker({ sessions, selectedKey, onSelect, label }
     window.addEventListener('keydown', onKey)
     window.addEventListener('mousedown', onPointer)
     window.addEventListener('resize', place)
+    // capture:true so a scroll on ANY ancestor re-anchors the panel — but
+    // NOT the panel's own overflow scroll. Re-placing on that produced a
+    // new rect object every time the list scrolled, which re-ran the
+    // open-focus effect and yanked focus back to the current round: End
+    // and Home appeared to do nothing, and arrow navigation would have
+    // snapped back the moment it scrolled the list.
+    const onScroll = (e: Event) => {
+      const t = e.target as Node | null
+      if (t && panelRef.current && (t === panelRef.current || panelRef.current.contains(t))) return
+      place()
+    }
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true })
     return () => {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('mousedown', onPointer)
       window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', onScroll, { capture: true })
     }
   }, [open, close, place])
 
@@ -171,12 +231,20 @@ export default function SessionPicker({ sessions, selectedKey, onSelect, label }
     }
   }, [open])
 
-  // Move focus to the selected (or first) option when the panel opens.
+  // Focus the current round ONCE, when the panel opens. Keyed on a ref
+  // rather than on `rect` because rect changes on every re-anchor, and
+  // re-running this would fight the user for the focus ring.
+  const focusedOnOpen = useRef(false)
   useEffect(() => {
-    if (!open || !rect) return
+    if (!open) {
+      focusedOnOpen.current = false
+      return
+    }
+    if (focusedOnOpen.current || !rect) return
     const items = panelRef.current?.querySelectorAll<HTMLElement>('[role="option"]')
     if (!items?.length) return
-    const idx = Math.max(0, flatKeys.indexOf(selectedKey ?? -1))
+    focusedOnOpen.current = true
+    const idx = Math.max(0, rounds.findIndex((r) => r.meetingKey === currentRound?.meetingKey))
     items[Math.min(idx, items.length - 1)]?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, rect])
@@ -187,64 +255,53 @@ export default function SessionPicker({ sessions, selectedKey, onSelect, label }
         ref={panelRef}
         id={listboxId}
         role="listbox"
-        aria-label={label ? label.toUpperCase() : 'Select session'}
-        // z-[145] sits above all page content but below the menu takeover
-        // (150) and the top bar (160), so site chrome stays reachable.
-        // Portalled to <body>, so no page stacking context can trap it.
+        aria-label="Select round"
+        // z-[145] sits above page content but below the menu takeover (150)
+        // and the top bar (160), so site chrome stays reachable.
         className="fixed z-[145] overflow-y-auto overscroll-contain border border-[var(--line)] bg-[var(--surface)] py-2 shadow-[0_24px_60px_-12px_rgba(0,0,0,0.85)]"
         style={{ top: rect.top, left: rect.left, width: rect.width, maxHeight: rect.maxH }}
       >
-        {sortedMeetingKeys.map((meetingKey) => {
-          const meetingSessions = [...grouped[meetingKey]].sort(
-            (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime()
-          )
-          const first = meetingSessions[0]
+        {rounds.map((round) => {
+          const isCurrent = round.meetingKey === currentRound?.meetingKey
+          const liveHere = round.sessions.some((s) => getSessionStatus(s) === 'live')
           return (
-            <div key={meetingKey} className="border-b border-[var(--line)] py-2 last:border-b-0">
-              <p className="label-mono px-5 py-2 text-[var(--text-dim)] opacity-70">
-                {first.location.toUpperCase()} — {first.country_name.toUpperCase()}
-              </p>
-              {meetingSessions.map((s) => {
-                const status = getSessionStatus(s)
-                const isSelected = s.session_key === selectedKey
-                return (
-                  <button
-                    key={s.session_key}
-                    type="button"
-                    role="option"
-                    aria-selected={isSelected}
-                    onClick={() => {
-                      onSelect(s.session_key)
-                      close()
-                    }}
-                    className={`label-mono flex w-full items-center justify-between gap-6 px-5 py-2.5 text-left transition-[color,transform] duration-200 hover:translate-x-1 hover:text-[var(--accent)] motion-reduce:transition-none ${
-                      isSelected ? 'text-[var(--text)]' : 'text-[var(--text-dim)]'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2.5">
-                      {isSelected && (
-                        <span aria-hidden className="inline-block h-[2px] w-3 bg-[var(--accent)]" />
-                      )}
-                      {s.session_name.toUpperCase()}
-                    </span>
-                    <span className="flex shrink-0 items-center gap-3 tabular-nums">
-                      {formatSessionDate(s.date_start)}
-                      {status === 'live' && (
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none" />
-                      )}
-                      {status === 'upcoming' && <span className="opacity-60">SOON</span>}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
+            <button
+              key={round.meetingKey}
+              type="button"
+              role="option"
+              aria-selected={isCurrent}
+              onClick={() => {
+                const next = pickWithinRound(round)
+                if (next !== null && next !== selectedKey) onSelect(next)
+                close()
+              }}
+              className={`label-mono flex w-full items-center justify-between gap-4 px-5 py-2.5 text-left transition-[color,transform] duration-200 hover:translate-x-1 hover:text-[var(--accent-text)] motion-reduce:transition-none ${
+                isCurrent ? 'text-[var(--text)]' : 'text-[var(--text-dim)]'
+              }`}
+            >
+              <span className="flex min-w-0 items-center gap-2.5">
+                {isCurrent && <span aria-hidden className="inline-block h-[2px] w-3 shrink-0 bg-[var(--accent)]" />}
+                <span className="truncate">{round.first.location.toUpperCase()}</span>
+              </span>
+              <span className="flex shrink-0 items-center gap-2.5 tabular-nums">
+                {formatSessionDate(round.first.date_start)}
+                {liveHere && (
+                  <span
+                    aria-hidden
+                    className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none"
+                  />
+                )}
+              </span>
+            </button>
           )
         })}
       </div>
     ) : null
 
+  const roundSessions = currentRound?.sessions ?? []
+
   return (
-    <div className="relative">
+    <div>
       {label && <p className="label-mono mb-2 text-[var(--text-dim)]">{label.toUpperCase()}</p>}
 
       <button
@@ -260,21 +317,19 @@ export default function SessionPicker({ sessions, selectedKey, onSelect, label }
           className="uppercase leading-[0.9] text-[var(--text)]"
           style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(2rem, 4.6vw, 4rem)' }}
         >
-          {selected ? `${selected.location} — ${selected.session_name}` : 'Select session'}
+          {currentRound ? currentRound.first.location : 'Select round'}
         </span>
         <span className="flex items-center gap-3">
-        {/* The trigger no longer carries its own LIVE badge. It was a
-            free-running CSS pulse driven purely by the calendar, so it read
-            identically whether data was arriving or the feed had been dead
-            for an hour — the exact "says LIVE while frozen" claim the
-            polling work exists to remove. LiveBeat, on the metadata line
-            directly below, is now the single indicator and is wired to
-            actual data flow. The per-option dots in the list below stay:
-            there, "this session is running" is a true calendar fact and it
-            is precisely what you are choosing between. */}
+          {/* The trigger carries no LIVE badge: it was a free-running CSS
+              pulse driven purely by the calendar, so it read identically
+              whether data was arriving or the feed had been dead for an
+              hour. LiveBeat on the metadata line is the single indicator
+              wired to actual data flow. The per-option dots stay — there,
+              "this session is running" is a true calendar fact and it is
+              precisely what you are choosing between. */}
           <span
             aria-hidden
-            className={`label-mono inline-block text-[var(--text-dim)] transition-transform duration-200 group-hover:text-[var(--accent)] motion-reduce:transition-none ${
+            className={`label-mono inline-block text-[var(--text-dim)] transition-transform duration-200 group-hover:text-[var(--accent-text)] motion-reduce:transition-none ${
               open ? 'rotate-180' : ''
             }`}
           >
@@ -282,6 +337,67 @@ export default function SessionPicker({ sessions, selectedKey, onSelect, label }
           </span>
         </span>
       </button>
+
+      {/* THE SESSION ROW. Always visible, no panel, one tap.
+          radiogroup rather than a listbox: this is a visible set of
+          mutually exclusive choices, all of them on screen, which is what
+          radio semantics describe. Roving tabindex keeps it one Tab stop
+          with arrows moving between sessions — the same contract the
+          drivers gallery arrows use. */}
+      {roundSessions.length > 0 && (
+        <div
+          role="radiogroup"
+          aria-label={label ? `${label.toUpperCase()} SESSION` : 'Select session'}
+          className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-2"
+          onKeyDown={(e) => {
+            if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
+            e.preventDefault()
+            const i = roundSessions.findIndex((s) => s.session_key === selectedKey)
+            const n = roundSessions.length
+            const next = e.key === 'ArrowRight' ? (i + 1) % n : (i - 1 + n) % n
+            const target = roundSessions[next < 0 ? 0 : next]
+            if (target) {
+              onSelect(target.session_key)
+              // Focus follows selection, which is what radiogroup arrow
+              // navigation is specified to do.
+              requestAnimationFrame(() => {
+                const el = document.getElementById(`ses-${target.session_key}`)
+                el?.focus()
+              })
+            }
+          }}
+        >
+          {roundSessions.map((s) => {
+            const isSelected = s.session_key === selectedKey
+            const status = getSessionStatus(s)
+            return (
+              <button
+                key={s.session_key}
+                id={`ses-${s.session_key}`}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
+                tabIndex={isSelected ? 0 : -1}
+                onClick={() => onSelect(s.session_key)}
+                className={`label-mono tap-44 inline-flex items-center gap-2 border px-3.5 py-2 transition-colors duration-200 motion-reduce:transition-none ${
+                  isSelected
+                    ? 'border-[var(--accent)] text-[var(--text)]'
+                    : 'border-[var(--line)] text-[var(--text-dim)] hover:border-[var(--text-dim)] hover:text-[var(--text)]'
+                }`}
+              >
+                {shortName(s.session_name)}
+                {status === 'live' && (
+                  <span
+                    aria-hidden
+                    className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none"
+                  />
+                )}
+                {status === 'live' && <span className="sr-only">(live)</span>}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {mounted && panel ? createPortal(panel, document.body) : null}
     </div>
