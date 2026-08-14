@@ -2,16 +2,44 @@ import type { Metadata } from 'next'
 import { SITE_NAME, SITE_URL, canonical } from '@/lib/seo'
 import JsonLd from '@/components/seo/JsonLd'
 import { Bebas_Neue, Space_Grotesk, Syne } from 'next/font/google'
-import { GeistSans } from 'geist/font/sans'
-import { GeistMono } from 'geist/font/mono'
+import localFont from 'next/font/local'
 import './globals.css'
 import SessionsPreloader from '@/components/SessionsPreloader'
 import LenisProvider from '@/components/motion/LenisProvider'
 import TransitionProvider from '@/components/motion/TransitionProvider'
 import Shell from '@/components/shell/Shell'
 
-// Brand fonts (LIGHTS OUT). Geist ships via the official `geist` package
-// because next/font/google in Next 14 doesn't carry the Geist family yet.
+// GEIST, SUBSET AND STATIC — 137.7 KB to 48.1 KB on every route.
+//
+// The `geist` package serves variable files carrying a 100-900 weight
+// axis and the full upstream glyph set. A text-node walk across twelve
+// routes found exactly one weight in use, 400, for both families, so the
+// axis was dead payload and most of the glyphs with it.
+//
+// What this costs: the axis is gone, so a future font-weight:600 on Geist
+// synthesises rather than renders. That is the deliberate half of the
+// trade. The dangerous half is glyph coverage — a subset that drops a
+// character does not error, it quietly falls back to another face — and
+// that is what tests/font-subset.test.ts exists to catch. Regenerate with
+// `npm run subset-fonts` after any change to the grid, the calendar or UI
+// copy; the test fails if the files and the repertoire disagree.
+//
+// The CSS variable names are unchanged, so globals.css does not move.
+const geistSans = localFont({
+  src: './fonts/Geist-Regular.subset.woff2',
+  variable: '--font-geist-sans',
+  weight: '400',
+  display: 'swap',
+})
+
+const geistMono = localFont({
+  src: './fonts/GeistMono-Regular.subset.woff2',
+  variable: '--font-geist-mono',
+  weight: '400',
+  display: 'swap',
+})
+
+// Brand fonts (LIGHTS OUT).
 // Outfit is gone: it was loaded site-wide (7 weights) purely for the old
 // /teams/[slug] page, the last pre-redesign route — replaced by THE MACHINE.
 const bebasNeue = Bebas_Neue({
@@ -90,7 +118,7 @@ export default function RootLayout({
     // top instantly; Next 16 no longer does that unless this attribute opts
     // in. Without it, every route change would SMOOTH-SCROLL to the top —
     // visibly wrong on a site that already runs Lenis for its own scrolling.
-    <html lang="en" data-scroll-behavior="smooth" className={`${bebasNeue.variable} ${spaceGrotesk.variable} ${syne.variable} ${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="en" data-scroll-behavior="smooth" className={`${bebasNeue.variable} ${spaceGrotesk.variable} ${syne.variable} ${geistSans.variable} ${geistMono.variable}`}>
       {/* THE INTRO'S ESCAPE HATCH — two independent routes, because the
           two failure modes are different. <noscript> covers scripts being
           disabled outright. The inline failsafe covers hydration FAILING:
