@@ -6,11 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "fetch-media": "tsx scripts/fetch-f1-media.ts",
+    "fetch-media": "tsx scripts/fetch-f1-media.ts && node scripts/dedupe-media.mjs",
     "fetch-circuit-photos": "tsx scripts/fetch-circuit-photos.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "sync-roster": "tsx scripts/sync-roster.ts"
+    "sync-roster": "tsx scripts/sync-roster.ts",
+    "dedupe-media": "node scripts/dedupe-media.mjs",
+    "measure:js": "node scripts/measure-js.mjs",
+    "measure:load": "node scripts/measure-load.mjs",
+    "subset-fonts": "node scripts/subset-fonts.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
@@ -26,11 +30,17 @@
     "node": ">=22.0.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@types/fontkit": "^2.0.9",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "autoprefixer": "^10.4.19",
+    "axe-core": "^4.13.0",
+    "fontkit": "^2.0.4",
+    "playwright": "^1.62.1",
     "postcss": "^8.4.38",
+    "subset-font": "^2.5.0",
     "tailwindcss": "^3.4.4",
     "tsx": "^4.23.1",
     "typescript": "^5",
