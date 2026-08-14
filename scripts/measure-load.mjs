@@ -73,7 +73,10 @@ for (const route of ROUTES) {
   // settle window counts the intro and gallery work that starts after load
   // without waiting on a quiet that will not come.
   await page.goto(`${BASE}${route}`, { waitUntil: 'load', timeout: 60_000 })
-  await page.waitForTimeout(4000)
+  // 8s, not 4: Syne now loads lazily where it is used, and a 4s window
+  // caught some routes before it arrived — which read as a saving that was
+  // really just an unfinished measurement.
+  await page.waitForTimeout(8000)
 
   const totals = {}
   let total = 0

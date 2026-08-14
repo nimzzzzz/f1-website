@@ -53,6 +53,14 @@ const GRAIN_URL =
 // Kept single-line, no self-closing slashes, no style attribute: the string
 // must survive browser HTML re-serialization byte-identical, or hydration
 // treats it as a mismatch and recreates the element (restarting playback).
+// fetchpriority="high" was REMOVED on measurement, not on taste. Under
+// Chrome's slow-3G and fast-3G profiles at 4x CPU, three runs each, the
+// first composited frame landed within 3ms of the same time with and
+// without it (slow-3G 15051 vs 15049ms; fast-3G 3814 vs 3817ms) and the
+// 2500ms watchdog stayed quiet in all twelve runs. FCP was consistently
+// ~70-110ms EARLIER without it. The hint was buying nothing for the video
+// and costing the rest of the page a little.
+//
 // media="(prefers-reduced-motion: no-preference)" is what actually SPARES
 // a reduced-motion user the download. motion-reduce:hidden only hides the
 // element, and hiding is a paint-time decision — by the time it applies,
@@ -63,7 +71,7 @@ const GRAIN_URL =
 // and the poster stands alone. A browser that ignores media on <source>
 // simply behaves as it does today, so this cannot regress.
 const VIDEO_HTML =
-  '<video muted autoplay playsinline preload="auto" fetchpriority="high" poster="/intro/poster.jpg" class="h-full w-full object-cover intro-video-poster"><source src="/intro/launch.webm" type="video/webm" media="(prefers-reduced-motion: no-preference)"><source src="/intro/launch.mp4" type="video/mp4" media="(prefers-reduced-motion: no-preference)"></video>'
+  '<video muted autoplay playsinline preload="auto" poster="/intro/poster.jpg" class="h-full w-full object-cover intro-video-poster"><source src="/intro/launch.webm" type="video/webm" media="(prefers-reduced-motion: no-preference)"><source src="/intro/launch.mp4" type="video/mp4" media="(prefers-reduced-motion: no-preference)"></video>'
 
 // memo with stable props: renders exactly once, so React never updates the
 // dangerouslySetInnerHTML node after hydration. Without this, React 18's

@@ -30,13 +30,26 @@ const spaceGrotesk = Space_Grotesk({
   display: 'swap',
 })
 
-// Section headers site-wide (THE FIGHT, LAST TIME OUT, …) — a distinct
-// premium display voice between the mono data labels and Bebas headlines.
+// Section headers (THE FIGHT, LAST TIME OUT, …) — a distinct premium
+// display voice between the mono data labels and Bebas headlines.
+//
+// preload: false is what makes this PER-ROUTE, and it is the whole change.
+// A @font-face is only fetched when an element actually renders in that
+// family, so Syne would have loaded lazily and only where it is used —
+// except the preload link forced the download everywhere regardless. It
+// was arriving on /drivers, /teams, /schedule and /sports-cards, which
+// render zero Syne elements between them, at 33.8 KB a route.
+//
+// The cost is on the eleven routes that DO use it, where the file is now
+// requested after CSS parse rather than in parallel with it. That is
+// already a swap-governed font and it sets 1-3 small labels per route, so
+// the exposure is a brief fallback on a 13.5px header, not on body copy.
 const syne = Syne({
   subsets: ['latin'],
   weight: ['700', '800'],
   variable: '--font-section',
   display: 'swap',
+  preload: false,
 })
 
 export const metadata: Metadata = {
