@@ -256,6 +256,24 @@ export default function SessionPicker({ sessions, selectedKey, onSelect, label }
         id={listboxId}
         role="listbox"
         aria-label="Select round"
+        // data-lenis-prevent is what makes the WHEEL work in here, and it
+        // is not optional decoration.
+        //
+        // Opening the panel locks the page by setting body overflow hidden,
+        // which LenisProvider observes and answers with lenis.stop(). A
+        // STOPPED Lenis does not merely stand aside — its wheel handler
+        // hits `if (this.isStopped || this.isLocked) { preventDefault() }`
+        // and swallows every wheel event on the document, including ones
+        // aimed at an unrelated scroll container. So the panel scrolled by
+        // dragging its scrollbar, by touch, and by keyboard, but not by the
+        // one input most people reach for.
+        //
+        // Lenis checks the composed path for this attribute BEFORE that
+        // stopped-branch and returns early when it finds it, leaving the
+        // browser to scroll the element natively. overscroll-contain below
+        // is what stops that native scroll chaining to the page at the ends
+        // of the list.
+        data-lenis-prevent
         // z-[145] sits above page content but below the menu takeover (150)
         // and the top bar (160), so site chrome stays reachable.
         className="fixed z-[145] overflow-y-auto overscroll-contain border border-[var(--line)] bg-[var(--surface)] py-2 shadow-[0_24px_60px_-12px_rgba(0,0,0,0.85)]"

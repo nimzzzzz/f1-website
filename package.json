@@ -14,7 +14,8 @@
     "dedupe-media": "node scripts/dedupe-media.mjs",
     "measure:js": "node scripts/measure-js.mjs",
     "measure:load": "node scripts/measure-load.mjs",
-    "subset-fonts": "node scripts/subset-fonts.mjs"
+    "subset-fonts": "node scripts/subset-fonts.mjs",
+    "verify:scroll": "node scripts/verify-nested-scroll.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",

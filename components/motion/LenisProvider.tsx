@@ -15,7 +15,23 @@ export default function LenisProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
-    const lenis = new Lenis({ lerp: 0.11 })
+    // allowNestedScroll lets a nested scroll container keep its own wheel
+    // gestures instead of Lenis claiming every one for the page. Default is
+    // false, which is why the lap-times list scrolled the PAGE when you
+    // wheeled over it and never moved itself.
+    //
+    // Taken globally, on measurement: the scroll-driven work was
+    // fingerprinted at five depths on /, /drivers, /drivers/[acronym] and
+    // /teams — transform matrices, opacity and element positions — and came
+    // back byte-identical with the option on. Plain wheel scrolling matched
+    // to within the run-to-run jitter of a lerped scroll (the same build
+    // varies 210/220 on the first sample between runs).
+    //
+    // It fixes the whole CATEGORY, including a container nobody remembers
+    // to annotate. The explicit data-lenis-prevent attributes on the three
+    // known containers stay anyway: they are deterministic where this is a
+    // heuristic, and this bug has now shipped twice.
+    const lenis = new Lenis({ lerp: 0.11, allowNestedScroll: true })
     setLenis(lenis)
     lenis.on('scroll', ScrollTrigger.update)
 
