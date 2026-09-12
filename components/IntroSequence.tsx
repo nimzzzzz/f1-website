@@ -415,7 +415,7 @@ export default function IntroSequence({ onReveal, onDone }: Props) {
             transition={{ delay: 1, duration: 0.4 }}
             onClick={() => handoff('fade')}
             aria-label="Skip intro"
-            className="absolute top-6 right-6 px-3 py-2 text-[11px] tracking-[0.35em] uppercase text-white/40 hover:text-white transition-colors"
+            className="absolute top-6 right-6 px-3 py-2 text-[11px] tracking-[0.35em] uppercase text-white/80 hover:text-white transition-colors"
             style={{ fontFamily: 'var(--font-mono)' }}
           >
             Skip

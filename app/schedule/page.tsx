@@ -6,9 +6,11 @@ import { buildSeasonSnapshot } from '@/lib/season-data-server'
 import { isCancelled } from '@/lib/openf1'
 import { SITE_URL } from '@/lib/seo'
 
-// Server shell so this route can carry metadata: a 'use client' module
-// cannot export it. The page itself is unchanged — it moved into
-// ScheduleClient and is rendered here untouched.
+export const revalidate = 60
+
+// Render the calendar from the same snapshot used by metadata/JSON-LD.
+// The client refreshes it in the background instead of hiding the page
+// behind calendar requests on each visit.
 const META = {
   path: 'schedule',
   title: 'THE CALENDAR',
@@ -74,7 +76,12 @@ export default async function Page() {
   return (
     <>
       {rounds.length > 0 && <JsonLd data={rounds} />}
-      <ScheduleClient />
+      <ScheduleClient initialData={snap.blocked ? null : {
+        meetings: snap.meetings,
+        sessions: snap.sessions,
+        winnersByRound: snap.winnersByRound,
+        renderedAt: Date.now(),
+      }} />
     </>
   )
 }

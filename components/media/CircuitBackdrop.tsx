@@ -6,7 +6,7 @@ import TreatedImage from '@/components/media/TreatedImage'
 
 // The circuit-photo backdrop system, shared by the NOW section and the
 // schedule rounds: the circuit's official hero photo sunk deep into the
-// black — or, when no photo exists (Madring, any future circuit), the
+// black — or, when no photo exists for a future circuit, the
 // carbon line-art icon rendered huge and very faint. Both variants live
 // inside the SAME frame: identical fade overlays, identical grade
 // philosophy, so they read as one design element everywhere.

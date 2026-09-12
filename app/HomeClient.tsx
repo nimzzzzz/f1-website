@@ -1,8 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import ReactDOM from 'react-dom'
-import { motion } from 'framer-motion'
+import dynamic from 'next/dynamic'
+import { createPortal } from 'react-dom'
+import { motion, useReducedMotion } from 'framer-motion'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import type { Meeting, Session } from '@/lib/openf1'
 import { getCachedMeetings, getCachedSessions } from '@/lib/client-cache'
@@ -14,13 +15,16 @@ import {
   isCancelled,
 } from '@/lib/openf1'
 import { useFreshSeasonBundle } from '@/lib/use-season-bundle'
-import IntroSequence, { type RevealMode } from '@/components/IntroSequence'
-import { introMayPlay, consumeIntro } from '@/lib/intro-gate'
+import type { RevealMode } from '@/components/IntroSequence'
+
+const IntroSequence = dynamic(() => import('@/components/IntroSequence'), { ssr: false })
 import NowSection from '@/components/home/NowSection'
 import FightSection, { type FightRow } from '@/components/home/FightSection'
 import LastRaceSection, { type PodiumRow } from '@/components/home/LastRaceSection'
 import SeasonSection from '@/components/home/SeasonSection'
 import HomeFooter from '@/components/home/HomeFooter'
+import PaddockSection from '@/components/home/PaddockSection'
+import RaceToolsSection from '@/components/home/RaceToolsSection'
 
 interface LastRaceData {
   label: string
@@ -35,12 +39,13 @@ function Reveal({ order, state, children }: {
   state: 'hidden' | RevealMode
   children: ReactNode
 }) {
+  const reducedMotion = useReducedMotion()
   return (
     <motion.div
       initial={false}
       animate={state === 'hidden' ? { opacity: 0, y: 24 } : { opacity: 1, y: 0 }}
       transition={
-        state === 'instant'
+        state === 'instant' || reducedMotion
           ? { duration: 0 }
           : { duration: 0.7, delay: order * 0.18, ease: [0.22, 1, 0.36, 1] }
       }
@@ -50,25 +55,9 @@ function Reveal({ order, state, children }: {
   )
 }
 
-// react-dom's float preload API (present in the React canary Next 14 ships,
-// but missing from @types/react-dom@18, hence the loose typing).
-const preloadAsset = (
-  ReactDOM as unknown as {
-    preload?: (href: string, opts: { as: string; type?: string; fetchPriority?: string }) => void
-  }
-).preload
-
 import type { SeasonBundle } from '@/lib/season-data'
 
 export default function HomeClient({ initialBundle }: { initialBundle: SeasonBundle | null }) {
-  // Start the poster fetch while the HTML is still streaming — called during
-  // render so SSR hoists <link rel="preload"> into <head>. The video itself
-  // is NOT link-preloaded: measured in Chromium, as="video" preloads are
-  // never fetched and as="fetch" preloads double-download alongside the
-  // media request. The webm loads early because IntroSequence SSRs the
-  // <video> element, which the browser's preload scanner picks up at parse.
-  preloadAsset?.('/intro/poster.jpg', { as: 'image', fetchPriority: 'high' })
-
   // All season state seeds from the SSR-injected bundle snapshot, so the
   // first paint already has the calendar, the fight, and the podium — the
   // client fetches below only refresh it.
@@ -84,6 +73,8 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
           points: d.points,
           wins: d.wins,
           acronym: d.nameAcronym,
+          teamName: d.teamName,
+          teamColour: d.teamColour,
         }))
       : null
   )
@@ -104,26 +95,10 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
   const [winners, setWinners] = useState<Record<number, string>>(
     () => initialBundle?.winnersByRound ?? {}
   )
-  // Cinematic intro overlay — plays when "/" is opened as a new document
-  // (fresh load, reload, new tab, direct link), never on a client-side route
-  // change back to "/" mid-session. Data fetching below runs in parallel
-  // behind it. The gate is read once per mount so the value can't change
-  // under the tree mid-session.
-  const [playIntro] = useState(introMayPlay)
-  const [introActive, setIntroActive] = useState(playIntro)
-  // Content mounts hidden ONLY when something is about to cover it. Arriving
-  // without the intro (a nav back to "/") must land on visible content —
-  // 'instant' skips the cascade, leaving the shell's 130ms route fade as the
-  // only transition.
-  const [reveal, setReveal] = useState<'hidden' | RevealMode>(playIntro ? 'hidden' : 'instant')
-
-  // Claim the document's one intro play, so returning to "/" later in the
-  // same session doesn't replay it. In an effect rather than the state
-  // initializer above: initializers can run twice (StrictMode) and would
-  // consume the claim before the intro ever rendered.
-  useEffect(() => {
-    if (playIntro) consumeIntro()
-  }, [playIntro])
+  // The film is opt-in: the hero paints immediately and neither the film
+  // nor its playback code downloads until the visitor chooses to watch.
+  const [introActive, setIntroActive] = useState(false)
+  const [reveal, setReveal] = useState<'hidden' | RevealMode>('instant')
 
   const handleIntroReveal = useCallback((mode: RevealMode) => setReveal(mode), [])
   const handleIntroDone = useCallback(() => {
@@ -167,6 +142,8 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
         points: d.points,
         wins: d.wins,
         acronym: d.nameAcronym,
+        teamName: d.teamName,
+        teamColour: d.teamColour,
       }))
       if (top3.length > 0) setFight(top3)
 
@@ -192,11 +169,11 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
     }
   }, [fight, lastRace, winners])
 
-  // Keep the intro at ONE stable tree position across the loading flip —
-  // rendering it from two different return statements remounts it (and the
-  // video) when `loading` changes.
-  const intro = introActive && (
-    <IntroSequence key="intro" onReveal={handleIntroReveal} onDone={handleIntroDone} />
+  // Portal outside the route fade so the film covers the shell after client
+  // navigation too. It mounts only from a browser click, never during SSR.
+  const intro = introActive && createPortal(
+    <IntroSequence key="intro" onReveal={handleIntroReveal} onDone={handleIntroDone} />,
+    document.body,
   )
 
   const skeleton = (
@@ -267,6 +244,7 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
                 round={roundNumber}
                 totalRounds={scoredMeetings.length}
                 isLive={isLiveWeekend}
+                onPlayIntro={() => setIntroActive(true)}
               />
             ) : seasonGenuinelyOver ? (
               <section className="flex min-h-[calc(100dvh-4rem)] items-center px-6 md:px-14">
@@ -295,7 +273,7 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
           {targetMeeting && (
             <>
               <Reveal order={1} state={reveal}>
-                <FightSection rows={fight} />
+                <FightSection rows={fight} computedAt={bundle?.computedAt ?? initialBundle?.computedAt} />
               </Reveal>
               <Reveal order={2} state={reveal}>
                 <LastRaceSection
@@ -305,6 +283,9 @@ export default function HomeClient({ initialBundle }: { initialBundle: SeasonBun
               </Reveal>
             </>
           )}
+
+          <PaddockSection teams={(bundle ?? initialBundle)?.teamStandings ?? []} />
+          <RaceToolsSection />
 
           {/* ─── Section 4: THE SEASON ───
               Not wrapped in Reveal (pins must not live inside a transformed

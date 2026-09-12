@@ -27,6 +27,7 @@ export interface GalleryDriver {
   nameAcronym: string
   countryCode: string | null
   points: number
+  recentForm: SeasonStation[]
 }
 
 export interface BlueprintTeam {
@@ -50,6 +51,9 @@ export function toGalleryDrivers(bundle: SeasonBundle): GalleryDriver[] {
     nameAcronym: d.nameAcronym,
     countryCode: d.countryCode,
     points: d.points,
+    recentForm: driverStations(bundle, d.driverNumber)
+      .filter((s) => s.status === 'finished' || s.status === 'out')
+      .slice(-5),
   }))
 }
 
@@ -57,17 +61,17 @@ export function toGalleryDrivers(bundle: SeasonBundle): GalleryDriver[] {
 
 /**
  * finished  — classified GP result, a point on the line
- * out       — retired / excluded (the bundle's `out` bit collapses
- *             DNF/DNS/DSQ into one flag, so the label is generic): the line
- *             BREAKS here
+ * out       — retired / excluded; outLabel preserves DNF/DNS/DSQ/NC:
+ *             the classified line breaks here
  * absent    — round happened, driver has no result row (joined mid-season):
- *             the line passes it by
+ *             no classified marker
  * upcoming  — not yet run: ghost station, no line
  * cancelled — struck from the calendar, kept in sequence
  */
 export type StationStatus = 'finished' | 'out' | 'absent' | 'upcoming' | 'cancelled'
 
 export interface SeasonStation {
+  meetingKey: number
   round: number // calendar sequence, cancelled rounds included
   circuit: string
   country: string
@@ -76,6 +80,8 @@ export interface SeasonStation {
   status: StationStatus
   position: number | null
   points: number
+  sprintPoints: number
+  fieldSize: number
   /**
    * Distinct outcome label. The bundle now carries DNF / DNS / DSQ / NC
    * separately (they are different things and were all displayed as "DNF");
@@ -89,10 +95,22 @@ export interface DuelView {
   acronym: string
   theirPoints: number
   myPoints: number
-  /** Rounds where both teammates classified. */
+  /** Rounds where both paired drivers classified. */
   bothClassified: number
   raceWins: number
   raceLosses: number
+  rounds: DuelRound[]
+}
+
+export interface DuelRound {
+  meetingKey: number
+  round: number
+  circuit: string
+  mine: string
+  theirs: string
+  winner: 'driver' | 'teammate' | 'tie' | 'unclassified'
+  myPoints: number
+  theirPoints: number
 }
 
 export interface DriverSeasonView {
@@ -117,20 +135,20 @@ export interface DriverSeasonView {
   duel: DuelView | null
 }
 
-export function toDriverSeason(bundle: SeasonBundle, acronym: string): DriverSeasonView | null {
-  const me = bundle.driverStandings.find((d) => d.nameAcronym === acronym.toUpperCase())
-  if (!me) return null
-
+function driverStations(bundle: SeasonBundle, driverNumber: number): SeasonStation[] {
   const ordered = getRaceMeetings(bundle.meetings).sort(
     (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime()
   )
 
-  const stations: SeasonStation[] = ordered.map((m, i) => {
+  return ordered.map((m, i) => {
     const base = {
+      meetingKey: m.meeting_key,
       round: i + 1,
       circuit: m.circuit_short_name,
       country: m.country_name,
       date: m.date_start,
+      fieldSize: bundle.resultsByRound[m.meeting_key]?.length ?? 0,
+      sprintPoints: bundle.sprintPointsByRound?.[m.meeting_key]?.[driverNumber] ?? 0,
     }
     if (isCancelled(m)) {
       return { ...base, status: 'cancelled' as const, position: null, points: 0 }
@@ -139,7 +157,7 @@ export function toDriverSeason(bundle: SeasonBundle, acronym: string): DriverSea
     // The completeness guard means every completed GP has rows — no rows is
     // therefore a round that hasn't happened, never one with missing data.
     if (!rows) return { ...base, status: 'upcoming' as const, position: null, points: 0 }
-    const mine = rows.find((r) => r.d === me.driverNumber)
+    const mine = rows.find((r) => r.d === driverNumber)
     if (!mine) return { ...base, status: 'absent' as const, position: null, points: 0 }
     const pos = asNum(mine.p)
     if (mine.out || pos === null) {
@@ -154,6 +172,12 @@ export function toDriverSeason(bundle: SeasonBundle, acronym: string): DriverSea
     }
     return { ...base, status: 'finished' as const, position: pos, points: asNum(mine.pts) ?? 0 }
   })
+}
+
+export function toDriverSeason(bundle: SeasonBundle, acronym: string): DriverSeasonView | null {
+  const me = bundle.driverStandings.find((d) => d.nameAcronym === acronym.toUpperCase())
+  if (!me) return null
+  const stations = driverStations(bundle, me.driverNumber)
 
   const bestFinish = stations.reduce<number | null>(
     (best, s) =>
@@ -174,26 +198,38 @@ export function toDriverSeason(bundle: SeasonBundle, acronym: string): DriverSea
     .sort((a, b) => b.points - a.points)[0]
   let duel: DuelView | null = null
   if (teammate) {
-    let bothClassified = 0
-    let raceWins = 0
-    for (const rows of Object.values(bundle.resultsByRound)) {
+    const rounds: DuelRound[] = []
+    for (const station of stations) {
+      if (station.status === 'cancelled') continue
+      const rows = bundle.resultsByRound[station.meetingKey] ?? []
       const a = rows.find((r) => r.d === me.driverNumber)
       const b = rows.find((r) => r.d === teammate.driverNumber)
-      if (!a || !b || a.out || b.out) continue
+      if (!a || !b) continue
       const pa = asNum(a.p)
       const pb = asNum(b.p)
-      if (pa === null || pb === null) continue
-      bothClassified++
-      if (pa < pb) raceWins++
+      const classified = !a.out && !b.out && pa !== null && pb !== null
+      rounds.push({
+        meetingKey: station.meetingKey,
+        round: station.round,
+        circuit: station.circuit,
+        mine: a.st ?? (a.out ? 'DNF' : pa === null ? 'NC' : `P${pa}`),
+        theirs: b.st ?? (b.out ? 'DNF' : pb === null ? 'NC' : `P${pb}`),
+        winner: !classified ? 'unclassified' : pa < pb ? 'driver' : pa > pb ? 'teammate' : 'tie',
+        myPoints: asNum(a.pts) ?? 0,
+        theirPoints: asNum(b.pts) ?? 0,
+      })
     }
     duel = {
       surname: teammate.surname,
       acronym: teammate.nameAcronym,
-      theirPoints: Math.floor(teammate.points),
-      myPoints: Math.floor(me.points),
-      bothClassified,
-      raceWins,
-      raceLosses: bothClassified - raceWins,
+      // Compare only GP points in rounds BOTH entered. Full-season totals
+      // would make a one-round substitute look like a season-long teammate.
+      theirPoints: rounds.reduce((sum, r) => sum + r.theirPoints, 0),
+      myPoints: rounds.reduce((sum, r) => sum + r.myPoints, 0),
+      bothClassified: rounds.filter((r) => r.winner !== 'unclassified').length,
+      raceWins: rounds.filter((r) => r.winner === 'driver').length,
+      raceLosses: rounds.filter((r) => r.winner === 'teammate').length,
+      rounds,
     }
   }
 
@@ -208,7 +244,7 @@ export function toDriverSeason(bundle: SeasonBundle, acronym: string): DriverSea
       teamColour: me.teamColour,
       acronym: me.nameAcronym,
       countryCode: me.countryCode,
-      points: Math.floor(me.points),
+      points: me.points,
       wins: me.wins,
       podiums: me.podiums,
       position: me.position,

@@ -12,7 +12,7 @@ const META = {
   path: 'drivers',
   title: 'THE GRID',
   description:
-    "All 22 drivers in championship order — car number, constructor and points, one driver at a time.",
+    "Every driver in championship order — car number, constructor and points, one driver at a time.",
 } as const
 
 // Metadata is GENERATED rather than static so it can see whether this

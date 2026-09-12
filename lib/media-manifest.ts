@@ -14,6 +14,7 @@ export const DRIVER_IMAGES: Record<string, string> = {
   "HAD": "/media/drivers/HAD.webp",
   "LAW": "/media/drivers/LAW.webp",
   "LIN": "/media/drivers/LIN.webp",
+  "TSU": "/media/drivers/TSU.webp",
   "GAS": "/media/drivers/GAS.webp",
   "COL": "/media/drivers/COL.webp",
   "HUL": "/media/drivers/HUL.webp",

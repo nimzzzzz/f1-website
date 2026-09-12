@@ -1,13 +1,17 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useGSAP } from '@gsap/react'
 import { driverImage, carImage } from '@/lib/media-manifest'
 import { teamToSlug } from '@/lib/team-data'
 import TreatedImage from '@/components/media/TreatedImage'
-import { TransitionLink } from '@/components/motion/TransitionProvider'
+import { DriverPageTransition, DriverSharedElement } from './DriverTransition'
+import { getLenis } from '@/lib/lenis-store'
+import { resultLabel } from '@/lib/driver-story'
+import './drivers.css'
 import { useLiveSnapshot } from '@/lib/use-live-snapshot'
 import { toGalleryDrivers, type GalleryDriver } from '@/lib/season-view'
 
@@ -43,6 +47,9 @@ export default function DriversGallery({
   const live = useLiveSnapshot(computedAt)
   const drivers = live ? toGalleryDrivers(live) : ssrDrivers
 
+  const driversRef = useRef(drivers)
+  driversRef.current = drivers
+
   const sectionRef = useRef<HTMLElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
@@ -56,8 +63,9 @@ export default function DriversGallery({
   // gallery, and each step un-inerts the panel it lands on, so its link
   // becomes tabbable. Horizontal mode only — the stacked layout is scrolled
   // normally and needs none of this.
-  const goToPanelRef = useRef<((i: number) => void) | null>(null)
+  const goToPanelRef = useRef<((i: number, instant?: boolean) => void) | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
+  const [dismissedPreview, setDismissedPreview] = useState<number | null>(null)
   useGSAP(
     () => {
       const section = sectionRef.current
@@ -332,7 +340,7 @@ export default function DriversGallery({
               if (counter) counter.textContent = `${pad2(idx + 1)} / ${pad2(drivers.length)}`
               rail.querySelectorAll<HTMLElement>('[data-tick]').forEach((t, i) => {
                 t.style.backgroundColor =
-                  i === idx ? `#${drivers[i]?.teamColour || 'F5F5F3'}` : 'rgba(245,245,243,0.18)'
+                  i === idx ? `#${driversRef.current[i]?.teamColour || 'F5F5F3'}` : 'rgba(245,245,243,0.18)'
                 t.style.transform = i === idx ? 'scaleY(1.8)' : 'scaleY(1)'
               })
             }
@@ -344,12 +352,16 @@ export default function DriversGallery({
         // Exposed to the prev/next controls. The horizontal position is a
         // scrub of this ScrollTrigger, so moving a panel means moving the page
         // to the scroll offset that maps to it.
-        const goToPanel = (i: number) => {
+        const goToPanel = (i: number, instant = false) => {
           const clamped = Math.max(0, Math.min(drivers.length - 1, i))
           const st = tween.scrollTrigger
           if (!st) return
           const p = drivers.length > 1 ? clamped / (drivers.length - 1) : 0
-          window.scrollTo({ top: st.start + p * (st.end - st.start) })
+          const top = st.start + p * (st.end - st.start)
+          const lenis = getLenis()
+          if (lenis) { lenis.resize(); lenis.scrollTo(top, { immediate: instant, duration: 0.65 }) }
+          else window.scrollTo({ top, behavior: instant ? 'instant' : 'smooth' })
+          if (instant) { tween.progress(p); setPanel(p) }
         }
         goToPanelRef.current = goToPanel
         cleanups.push(() => {
@@ -389,6 +401,10 @@ export default function DriversGallery({
               // smooth-scroll setups, which this site is.
               pinType: 'transform',
               scrub: 0.5,
+              snap: drivers.length > 1 ? {
+                snapTo: 1 / (drivers.length - 1), directional: false,
+                inertia: false, delay: 0.3, duration: { min: 0.15, max: 0.35 },
+              } : undefined,
               invalidateOnRefresh: true,
               onUpdate: (st) => setPanel(st.progress),
               onRefresh: (st) => setPanel(st.progress),
@@ -452,8 +468,23 @@ export default function DriversGallery({
     { scope: sectionRef, dependencies: [drivers.length] }
   )
 
+  useEffect(() => {
+    // Explicit return links retain identity even if live standings reorder.
+    // A normal browser Back can use the same identity after React remounts.
+    let saved = new URLSearchParams(window.location.search).get('driver')
+    try { saved ||= sessionStorage.getItem('lights-out-grid-driver') } catch { /* private mode */ }
+    const index = driversRef.current.findIndex((d) => d.nameAcronym.toLowerCase() === saved?.toLowerCase())
+    if (index < 0) return
+    const frame = requestAnimationFrame(() => {
+      if (goToPanelRef.current) goToPanelRef.current(index, true)
+      else trackRef.current?.querySelectorAll<HTMLElement>('[data-panel]')[index]?.scrollIntoView({ block: 'start', behavior: 'instant' })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [])
+
   return (
-    <section ref={sectionRef} className="relative overflow-hidden">
+    <DriverPageTransition>
+    <section ref={sectionRef} className="driver-gallery relative overflow-hidden">
       <div className="px-6 pt-10 md:px-14">
         <h1 className="strip-header text-[var(--text-dim)]">
           THE GRID — {pad2(drivers.length)} DRIVERS — CHAMPIONSHIP ORDER
@@ -486,16 +517,33 @@ export default function DriversGallery({
         >
           ←
         </button>
-        <div className="flex flex-1 items-center gap-1.5">
+        <div className="driver-rail" role="toolbar" aria-label="Choose a driver">
           {drivers.map((d, i) => (
-            <span
-              key={d.driverNumber}
-              data-tick
-              className="h-2 flex-1 origin-bottom transition-[transform,background-color] duration-200"
-              style={{
-                backgroundColor: i === 0 ? `#${d.teamColour || 'F5F5F3'}` : 'rgba(245,245,243,0.18)',
-              }}
-            />
+            <button type="button" key={d.driverNumber} className="driver-rail-stop"
+              aria-label={`Show ${d.firstName} ${d.surname}`} aria-pressed={i === activeIndex}
+              data-preview-dismissed={dismissedPreview === i || undefined}
+              onMouseEnter={() => setDismissedPreview(null)} onFocus={() => setDismissedPreview(null)}
+              tabIndex={i === activeIndex ? 0 : -1}
+              onClick={() => goToPanelRef.current?.(i)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') { setDismissedPreview(i); return }
+                const next = event.key === 'ArrowRight' ? i + 1 : event.key === 'ArrowLeft' ? i - 1
+                  : event.key === 'Home' ? 0 : event.key === 'End' ? drivers.length - 1 : null
+                if (next === null) return
+                event.preventDefault()
+                const target = Math.max(0, Math.min(drivers.length - 1, next))
+                goToPanelRef.current?.(target)
+                railRef.current?.querySelectorAll<HTMLButtonElement>('.driver-rail-stop')[target]?.focus({ preventScroll: true })
+              }}>
+              <span data-tick className="driver-rail-tick" style={{ backgroundColor: i === 0 ? `#${d.teamColour || 'F5F5F3'}` : 'rgba(245,245,243,0.18)' }} />
+              <span className="driver-rail-preview" aria-hidden="true" data-edge={i < 3 ? 'start' : i > drivers.length - 4 ? 'end' : undefined}>
+                <span className="driver-rail-preview-image">
+                  <TreatedImage src={driverImage(d.nameAcronym)} treatment="mono" fade={false} fit="cover" position="top" sizes="120px" className="absolute inset-0" />
+                </span>
+                <span className="driver-rail-preview-number">{d.driverNumber}</span>
+                <span>{d.surname.toUpperCase()}</span>
+              </span>
+            </button>
           ))}
         </div>
         <button
@@ -529,12 +577,14 @@ export default function DriversGallery({
             const photo = driverImage(d.nameAcronym)
             const car = carImage(teamToSlug(d.teamName))
             return (
-              <TransitionLink
+              <Link
                 key={d.driverNumber}
                 href={`/drivers/${d.nameAcronym.toLowerCase()}`}
+                transitionTypes={['driver-forward']}
+                onNavigate={() => { try { sessionStorage.setItem('lights-out-grid-driver', d.nameAcronym) } catch { /* private mode */ } }}
                 data-panel
                 data-idx={i}
-                className="group relative flex min-h-[72vh] w-full shrink-0 flex-col justify-end overflow-hidden border-t border-[var(--line)] px-6 pb-16 pt-10 md:min-h-[calc(100dvh-11rem)] mdh:w-screen mdh:border-l mdh:border-t-0 md:px-14 motion-reduce:mdh:w-full motion-reduce:mdh:border-l-0 motion-reduce:mdh:border-t"
+                className="group relative flex min-h-[72vh] w-full shrink-0 flex-col justify-end overflow-hidden border-t border-[var(--line)] px-6 pb-20 pt-10 md:min-h-[calc(100dvh-11rem)] mdh:w-screen mdh:border-l mdh:border-t-0 md:px-14 motion-reduce:mdh:w-full motion-reduce:mdh:border-l-0 motion-reduce:mdh:border-t"
               >
                 {/* ambient team-colour glow — lowest layer, faint atmosphere */}
                 <div
@@ -574,6 +624,7 @@ export default function DriversGallery({
                     Wrapped so the rim-light bump can brighten the whole subtree.
                     Panel 1 is the LCP: priority puts its preload in the SSR HTML. */}
                 {photo && (
+                  <DriverSharedElement acronym={d.nameAcronym} part="portrait">
                   <div
                     data-shot
                     className="pointer-events-none absolute bottom-0 right-0 h-[58%] w-[72%] md:right-[8vw] md:h-[76%] md:w-[36vw] md:max-w-[560px]"
@@ -586,10 +637,12 @@ export default function DriversGallery({
                       className="absolute inset-0"
                     />
                   </div>
+                  </DriverSharedElement>
                 )}
 
                 {/* the race number — massive, outlined in the team's color.
                     Team colors are the dataset here; red stays scarce. */}
+                <DriverSharedElement acronym={d.nameAcronym} part="number">
                 <span
                   aria-hidden
                   className="pointer-events-none absolute right-[2vw] top-1/2 -translate-y-1/2 leading-none"
@@ -603,6 +656,7 @@ export default function DriversGallery({
                 >
                   {d.driverNumber}
                 </span>
+                </DriverSharedElement>
 
                 {/* light wall — a single team-colour sweep during the blast,
                     screen-blended so it lightens rather than occludes. Above the
@@ -616,11 +670,6 @@ export default function DriversGallery({
                     mixBlendMode: 'screen',
                   }}
                 />
-
-                {/* championship index */}
-                <span className="label-mono absolute right-6 top-6 text-[var(--text-dim)] md:right-14">
-                  {pad2(i + 1)} / {pad2(drivers.length)}
-                </span>
 
                 <div className="relative">
                   <p className="label-mono mb-3 text-[var(--text-dim)]">
@@ -645,17 +694,29 @@ export default function DriversGallery({
                       {d.teamName?.toUpperCase()}
                     </span>
                     {d.countryCode && <span>{d.countryCode}</span>}
-                    <span className="text-[var(--text)]">{Math.floor(d.points)} PTS</span>
-                    <span className="opacity-0 transition-opacity duration-300 group-hover:opacity-100 motion-reduce:transition-none">
+                    <span className="text-[var(--text)]">{d.points} PTS</span>
+                    <span className="driver-profile-cue transition-opacity duration-300 motion-reduce:transition-none">
                       PROFILE →
                     </span>
                   </div>
+                  {d.recentForm.length > 0 && (
+                    <div className="driver-recent-form">
+                      <span>LAST {d.recentForm.length} GP ENTRIES</span>
+                      <span className="driver-recent-results">
+                        {d.recentForm.map((race) => <span key={race.meetingKey} data-podium={race.status === 'finished' && race.position! <= 3 || undefined}
+                          title={`${race.circuit}: ${resultLabel(race)}`}>
+                          <span className="sr-only">{race.circuit}: </span>{resultLabel(race)}
+                        </span>)}
+                      </span>
+                    </div>
+                  )}
                 </div>
-              </TransitionLink>
+              </Link>
             )
           })}
         </div>
       </div>
     </section>
+    </DriverPageTransition>
   )
 }

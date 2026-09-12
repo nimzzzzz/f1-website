@@ -1,52 +1,15 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import gsap from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import { useGSAP } from '@gsap/react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import type { Meeting, Session } from '@/lib/openf1'
 import { getCachedMeetings, getCachedSessions, getCachedDrivers, getCachedSessionResult } from '@/lib/client-cache'
-import { getCurrentMeeting, getNextMeeting, isCancelled, fetchAllSessionResults } from '@/lib/openf1'
+import { isCancelled, fetchAllSessionResults } from '@/lib/openf1'
 import { type FetchFailureReason, unavailableMessage } from '@/lib/fetch-result'
-import { circuitImageForMeeting } from '@/lib/media-manifest'
-import TreatedImage from '@/components/media/TreatedImage'
-import CircuitBackdrop from '@/components/media/CircuitBackdrop'
-import { FadeUp } from '@/components/motion/reveals'
-
-gsap.registerPlugin(ScrollTrigger, useGSAP)
-
-const SESSION_SHORT: Record<string, string> = {
-  'Practice 1': 'FP1',
-  'Practice 2': 'FP2',
-  'Practice 3': 'FP3',
-  'Sprint Shootout': 'SQ',
-  'Sprint': 'SPRINT',
-  'Qualifying': 'QUALI',
-  'Race': 'RACE',
-}
-
-function getSessionStatus(session: Session): 'live' | 'completed' | 'upcoming' {
-  const now = new Date()
-  const start = new Date(session.date_start)
-  const end = new Date(session.date_end)
-  if (start <= now && now < end) return 'live'
-  if (end < now) return 'completed'
-  return 'upcoming'
-}
-
-function formatSessionTime(dateStr: string): string {
-  const d = new Date(dateStr)
-  const day = d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()
-  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
-  return `${day} ${time}`
-}
-
-function formatMeetingDates(start: string, end: string): string {
-  const s = new Date(start)
-  const e = new Date(end)
-  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
-  return `${s.toLocaleDateString('en-US', opts)} — ${e.toLocaleDateString('en-US', opts)}`.toUpperCase()
-}
+import { getLenis } from '@/lib/lenis-store'
+import { formatScheduleDates, type ScheduleTimeMode } from '@/lib/schedule-time'
+import ScheduleRound from './ScheduleRound'
+import { useScheduleMotion } from './useScheduleMotion'
+import './schedule.css'
 
 const surname = (fullName: string) => {
   const parts = fullName.trim().split(/\s+/)
@@ -55,18 +18,63 @@ const surname = (fullName: string) => {
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
-export default function ScheduleClient() {
-  const [meetings, setMeetings] = useState<Meeting[]>([])
-  const [sessionsByMeeting, setSessionsByMeeting] = useState<Record<number, Session[]>>({})
-  const [loading, setLoading] = useState(true)
+const groupSessions = (sessions: Session[]) => sessions.reduce<Record<number, Session[]>>((groups, session) => {
+  ;(groups[session.meeting_key] ??= []).push(session)
+  return groups
+}, {})
+
+export interface ScheduleSnapshot {
+  meetings: Meeting[]
+  sessions: Session[]
+  winnersByRound: Record<number, string>
+  renderedAt: number
+}
+
+export default function ScheduleClient({ initialData }: { initialData: ScheduleSnapshot | null }) {
+  const [meetings, setMeetings] = useState<Meeting[]>(() => initialData?.meetings ?? [])
+  const [sessionsByMeeting, setSessionsByMeeting] = useState(() => groupSessions(initialData?.sessions ?? []))
+  const [loading, setLoading] = useState(!initialData)
   // meeting_key → winner surname (same cached fetchers as the home index)
-  const [winners, setWinners] = useState<Record<number, string>>({})
+  const [winners, setWinners] = useState<Record<number, string>>(() => initialData?.winnersByRound ?? {})
   // Set when the calendar could not be fetched at all — kept apart from
   // "the calendar came back empty".
   const [unavailable, setUnavailable] = useState<FetchFailureReason | undefined>(undefined)
+  const [timeMode, setTimeMode] = useState<ScheduleTimeMode>('local')
+  const [localZone, setLocalZone] = useState('UTC')
+  const [now, setNow] = useState(() => initialData?.renderedAt ?? Date.now())
 
   const timelineRef = useRef<HTMLDivElement>(null)
-  const lineRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setNow(Date.now())
+    setLocalZone(Intl.DateTimeFormat().resolvedOptions().timeZone)
+    try {
+      if (localStorage.getItem('lights-out:schedule-time') === 'track') setTimeMode('track')
+    } catch { /* Clock controls also work when storage is unavailable. */ }
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const chooseTime = (mode: ScheduleTimeMode) => {
+    setTimeMode(mode)
+    try { localStorage.setItem('lights-out:schedule-time', mode) } catch { /* Optional persistence. */ }
+  }
+
+  const jumpToWeekend = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    const target = document.getElementById(event.currentTarget.hash.slice(1))
+    if (!target) return
+    event.preventDefault()
+    window.history.replaceState(window.history.state, '', event.currentTarget.hash)
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const lenis = getLenis()
+    if (lenis && !reduce) {
+      lenis.scrollTo(target, { offset: -110, duration: 1.15, onComplete: () => target.focus({ preventScroll: true }) })
+    } else {
+      target.focus({ preventScroll: true })
+      target.scrollIntoView({ block: 'start', behavior: 'instant' })
+    }
+  }
 
   useEffect(() => {
     Promise.all([getCachedMeetings(), getCachedSessions()])
@@ -80,13 +88,7 @@ export default function ScheduleClient() {
         }
         setUnavailable(undefined)
         setMeetings(mtgRes.rows)
-        setSessionsByMeeting(
-          sessionRes.rows.reduce<Record<number, Session[]>>((acc, s) => {
-            if (!acc[s.meeting_key]) acc[s.meeting_key] = []
-            acc[s.meeting_key].push(s)
-            return acc
-          }, {})
-        )
+        setSessionsByMeeting(groupSessions(sessionRes.rows))
       })
       .finally(() => setLoading(false))
   }, [])
@@ -142,40 +144,11 @@ export default function ScheduleClient() {
     .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime())
 
   const activeMeetings = raceMeetings.filter((m) => !isCancelled(m))
-  const targetMeeting = getCurrentMeeting(activeMeetings) ?? getNextMeeting(activeMeetings)
-  const pastFraction =
-    raceMeetings.length > 0
-      ? raceMeetings.filter((m) => new Date(m.date_end).getTime() < Date.now()).length /
-        raceMeetings.length
-      : 0
-
-  // The red line draws down the spine as you scroll the timeline.
-  useGSAP(
-    () => {
-      const timeline = timelineRef.current
-      const line = lineRef.current
-      if (!timeline || !line || raceMeetings.length === 0) return
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        gsap.set(line, { scaleY: pastFraction })
-        return
-      }
-      gsap.fromTo(
-        line,
-        { scaleY: 0 },
-        {
-          scaleY: 1,
-          ease: 'none',
-          scrollTrigger: {
-            trigger: timeline,
-            start: 'top 72%',
-            end: 'bottom 85%',
-            scrub: 0.4,
-          },
-        }
-      )
-    },
-    { scope: timelineRef, dependencies: [raceMeetings.length] }
-  )
+  // Use the same timestamp on the server and first client render. The
+  // clock effect updates it on mount and while the page stays open.
+  const targetMeeting = activeMeetings.find((meeting) => Date.parse(meeting.date_start) <= now && now < Date.parse(meeting.date_end))
+    ?? activeMeetings.find((meeting) => Date.parse(meeting.date_start) > now)
+  useScheduleMotion(timelineRef, raceMeetings.map((meeting) => `${meeting.meeting_key}:${isCancelled(meeting)}:${meeting.meeting_key === targetMeeting?.meeting_key}`).join(','))
 
   if (loading) {
     return (
@@ -208,185 +181,63 @@ export default function ScheduleClient() {
   const cancelledCount = raceMeetings.length - activeMeetings.length
   const seasonYear = raceMeetings[0]?.year
 
-  return (
-    <div className="relative overflow-x-clip px-6 pb-32 pt-20 md:px-14">
-      <FadeUp>
-        {/* SCORED rounds are the headline; cancellations are acknowledged,
-            not counted. This used to print raceMeetings.length — every
-            calendar entry including cancelled ones — so the header claimed
-            25 ROUNDS while the season had 23 that score points, two numbers
-            visibly disagreeing on the same site. */}
-        <h1 className="strip-header text-[var(--text-dim)]">
-          THE CALENDAR{seasonYear ? ` — ${seasonYear}` : ''} — {pad2(activeMeetings.length)} ROUNDS
-          {cancelledCount > 0 ? ` · ${cancelledCount} CANCELLED` : ''}
-        </h1>
-      </FadeUp>
+  let scoredRound = 0
 
-      {/* pre-season testing — quiet mono prologue */}
+  return (
+    <div className="schedule-page relative overflow-x-clip px-6 pb-32 pt-20 md:px-14">
+      <h1 className="strip-header text-[var(--text-dim)]">
+        THE CALENDAR{seasonYear ? ` — ${seasonYear}` : ''} — {pad2(activeMeetings.length)} ROUNDS
+        {cancelledCount > 0 ? ` · ${cancelledCount} CANCELLED` : ''}
+      </h1>
+
+      <div className="schedule-tools">
+        <div className="schedule-clock">
+          <div className="schedule-clock-options" role="group" aria-label="Schedule time zone">
+            <button type="button" aria-pressed={timeMode === 'local'} onClick={() => chooseTime('local')}>Your time</button>
+            <button type="button" aria-pressed={timeMode === 'track'} onClick={() => chooseTime('track')}>Track time</button>
+          </div>
+          <p className="schedule-clock-description" aria-live="polite">
+            {timeMode === 'local' ? localZone.replaceAll('_', ' ') : 'Local time at each circuit'}
+          </p>
+        </div>
+        {targetMeeting && (
+          <a className="schedule-jump" href={`#round-${targetMeeting.meeting_key}`} onClick={jumpToWeekend}>
+            Jump to {Date.parse(targetMeeting.date_start) <= now ? 'current' : 'next'} weekend
+            <span className="schedule-jump-circuit">{targetMeeting.circuit_short_name}</span>
+          </a>
+        )}
+      </div>
+
       {testingMeetings.length > 0 && (
-        <div className="mt-10 space-y-2">
-          {testingMeetings.map((m) => (
-            <p key={m.meeting_key} className="label-mono text-[var(--text-dim)]">
-              PRE-SEASON — {m.circuit_short_name.toUpperCase()} ·{' '}
-              {formatMeetingDates(m.date_start, m.date_end)}
+        <div className="schedule-testing">
+          {testingMeetings.map((meeting) => (
+            <p key={meeting.meeting_key} className="label-mono text-[var(--text-dim)]">
+              PRE-SEASON — {meeting.circuit_short_name.toUpperCase()} ·{' '}
+              {formatScheduleDates(meeting.date_start, meeting.date_end, timeMode, meeting.gmt_offset, localZone)}
             </p>
           ))}
         </div>
       )}
 
-      {/* ─── the timeline ─── */}
-      <div ref={timelineRef} className="relative mt-16">
-        {/* spine + drawing red line — z-lifted so they draw OVER the
-            per-round backdrops, never behind them */}
-        <div className="absolute bottom-0 left-3 top-0 z-[5] w-px bg-[var(--line)] md:left-1/2" />
-        <div
-          ref={lineRef}
-          className="absolute bottom-0 left-3 top-0 z-[5] w-px origin-top bg-[var(--accent)] md:left-1/2"
-          style={{ transform: 'scaleY(0)' }}
-        />
-
-        <div className="space-y-20 md:space-y-28">
-          {raceMeetings.map((m, i) => {
-            const meetingCancelled = isCancelled(m)
-            // Round NUMBER counts scored rounds only. A cancelled weekend
-            // keeps its place on the calendar and its CANCELLED label, but
-            // takes no number — otherwise the numbering disagrees with the
-            // "23 ROUNDS" header directly above it, and with the shell
-            // ticker and the home strip.
-            const roundNo = raceMeetings.slice(0, i + 1).filter((x) => !isCancelled(x)).length
-            const isPast = new Date(m.date_end).getTime() < Date.now()
-            const isNext = targetMeeting?.meeting_key === m.meeting_key
-            const winner = !meetingCancelled && isPast ? winners[m.meeting_key] : undefined
-            const dim = meetingCancelled ? 0.25 : isPast ? 0.35 : 1
-            const right = i % 2 === 1
-            const sessions = (sessionsByMeeting[m.meeting_key] ?? []).sort(
-              (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime()
-            )
+      <div ref={timelineRef} className="schedule-timeline">
+        <div className="schedule-spine" aria-hidden="true" />
+        <div className="schedule-progress" aria-hidden="true" />
+        <div className="schedule-rounds">
+          {raceMeetings.map((meeting, index) => {
+            if (!isCancelled(meeting)) scoredRound += 1
             return (
-              <div key={m.meeting_key} className="relative md:grid md:grid-cols-2 md:gap-x-20">
-                {/* circuit backdrop — same system as the NOW section.
-                    Presence follows the timeline: the next race is the
-                    hero (full presence + lifted grade), upcoming rounds
-                    sit quieter, past/cancelled quieter still. Only the
-                    opening viewport and the next race load eagerly. */}
-                <CircuitBackdrop
-                  meetingKey={m.meeting_key}
-                  circuitShortName={m.circuit_short_name}
-                  countryName={m.country_name}
-                  eager={i < 2 || isNext}
-                  presence={meetingCancelled ? 0.3 : isPast ? 0.4 : isNext ? 1 : 0.6}
-                  lift={isNext}
-                />
-
-                {/* node on the spine */}
-                <span
-                  aria-hidden
-                  className={`absolute left-3 top-4 z-[6] h-2 w-2 -translate-x-1/2 rounded-full md:left-1/2 ${
-                    isNext
-                      ? 'animate-pulse bg-[var(--accent)] motion-reduce:animate-none'
-                      : 'bg-[rgba(245,245,243,0.25)]'
-                  }`}
-                />
-
-                <div
-                  className={`relative pl-10 md:pl-0 ${
-                    right
-                      ? 'md:col-start-2 md:pl-20'
-                      : 'md:col-start-1 md:flex md:flex-col md:items-end md:pr-20 md:text-right'
-                  }`}
-                >
-                  {circuitImageForMeeting(m) && (
-                    <div className={right ? '' : 'md:flex md:justify-end'} style={{ opacity: dim }}>
-                      <TreatedImage
-                        src={circuitImageForMeeting(m)}
-                        treatment="line"
-                        fade={false}
-                        position={right ? 'left center' : 'right center'}
-                        sizes="120px"
-                        className="mb-4 h-14 w-24 md:h-16 md:w-28"
-                      />
-                    </div>
-                  )}
-
-                  <span
-                    aria-label={meetingCancelled ? 'Cancelled round' : `Round ${roundNo}`}
-                    className={isNext ? 'block leading-[0.85]' : 'outline-numeral block leading-[0.85]'}
-                    style={{
-                      fontFamily: 'var(--font-display)',
-                      fontSize: 'clamp(3.5rem, 7vw, 6.5rem)',
-                      opacity: isNext ? 1 : dim,
-                      ...(isNext ? { color: 'var(--accent)' } : {}),
-                    }}
-                  >
-                    {meetingCancelled ? '—' : pad2(roundNo)}
-                  </span>
-
-                  {/* Information: colour-recessed, never opacity-stacked. */}
-                  <p
-                    className={`mt-2 uppercase leading-none ${
-                      meetingCancelled ? 'line-through decoration-1' : ''
-                    }`}
-                    style={{
-                      fontFamily: 'var(--font-display)',
-                      fontSize: 'clamp(1.9rem, 3.6vw, 3.2rem)',
-                      color: dim < 1 ? 'var(--text-muted)' : 'var(--text)',
-                    }}
-                  >
-                    {m.circuit_short_name}
-                  </p>
-
-                  <p
-                    className="label-mono mt-3"
-                    style={{ color: dim < 1 ? 'var(--text-muted)' : 'var(--text-dim)' }}
-                  >
-                    {m.country_name.toUpperCase()} · {formatMeetingDates(m.date_start, m.date_end)}
-                    {meetingCancelled ? ' · CANCELLED' : ''}
-                  </p>
-
-                  {/* the season-record rule: winner stays legible above the dim */}
-                  {winner && (
-                    <p className="label-mono mt-2 text-[var(--text)]" style={{ opacity: 0.55 }}>
-                      P1 · {winner}
-                    </p>
-                  )}
-
-                  {/* compact mono session table */}
-                  {!meetingCancelled && sessions.length > 0 && (
-                    <div
-                      className={`mt-6 w-full max-w-[300px] space-y-1.5 ${right ? '' : 'md:ml-auto'}`}
-                      style={{ opacity: dim }}
-                    >
-                      {sessions.map((s) => {
-                        const status = getSessionStatus(s)
-                        return (
-                          <div
-                            key={s.session_key}
-                            className="label-mono flex items-center justify-between gap-6 border-b border-[var(--line)] pb-1.5"
-                          >
-                            <span
-                              className={
-                                status === 'live'
-                                  ? 'flex items-center gap-2 text-[var(--accent-text)]'
-                                  : status === 'completed'
-                                  ? 'text-[var(--text-dim)]'
-                                  : 'text-[var(--text)]'
-                              }
-                            >
-                              {status === 'live' && (
-                                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none" />
-                              )}
-                              {SESSION_SHORT[s.session_name] ?? s.session_name.toUpperCase()}
-                            </span>
-                            <span className="tabular-nums text-[var(--text-dim)]">
-                              {formatSessionTime(s.date_start)}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
+              <ScheduleRound
+                key={meeting.meeting_key}
+                meeting={meeting}
+                sessions={[...(sessionsByMeeting[meeting.meeting_key] ?? [])].sort((a, b) => Date.parse(a.date_start) - Date.parse(b.date_start))}
+                winner={winners[meeting.meeting_key]}
+                roundNo={scoredRound}
+                index={index}
+                isTarget={meeting.meeting_key === targetMeeting?.meeting_key}
+                now={now}
+                timeMode={timeMode}
+                localZone={localZone}
+              />
             )
           })}
         </div>

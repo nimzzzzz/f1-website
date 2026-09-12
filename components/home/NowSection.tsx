@@ -1,8 +1,12 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import Image from 'next/image'
 import type { Meeting, Session } from '@/lib/openf1'
 import NowBackdrop from '@/components/home/NowBackdrop'
+import { circuitImageForMeeting } from '@/lib/media-manifest'
+import { weekendSessions, weekendState, countdownParts } from '@/lib/race-weekend'
+import { TransitionLink } from '@/components/motion/TransitionProvider'
 
 interface Props {
   meeting: Meeting
@@ -10,198 +14,92 @@ interface Props {
   round: number
   totalRounds: number
   isLive: boolean
-}
-
-interface TimeLeft {
-  days: number
-  hours: number
-  mins: number
-  secs: number
-}
-
-function calcTimeLeft(target: Date, now: number): TimeLeft {
-  const diff = Math.max(0, target.getTime() - now)
-  const total = Math.floor(diff / 1000)
-  return {
-    days: Math.floor(total / 86400),
-    hours: Math.floor((total % 86400) / 3600),
-    mins: Math.floor((total % 3600) / 60),
-    secs: total % 60,
-  }
+  onPlayIntro: () => void
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
-// The countdown always tracks the NEXT SESSION across the whole calendar
-// (FP, Sprint, Qualifying, Race — whichever starts soonest), not just the
-// race: a live session shows an in-progress state instead of a timer, and
-// between sessions the clock immediately re-aims at the next one. The
-// sessions prop is backstopped by the season bundle upstream, so this
-// keeps ticking through openf1's live-session lockouts.
-function nextSessionState(sessions: Session[], now: number) {
-  let live: Session | null = null
-  let next: Session | null = null
-  for (const s of sessions) {
-    const start = new Date(s.date_start).getTime()
-    const end = new Date(s.date_end).getTime()
-    if (start <= now && now < end) live = s
-    else if (start > now && (!next || start < new Date(next.date_start).getTime())) next = s
-  }
-  return { live, next }
-}
-
-// Section 1 — "NOW". Full viewport, typographic. This is what the intro
-// hands off to: same black mood, the race name at display scale where the
-// video's wordmark just was.
-export default function NowSection({ meeting, sessions, round, totalRounds, isLive }: Props) {
+export default function NowSection({ meeting, sessions, round, totalRounds, isLive, onPlayIntro }: Props) {
   const [now, setNow] = useState(() => Date.now())
-
+  const [localTime, setLocalTime] = useState(false)
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [])
 
-  const { live, next } = nextSessionState(sessions, now)
-  const left = next ? calcTimeLeft(new Date(next.date_start), now) : null
-
-  const nameMatch = meeting.meeting_name.match(/^(.*?)\s+(Grand\s+Prix)$/i)
-  const big = (nameMatch ? nameMatch[1] : meeting.meeting_name).toUpperCase()
-  const suffix = nameMatch ? 'GRAND PRIX' : ''
-
-  const dateRange = `${new Date(meeting.date_start).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  })} — ${new Date(meeting.date_end).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  })}`.toUpperCase()
+  const weekend = useMemo(() => weekendSessions(sessions, meeting.meeting_key), [sessions, meeting.meeting_key])
+  const { live, next } = weekendState(weekend, now)
+  const clock = next ? countdownParts(next.date_start, now) : null
+  const big = meeting.meeting_name.replace(/\s+Grand\s+Prix$/i, '')
+  const circuit = circuitImageForMeeting(meeting)
+  const range = [meeting.date_start, meeting.date_end].map((date) => new Date(date).toLocaleDateString('en-GB', {
+    day: '2-digit', month: 'short', timeZone: 'UTC',
+  })).join(' - ')
 
   return (
-    <section className="relative flex min-h-[calc(100dvh-4rem)] flex-col justify-center overflow-hidden px-6 md:px-14">
-      {/* atmospheric circuit backdrop — photo (or line-art fallback),
-          absolute behind everything; plain NOW if neither exists */}
-      <NowBackdrop
-        meetingKey={meeting.meeting_key}
-        circuitShortName={meeting.circuit_short_name}
-        countryName={meeting.country_name}
-      />
-
-      {/* oversized dim outline round numeral, asymmetric behind the composition */}
-      <span
-        aria-hidden
-        className="outline-numeral absolute -right-[4vw] top-[2%] leading-none"
-        style={{ fontSize: 'clamp(16rem, 42vw, 52rem)' }}
-      >
-        {pad(round)}
-      </span>
-
-      <div className="relative">
-        <p className="strip-header mb-6 flex items-center gap-3 text-[var(--text-dim)]">
-          {isLive ? (
-            <span className="flex items-center gap-2 text-[var(--accent-text)]">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none" />
-              LIVE
-            </span>
-          ) : (
-            <span>NOW</span>
-          )}
-          <span aria-hidden>—</span>
-          <span>
-            ROUND {pad(round)} / {pad(totalRounds)}
-          </span>
-        </p>
-
-        <h1
-          className="uppercase text-[var(--text)]"
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 'clamp(6rem, 14vw, 15rem)',
-            lineHeight: 0.82,
-            letterSpacing: '0.01em',
-          }}
-        >
-          {big}
-        </h1>
-        {suffix && (
-          <p
-            className="mt-2 uppercase"
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 'clamp(1.6rem, 3.4vw, 3.4rem)',
-              lineHeight: 1,
-              letterSpacing: '0.12em',
-              color: 'var(--text-dim)',
-            }}
-          >
-            {suffix}
-          </p>
-        )}
-
-        <p className="label-mono mt-8 text-[var(--text-dim)]">
-          {meeting.circuit_short_name.toUpperCase()} · {meeting.country_name.toUpperCase()} ·{' '}
-          {dateRange}
-        </p>
-
-        {/* ── the clock: a live session, or the countdown to the next one ── */}
-        {live ? (
-          <div className="mt-12" aria-label={`${live.session_name} in progress`}>
-            <p
-              className="flex items-center gap-4 uppercase text-[var(--accent)]"
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 'clamp(2.2rem, 5vw, 4.6rem)',
-                lineHeight: 1,
-              }}
-            >
-              <span
-                aria-hidden
-                className="inline-block h-3 w-3 shrink-0 animate-pulse rounded-full bg-[var(--accent)] motion-reduce:animate-none"
-              />
-              {live.session_name.toUpperCase()} IN PROGRESS
-            </p>
+    <>
+      <section className="race-hero" aria-labelledby="race-title">
+        <div className="race-hero-backdrop" aria-hidden="true">
+          <NowBackdrop
+            meetingKey={meeting.meeting_key}
+            circuitShortName={meeting.circuit_short_name}
+            countryName={meeting.country_name}
+          />
+        </div>
+        <div className="race-hero-content home-width">
+          <div className="race-hero-kicker">
+            <span className="race-round">R{pad(round)}</span>
+            <span>{isLive ? 'RACE WEEKEND' : 'UP NEXT'}</span>
+            <span className="race-kicker-year">{meeting.year} FORMULA 1</span>
           </div>
-        ) : next && left ? (
-          <div className="mt-12" aria-label={`${next.session_name} countdown`}>
-            <p className="label-mono mb-4 text-[var(--text-dim)]">
-              <span className="text-[var(--text)]">{next.session_name.toUpperCase()}</span> IN
-            </p>
-            <div className="flex items-end gap-4 md:gap-8">
-              {(
-                [
-                  [left.days, 'DAYS'],
-                  [left.hours, 'HRS'],
-                  [left.mins, 'MIN'],
-                  [left.secs, 'SEC'],
-                ] as const
-              ).map(([value, label], i) => (
-                <React.Fragment key={label}>
-                  {i > 0 && (
-                    <span
-                      aria-hidden
-                      className="pb-6 font-mono text-[var(--text-dim)]"
-                      style={{ fontSize: 'clamp(1.4rem, 3.5vw, 3rem)' }}
-                    >
-                      :
-                    </span>
-                  )}
-                  <div>
-                    {/* time-derived text: SSR and hydration legitimately
-                        differ by a second — suppress the mismatch warning */}
-                    <div
-                      suppressHydrationWarning
-                      className="font-mono tabular-nums leading-none text-[var(--text)]"
-                      style={{ fontSize: 'clamp(2.6rem, 7vw, 6rem)' }}
-                    >
-                      {pad(value)}
-                    </div>
-                    <div className="label-mono mt-2 text-[var(--text-dim)]">{label}</div>
-                  </div>
-                </React.Fragment>
-              ))}
+          <h1 id="race-title" className={`race-title ${big.length > 13 ? 'race-title-long' : ''}`}>
+            <span>{big}</span><span className="race-title-secondary">Grand Prix</span>
+          </h1>
+          <p className="race-hero-location">{meeting.location || meeting.circuit_short_name}, {meeting.country_name}<span>{range}</span></p>
+          <div className="race-hero-actions">
+            <a href="#weekend" className="race-button race-button-primary">The weekend <span aria-hidden="true">↗</span></a>
+            <button type="button" onClick={onPlayIntro} className="race-text-link">Play the intro <span aria-hidden="true">↗</span></button>
+          </div>
+        </div>
+        <div className="hero-circuit" aria-hidden="true">
+          {circuit && <Image src={circuit} alt="" width={200} height={140} sizes="180px" />}
+          <span>{meeting.circuit_short_name}</span>
+        </div>
+        <div className="race-clock-strip">
+          <div className="home-width race-clock-inner">
+            <div className="race-clock-heading">
+              <span className="label-mono">{live ? 'ON TRACK NOW' : next ? 'NEXT SESSION' : 'WEEKEND COMPLETE'}</span>
+              <strong>{live?.session_name ?? next?.session_name ?? 'The chequered flag'}</strong>
             </div>
+            {live ? <div className="race-on-air"><span />Session in progress</div> : clock ? (
+              <div className="race-countdown" role="timer" aria-label={`Time until ${next?.session_name}`}>
+                {clock.map((value, i) => <div key={i}><strong suppressHydrationWarning>{pad(value)}</strong><span>{['DAYS', 'HRS', 'MIN', 'SEC'][i]}</span></div>)}
+              </div>
+            ) : <p className="race-clock-complete">Explore the results and every lap.</p>}
+            <TransitionLink href={live ? '/positions' : '/results'} className="race-clock-link">{live ? 'Live timing' : 'Session results'}<span aria-hidden="true">↗</span></TransitionLink>
           </div>
-        ) : null /* no live and no upcoming session — season over, degrade quietly */}
-      </div>
-    </section>
+        </div>
+      </section>
+
+      <section id="weekend" className="weekend-section home-width" aria-label="Race weekend schedule">
+        <div className="weekend-heading"><h2>The weekend.</h2><div className="time-switch" role="group" aria-label="Schedule time zone">
+          <button type="button" aria-pressed={!localTime} onClick={() => setLocalTime(false)}>UTC</button>
+          <button type="button" aria-pressed={localTime} onClick={() => setLocalTime(true)}>Your time</button>
+        </div></div>
+        {weekend.length ? <ol className="weekend-sessions">{weekend.map((session) => {
+          const past = Date.parse(session.date_end) <= now
+          const current = live?.session_key === session.session_key
+          const upcoming = !live && next?.session_key === session.session_key
+          const date = new Date(session.date_start)
+          const zone = localTime ? undefined : 'UTC'
+          return <li key={session.session_key} className={current || upcoming ? 'weekend-session is-next' : 'weekend-session'}>
+            <div className="weekend-session-top"><span>{date.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', timeZone: zone })}</span><span className="weekend-session-state">{current ? 'IN PROGRESS' : past ? 'COMPLETE' : upcoming ? 'UP NEXT' : ''}</span></div>
+            <h3>{session.session_name}</h3>
+            <time dateTime={session.date_start}>{date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: zone })}</time>
+          </li>
+        })}</ol> : <p className="weekend-unavailable">Session times will appear when the schedule is available.</p>}
+        <p className="weekend-footnote">Round {pad(round)} of {pad(totalRounds)}<span>{localTime ? 'Times shown in your time zone' : 'All times in UTC'}</span></p>
+      </section>
+    </>
   )
 }
