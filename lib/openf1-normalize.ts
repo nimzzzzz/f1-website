@@ -33,8 +33,8 @@ export interface CleanSessionResult extends Omit<SessionResult, 'position' | 'po
   position: number | null
   points: number
   number_of_laps: number | null
-  duration: number | number[] | null
-  gap_to_leader: number | number[] | null
+  duration: SessionResult['duration']
+  gap_to_leader: SessionResult['gap_to_leader']
   /** Distinct outcome, preserved rather than collapsed to a single bit. */
   status: 'classified' | 'DNF' | 'DNS' | 'DSQ' | 'NC'
 }
@@ -59,8 +59,14 @@ export function resultStatus(r: {
 
 const numOrNull = (v: unknown): number | null => asNum(v)
 // duration/gap can legitimately be an array (multi-part times upstream)
-const numOrArr = (v: unknown): number | number[] | null =>
-  Array.isArray(v) ? v.map((x) => asNum(x) ?? 0) : asNum(v)
+const numOrArr = (v: unknown): number | (number | null)[] | null =>
+  Array.isArray(v) ? v.map((x) => asNum(x)) : asNum(v)
+
+// Qualifying arrays are Q1/Q2/Q3 seconds; a lapped race gap is a STRING.
+// Preserve both forms, including null stages (not a zero-second lap).
+const normalizeGap = (v: unknown): SessionResult['gap_to_leader'] =>
+  typeof v === 'string' && /^\+?\d+\s+LAPS?$/i.test(v.trim())
+    ? v.trim().toUpperCase() : numOrArr(v)
 
 export function normalizeSessionResults(
   rows: unknown[]
@@ -115,9 +121,10 @@ export function normalizeSessionResults(
       driver_number: driver,
       position,
       points,
+      points_available: r.points !== null && r.points !== undefined,
       number_of_laps: numOrNull(r.number_of_laps),
       duration: numOrArr(r.duration),
-      gap_to_leader: numOrArr(r.gap_to_leader),
+      gap_to_leader: normalizeGap(r.gap_to_leader),
       dnf: r.dnf === true,
       dns: r.dns === true,
       dsq: r.dsq === true,

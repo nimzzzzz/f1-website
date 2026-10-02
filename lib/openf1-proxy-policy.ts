@@ -34,6 +34,7 @@ export const ENDPOINT_PARAMS: Record<string, Record<string, ParamSpec>> = {
   sessions: { year: { min: 2000, max: 2100 } },
   drivers: { session_key: KEY(), meeting_key: KEY() },
   session_result: { session_key: KEY(), meeting_key: KEY() },
+  starting_grid: { session_key: KEY() },
   // getLaps' shipped signature can emit driver_number and limit even though
   // only session_key is used today. Allowing them costs nothing — they are
   // integer-validated like everything else, and `limit` only ever SHRINKS a
@@ -86,6 +87,7 @@ export const ENDPOINT_TTL: Record<string, number> = {
   weather: 60,
   stints: 60,
   session_result: 60,
+  starting_grid: 60,
   drivers: 60,
   meetings: 60,
   sessions: 60,

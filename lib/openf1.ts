@@ -173,13 +173,23 @@ export interface SessionResult {
   meeting_key: number
   driver_number: number
   position: number | null
-  number_of_laps: number
+  number_of_laps: number | null
   points: number
   dnf: boolean
   dns: boolean
   dsq: boolean
-  duration: number | number[] | null
-  gap_to_leader: number | number[] | null
+  duration: number | (number | null)[] | null
+  gap_to_leader: number | string | (number | null)[] | null
+  /** Distinguishes an unpublished points field from a confirmed zero. */
+  points_available?: boolean
+}
+
+export interface StartingGrid {
+  session_key: number
+  meeting_key: number
+  driver_number: number
+  position: number
+  lap_duration: number | null
 }
 
 // ─── Live-session lockout signal ─────────────────────────────────────────────
@@ -331,6 +341,19 @@ export async function getLaps(
 
 export async function getPositions(sessionKey: number): Promise<FetchResult<Position>> {
   return apiFetch<Position>('/position', { session_key: sessionKey }, { cache: 'no-store' })
+}
+
+export async function getStartingGrid(sessionKey: number): Promise<FetchResult<StartingGrid>> {
+  const res = await apiFetch<StartingGrid>('/starting_grid', { session_key: sessionKey }, { cache: 'no-store' })
+  if (!res.ok) return res
+  // Keep zero distinct from a numbered grid slot; never coerce it to P1.
+  const rows = res.rows.flatMap((r) => {
+    const driver = Number(r.driver_number)
+    const position = r.position == null ? NaN : Number(r.position)
+    return Number.isInteger(driver) && driver > 0 && Number.isInteger(position) && position >= 0
+      ? [{ ...r, driver_number: driver, position }] : []
+  })
+  return okResult(rows)
 }
 
 export async function getPitStops(sessionKey: number): Promise<FetchResult<PitStop>> {

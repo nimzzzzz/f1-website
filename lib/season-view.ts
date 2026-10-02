@@ -260,9 +260,22 @@ export function toDriverSeason(bundle: SeasonBundle, acronym: string): DriverSea
 
 export interface MachineDriver {
   acronym: string
+  firstName: string
   surname: string
   number: number
   points: number
+  position: number
+}
+
+export interface MachineWeekend {
+  meetingKey: number
+  round: number
+  circuit: string
+  country: string
+  date: string
+  status: 'complete' | 'upcoming' | 'cancelled'
+  /** Individual driver results, not historical constructor attribution. */
+  results: Array<SeasonStation & { driverNumber: number }>
 }
 
 export interface TeamMachineView {
@@ -275,6 +288,8 @@ export interface TeamMachineView {
   /** Drivers sorted by points, descending — pairing bar reads left-heavy. */
   drivers: MachineDriver[]
   pairing: { winsA: number; winsB: number; bothClassified: number } | null
+  weekends: MachineWeekend[]
+  nextTeam: { name: string; slug: string; colour: string } | null
   season: {
     points: number
     wins: number
@@ -295,9 +310,11 @@ export function toTeamMachine(bundle: SeasonBundle, slug: string): TeamMachineVi
     .sort((a, b) => b.points - a.points)
     .map((d) => ({
       acronym: d.nameAcronym,
+      firstName: d.firstName,
       surname: d.surname,
       number: d.driverNumber,
       points: Math.floor(d.points),
+      position: d.position,
     }))
   const nums = new Set(drivers.map((d) => d.number))
 
@@ -310,6 +327,17 @@ export function toTeamMachine(bundle: SeasonBundle, slug: string): TeamMachineVi
     (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime()
   )
 
+  const driverRounds = drivers.map((d) => ({ number: d.number, stations: driverStations(bundle, d.number) }))
+  const weekends: MachineWeekend[] = ordered.map((m, i) => ({
+    meetingKey: m.meeting_key,
+    round: i + 1,
+    circuit: m.circuit_short_name,
+    country: m.country_name,
+    date: m.date_start,
+    status: isCancelled(m) ? 'cancelled' : bundle.resultsByRound[m.meeting_key] ? 'complete' : 'upcoming',
+    results: driverRounds.map((d) => ({ ...d.stations[i], driverNumber: d.number })),
+  }))
+
   let podiums = 0
   let dnfs = 0
   let bestFinish: number | null = null
@@ -321,6 +349,7 @@ export function toTeamMachine(bundle: SeasonBundle, slug: string): TeamMachineVi
   const b = drivers[1]
 
   ordered.forEach((m, i) => {
+    if (isCancelled(m)) return
     const rows = bundle.resultsByRound[m.meeting_key]
     if (!rows) return
     // Weekend haul = grand prix points PLUS that weekend's sprint points.
@@ -358,7 +387,7 @@ export function toTeamMachine(bundle: SeasonBundle, slug: string): TeamMachineVi
         if (pa !== null && pb !== null) {
           bothClassified++
           if (pa < pb) winsA++
-          else winsB++
+          else if (pb < pa) winsB++
         }
       }
     }
@@ -369,6 +398,10 @@ export function toTeamMachine(bundle: SeasonBundle, slug: string): TeamMachineVi
     biggestHaul = null
   }
 
+  const constructors = [...bundle.teamStandings].sort((a, b) => a.position - b.position)
+  const teamIndex = constructors.findIndex((t) => t.teamName === standing.teamName)
+  const next = constructors.length > 1 ? constructors[(teamIndex + 1) % constructors.length] : null
+
   return {
     computedAt: bundle.computedAt,
     seasonYear: bundle.seasonYear,
@@ -378,6 +411,8 @@ export function toTeamMachine(bundle: SeasonBundle, slug: string): TeamMachineVi
     position: standing.position,
     drivers,
     pairing: a && b ? { winsA, winsB, bothClassified } : null,
+    weekends,
+    nextTeam: next ? { name: next.teamName, slug: teamToSlug(next.teamName), colour: `#${next.teamColour || 'F5F5F3'}` } : null,
     season: {
       points: Math.floor(standing.points),
       wins: standing.wins,

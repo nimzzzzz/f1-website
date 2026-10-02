@@ -176,6 +176,7 @@ function gapLabel(r: SessionResult): string {
   if (r.dsq) return 'DSQ'
   const gap = r.gap_to_leader
   if (gap === null || gap === undefined) return '—'
+  if (typeof gap === 'string' && /LAP/i.test(gap)) return gap.startsWith('+') ? gap : `+${gap}`
   if (Array.isArray(gap)) {
     const laps = asNum(gap[0]) ?? 1
     return `+${laps} LAP${laps > 1 ? 'S' : ''}`

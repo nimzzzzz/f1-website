@@ -1,4 +1,4 @@
-import type { Meeting, Session, Weather, RaceControl, Lap, Driver, PitStop, Position, Stint, TeamRadio, SessionResult } from './openf1'
+import type { Meeting, Session, Weather, RaceControl, Lap, Driver, PitStop, Position, Stint, TeamRadio, SessionResult, StartingGrid } from './openf1'
 import {
   getMeetings,
   getAllSessions,
@@ -11,6 +11,7 @@ import {
   getStints,
   getTeamRadio,
   getSessionResult,
+  getStartingGrid,
 } from './openf1'
 import type { FetchResult } from './fetch-result'
 
@@ -134,3 +135,4 @@ export const getCachedPositions      = makeCache<Position>(getPositions, DATA_TT
 export const getCachedStints         = makeCache<Stint>(getStints, DATA_TTL)
 export const getCachedTeamRadio      = makeCache<TeamRadio>(getTeamRadio, DATA_TTL)
 export const getCachedSessionResult  = makeCache<SessionResult>(getSessionResult, DATA_TTL)
+export const getCachedStartingGrid   = makeCache<StartingGrid>(getStartingGrid, DATA_TTL)
