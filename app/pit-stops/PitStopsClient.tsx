@@ -1,199 +1,81 @@
 'use client'
 
-import { useMemo } from 'react'
-import type { Session, PitStop, Driver } from '@/lib/openf1'
-import { asNum } from '@/lib/format'
-import { getCachedPitStops, getCachedDrivers } from '@/lib/client-cache'
+import { useMemo, useRef, useState } from 'react'
+import type { Session, Stint } from '@/lib/openf1'
+import { getCachedPitStops, getCachedDrivers, getCachedStints } from '@/lib/client-cache'
 import { useSessionData, useSessionList, sessionStripLabel } from '@/lib/use-session-data'
 import { POLL_MEDIUM } from '@/lib/session-live'
+import { median, pitTime, pitVisits, rankVisits, type PitMetric, type PitVisit } from '@/lib/pit-story'
 import SessionHeader from '@/components/session/SessionHeader'
 import DataStateNotice from '@/components/session/DataStateNotice'
 import LiveBeat from '@/components/session/LiveBeat'
-import { FadeUp } from '@/components/motion/reveals'
+import PitGarage from './PitGarage'
+import PitTraffic, { type PitWindow } from './PitTraffic'
+import PitLedger from './PitLedger'
+import PitTeams from './PitTeams'
+import { focusPitSection } from './pit-scroll'
+import './pit-stops.css'
 
-function formatPitDuration(seconds: number | null): string {
-  const n = asNum(seconds)
-  return n === null ? '—' : `${n.toFixed(2)}s`
+const isRace = (s: Session) => s.session_type === 'Race' && !s.is_cancelled
+const initialSession = (sorted: Session[]) => {
+  const requested = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('session')
+  return (requested && sorted.find(s => String(s.session_key) === requested)) || sorted.find(s => new Date(s.date_end) < new Date())
 }
 
-const isRace = (s: Session) => s.session_type === 'Race'
-const latestCompleted = (sorted: Session[]) => sorted.find((s) => new Date(s.date_end) < new Date())
+function PitExperience({ visits, stints }: { visits: PitVisit[]; stints: Stint[] | null }) {
+  const stationaryCount = visits.filter(v => v.stationary !== null).length
+  const [metric, setMetric] = useState<PitMetric>(() => stationaryCount ? 'stationary' : 'lane')
+  const [selection, setSelection] = useState<string | null>(null)
+  const [window, setWindow] = useState<PitWindow | null>(null)
+  const [replaySignal, setReplaySignal] = useState(0)
+  const title = useRef<HTMLHeadingElement>(null)
+  const ranking = useMemo(() => rankVisits(visits, metric), [visits, metric])
+  const selected = visits.find(v => v.key === selection) ?? ranking[0] ?? visits[0]
+  const middle = median(visits.flatMap(v => v[metric] === null ? [] : [v[metric]!]))
+  const inspect = (v: PitVisit) => {
+    setSelection(v.key); setReplaySignal(n => n + 1)
+    requestAnimationFrame(() => focusPitSection(title.current))
+  }
+  return <>
+    <div className="pit-overview"><div><span className="pit-label">COMPARE</span><div className="pit-metric" role="group" aria-label="Timing measurement">
+      <button type="button" aria-pressed={metric === 'stationary'} onClick={() => { setMetric('stationary'); setSelection(null) }} disabled={!stationaryCount} title={!stationaryCount ? 'Stationary timings have not been published for this session' : undefined}>STATIONARY</button>
+      <button type="button" aria-pressed={metric === 'lane'} onClick={() => { setMetric('lane'); setSelection(null) }}>PIT LANE</button>
+    </div></div><dl><div><dt>RECORDED VISITS</dt><dd>{visits.length}</dd></div><div><dt>{metric === 'lane' ? 'MEDIAN LANE TIME' : 'MEDIAN STATIONARY'}</dt><dd>{pitTime(middle)}{middle !== null && middle < 60 && <small>s</small>}</dd></div></dl></div>
+    <PitGarage key={`${selected.key}-${metric}`} visit={selected} metric={metric} best={ranking[0]} stints={stints} titleRef={title} replaySignal={replaySignal} />
+    {!stationaryCount ? <p className="pit-coverage">Stationary timings are not published for this session. The clock shows the complete pit-lane visit.</p> : stationaryCount < visits.length ? <p className="pit-coverage">Stationary timings are available for {stationaryCount} of {visits.length} visits. Unpublished times remain marked N/A.</p> : null}
+    {ranking.length > 1 && <div className="pit-shortlist"><span className="pit-label">{metric === 'stationary' ? 'QUICKEST STATIONARY STOPS' : 'QUICKEST LANE VISITS'}</span><div className="pit-shortlist-scroll" data-lenis-prevent><div className="pit-quickest" role="group" aria-label="Inspect the quickest visits">
+      {ranking.slice(0, 5).map((v, i) => <button type="button" key={v.key} aria-pressed={selected.key === v.key} onClick={() => { setSelection(v.key); setReplaySignal(n => n + 1) }}><span className="pit-quick-rank">{String(i + 1).padStart(2, '0')}</span><span className="pit-quick-name"><i style={{ background: v.color }} aria-hidden />{v.acronym}<small>L{v.lap ?? '?'}</small></span><strong className={pitTime(v[metric]).includes(':') ? 'is-long' : undefined}>{pitTime(v[metric])}</strong></button>)}
+    </div></div></div>}
+    <PitTraffic visits={visits} selected={window} onSelect={setWindow} />
+    <PitLedger visits={visits} metric={metric} window={window} selected={selected.key} stints={stints} onInspect={inspect} onClearWindow={() => setWindow(null)} />
+    <PitTeams visits={visits} metric={metric} />
+    <p className="pit-source-note">Timing definitions: <a href="https://openf1.org/docs/#pit" target="_blank" rel="noreferrer">OpenF1 pit data ↗</a>. Pit-lane time includes the stationary stop. Visits may also include drive-throughs or extended holds.</p>
+  </>
+}
 
 export default function PitStopsClient() {
-  const { sessions, selectedKey, setSelectedKey, loading } = useSessionList(isRace, latestCompleted)
-  const selectedSession = sessions.find((s) => s.session_key === selectedKey) ?? null
+  const list = useSessionList(isRace, initialSession)
+  const { sessions, selectedKey, setSelectedKey, loading } = list
+  const selectedSession = sessions.find(s => s.session_key === selectedKey) ?? null
   const { data, dataKey, state, live, liveFlowing, lastUpdateAt, message, stale, fetching, refresh } = useSessionData(
-    selectedKey,
-    { pitStops: getCachedPitStops, drivers: getCachedDrivers },
-    { primary: 'pitStops', optional: ['drivers'],
-      pollMs: { pitStops: POLL_MEDIUM },
-      session: selectedSession,
-    }
+    selectedKey, { pitStops: getCachedPitStops, drivers: getCachedDrivers, stints: getCachedStints },
+    { primary: 'pitStops', optional: ['drivers', 'stints'], pollMs: { pitStops: POLL_MEDIUM, stints: POLL_MEDIUM }, session: selectedSession },
   )
-  // Rows kept through an outage may belong to a session the user has
-  // already navigated away from — name it, so the heading above cannot
-  // imply they are its own.
-  const staleLabel =
-    dataKey !== null && dataKey !== selectedKey
-      ? sessionStripLabel(sessions.find((s) => s.session_key === dataKey))
-      : null
-
-  const pitStops: PitStop[] = useMemo(
-    () => [...(data?.pitStops ?? [])].sort((a, b) => (a.lap_number ?? 0) - (b.lap_number ?? 0)),
-    [data]
-  )
-  const drivers: Driver[] = data?.drivers ?? []
-
-  const driverMap = new Map(drivers.map((d) => [d.driver_number, d]))
-
-  const validStops = pitStops.filter((p) => p.pit_duration !== null)
-  const fastestStop = validStops.reduce<PitStop | null>((best, p) => {
-    if (!best) return p
-    return (p.pit_duration ?? Infinity) < (best.pit_duration ?? Infinity) ? p : best
-  }, null)
-  const avgDuration =
-    validStops.length > 0
-      ? validStops.reduce((sum, p) => sum + (p.pit_duration ?? 0), 0) / validStops.length
-      : null
-
-  const stopsPerDriver = pitStops.reduce<Record<number, number>>((acc, p) => {
-    acc[p.driver_number] = (acc[p.driver_number] ?? 0) + 1
-    return acc
-  }, {})
-
-  if (loading) {
-    return (
-      <div className="flex min-h-[calc(100dvh-4rem)] flex-col justify-center px-6 md:px-14">
-        <div className="h-3 w-32 animate-pulse rounded bg-white/5" />
-        <div className="mt-8 h-24 w-[55%] animate-pulse rounded bg-white/5" />
-        {/* The skeleton is still a page and still needs its heading —
-            without one a visitor landing mid-load has no h1 at all. */}
-        <h1 data-loading-h1 className="sr-only">PIT STOPS</h1>
-        <p className="label-mono mt-8 text-[var(--text-dim)]">LOADING SESSIONS…</p>
-      </div>
-    )
+  const visits = useMemo(() => pitVisits(data?.pitStops ?? [], data?.drivers ?? [], dataKey ?? -1), [data, dataKey])
+  const different = dataKey !== null && dataKey !== selectedKey
+  const staleLabel = different ? sessionStripLabel(sessions.find(s => s.session_key === dataKey)) : null
+  const select = (key: number) => {
+    setSelectedKey(key)
+    const url = new URL(window.location.href)
+    url.searchParams.set('session', String(key)); window.history.replaceState(window.history.state, '', url)
   }
-
-  return (
-    <div className="relative overflow-x-clip px-6 pb-28 pt-20 md:px-14">
-      <SessionHeader
-        ghost="PIT"
-        kicker="PIT STOPS"
-        sessions={sessions}
-        selectedKey={selectedKey}
-        onSelect={setSelectedKey}
-        live={<LiveBeat live={live} flowing={liveFlowing} updatedAt={lastUpdateAt} message={message} />}
-      />
-
-      <DataStateNotice
-        state={state}
-        message={message}
-        stale={stale}
-        staleLabel={staleLabel}
-        onRetry={refresh}
-        emptyLabel={selectedKey ? 'NO PIT STOPS RECORDED' : 'SELECT A RACE SESSION'}
-        className="mt-8"
-      />
-
-      {fetching && pitStops.length === 0 ? (
-        <div className="mt-16 space-y-5">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-14 w-[55%] animate-pulse rounded bg-white/5" />
-          ))}
-        </div>
-      ) : pitStops.length === 0 ? null : (
-        <>
-          {/* ─── the stationary time IS the drama ─── */}
-          <div className="mt-16 flex flex-wrap items-baseline gap-x-20 gap-y-10">
-            {fastestStop && (
-              <FadeUp>
-                <p className="section-header flex items-center gap-2.5 text-[var(--accent-text)]">
-                  FASTEST STOP
-                  <span aria-hidden className="inline-block h-[2px] w-8 bg-[var(--accent)]" />
-                </p>
-                <p
-                  className="mt-3 font-mono tabular-nums leading-none text-[var(--text)]"
-                  style={{ fontSize: 'clamp(4rem, 10vw, 9rem)' }}
-                >
-                  {formatPitDuration(fastestStop.pit_duration)}
-                </p>
-                <p className="label-mono mt-4 flex items-center gap-2 text-[var(--text-dim)]">
-                  <span
-                    aria-hidden
-                    className="inline-block h-[2px] w-3"
-                    style={{
-                      backgroundColor: `#${driverMap.get(fastestStop.driver_number)?.team_colour ?? '444'}`,
-                    }}
-                  />
-                  {driverMap.get(fastestStop.driver_number)?.name_acronym ?? `#${fastestStop.driver_number}`}
-                  <span>· LAP {fastestStop.lap_number ?? '—'}</span>
-                </p>
-              </FadeUp>
-            )}
-            <FadeUp delay={0.1}>
-              <p
-                className="font-mono tabular-nums leading-none text-[var(--text)]"
-                style={{ fontSize: 'clamp(2.2rem, 5vw, 4.2rem)' }}
-              >
-                {avgDuration !== null ? formatPitDuration(avgDuration) : '—'}
-              </p>
-              <p className="label-mono mt-3 text-[var(--text-dim)]">AVERAGE</p>
-            </FadeUp>
-            <FadeUp delay={0.18}>
-              <p
-                className="font-mono tabular-nums leading-none text-[var(--text)]"
-                style={{ fontSize: 'clamp(2.2rem, 5vw, 4.2rem)' }}
-              >
-                {pitStops.length}
-              </p>
-              <p className="label-mono mt-3 text-[var(--text-dim)]">TOTAL STOPS</p>
-            </FadeUp>
-          </div>
-
-          {/* ─── every stop ─── */}
-          <div className="mt-20">
-            <FadeUp>
-              <p className="section-header text-[var(--text-dim)]">EVERY STOP — IN LAP ORDER</p>
-            </FadeUp>
-            <div className="mt-6">
-              {pitStops.map((stop, idx) => {
-                const driver = driverMap.get(stop.driver_number)
-                const isFastest = fastestStop !== null && stop === fastestStop
-                return (
-                  <div
-                    key={idx}
-                    className="label-mono flex items-baseline gap-5 border-t border-[var(--line)] py-3 md:gap-8"
-                  >
-                    <span className="w-14 shrink-0 tabular-nums text-[var(--text-dim)]">
-                      L{stop.lap_number ?? '—'}
-                    </span>
-                    <span className="flex w-24 shrink-0 items-center gap-2 text-[var(--text)]">
-                      <span
-                        aria-hidden
-                        className="inline-block h-[2px] w-3"
-                        style={{ backgroundColor: `#${driver?.team_colour ?? '444'}` }}
-                      />
-                      {driver?.name_acronym ?? `#${stop.driver_number}`}
-                    </span>
-                    <span className="hidden min-w-0 flex-1 truncate text-[var(--text-dim)] md:block">
-                      {driver?.team_name?.toUpperCase()}
-                    </span>
-                    <span className="hidden w-24 shrink-0 text-right tabular-nums text-[var(--text-dim)] md:block">
-                      STOP {stopsPerDriver[stop.driver_number] > 1 ? `OF ${stopsPerDriver[stop.driver_number]}` : '1'}
-                    </span>
-                    <span
-                      className="ml-auto shrink-0 text-right font-mono text-lg tabular-nums"
-                      style={{ color: isFastest ? 'var(--accent-text)' : 'var(--text)' }}
-                    >
-                      {formatPitDuration(stop.pit_duration)}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  )
+  if (loading) return <div className="pit-page pit-loading"><h1 className="sr-only" data-loading-h1>PIT STOPS</h1><p className="pit-label">LOADING SESSIONS…</p><div className="pit-skeleton" aria-hidden /></div>
+  return <div className="pit-page">
+    <SessionHeader ghost="PIT" kicker="PIT STOPS" sessions={sessions} selectedKey={selectedKey} onSelect={select} live={<LiveBeat live={live} flowing={liveFlowing} updatedAt={lastUpdateAt} message={message} />} />
+    <DataStateNotice state={list.state === 'unavailable' ? list.state : state} message={list.message ?? message} stale={stale} staleLabel={staleLabel}
+      onRetry={list.state === 'unavailable' ? () => window.location.reload() : refresh} emptyLabel={selectedKey ? 'NO PIT VISITS RECORDED FOR THIS SESSION' : 'SELECT A RACE SESSION'} className="mt-8" />
+    {different && !stale && visits.length > 0 && <p className="pit-coverage" role="status">LOADING SELECTED SESSION · SHOWING {staleLabel}</p>}
+    {fetching && !visits.length ? <div className="pit-skeleton" role="status"><span className="sr-only">Loading pit timing</span></div>
+      : visits.length ? <PitExperience key={dataKey} visits={visits} stints={data?.stints ?? null} /> : <div className="pit-clear" aria-hidden>CLEAR<br />LANE.</div>}
+  </div>
 }

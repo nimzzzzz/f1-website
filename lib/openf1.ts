@@ -97,6 +97,10 @@ export interface PitStop {
   date: string
   lap_number: number
   pit_duration: number | null
+  /** Total time in the pit lane; replaces the deprecated pit_duration alias. */
+  lane_duration?: number | null
+  /** Stationary service time. Never substitute total lane time for this. */
+  stop_duration?: number | null
   pit_in_time: string | null
   pit_out_time: string | null
 }

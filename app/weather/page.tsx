@@ -2,9 +2,8 @@ import type { Metadata } from 'next'
 import { routeMeta } from '@/lib/seo'
 import WeatherClient from './WeatherClient'
 
-// Server shell so this route can carry metadata: a 'use client' module
-// cannot export it. The page itself is unchanged — it moved into
-// WeatherClient and is rendered here untouched.
+// Route metadata remains on the server; interactive session data lives in
+// WeatherClient.
 export const metadata: Metadata = routeMeta({
   path: 'weather',
   title: 'WEATHER',

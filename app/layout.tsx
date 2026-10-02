@@ -120,23 +120,25 @@ export default function RootLayout({
     // in. Without it, every route change would SMOOTH-SCROLL to the top —
     // visibly wrong on a site that already runs Lenis for its own scrolling.
     <html lang="en" data-scroll-behavior="smooth" className={`${bebasNeue.variable} ${spaceGrotesk.variable} ${syne.variable} ${geistSans.variable} ${geistMono.variable}`}>
-      {/* THE INTRO'S ESCAPE HATCH — two independent routes, because the
-          two failure modes are different. <noscript> covers scripts being
-          disabled outright. The inline failsafe covers hydration FAILING:
-          it runs before React and does not depend on it, so if the app
-          never takes over, the overlay is removed anyway. 20s is far past
-          the intro's own duration, so it can never cut a working intro
-          short — it only ever rescues a broken one. */}
-      <noscript>
-        <style>{`[data-intro-overlay]{display:none !important}`}</style>
-      </noscript>
-      <script
-        dangerouslySetInnerHTML={{
-          __html:
-            "setTimeout(function(){var o=document.querySelector('[data-intro-overlay]');" +
-            "if(o&&!o.dataset.introHandedOff){o.style.display='none'}},20000)",
-        }}
-      />
+      <head>
+        {/* THE INTRO'S ESCAPE HATCH — two independent routes, because the
+            two failure modes are different. <noscript> covers scripts being
+            disabled outright. The inline failsafe covers hydration FAILING:
+            it runs before React and does not depend on it, so if the app
+            never takes over, the overlay is removed anyway. 20s is far past
+            the intro's own duration, so it can never cut a working intro
+            short — it only ever rescues a broken one. */}
+        <noscript>
+          <style>{`[data-intro-overlay]{display:none !important}`}</style>
+        </noscript>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "setTimeout(function(){var o=document.querySelector('[data-intro-overlay]');" +
+              "if(o&&!o.dataset.introHandedOff){o.style.display='none'}},20000)",
+          }}
+        />
+      </head>
       <body>
         <JsonLd
           data={{
