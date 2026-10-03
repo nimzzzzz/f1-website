@@ -62,7 +62,9 @@ const csp = [
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
-  "frame-ancestors 'none'",
+  // Framing: only the site itself and Switchboard (the dashboard that shows this
+  // project's live site inside its world). Every other page is still refused.
+  "frame-ancestors 'self' https://switchboard.nimasedaghati.workers.dev",
   'upgrade-insecure-requests',
 ].join('; ')
 
