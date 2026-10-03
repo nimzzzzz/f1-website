@@ -73,6 +73,19 @@ export function scoreSquad(lineup: Lineup, results: readonly DriverResult[]): Sq
   return { total: drivers.reduce((s, d) => s + d.total, 0), bonus: drivers.reduce((s, d) => s + d.bonus, 0), leader: drivers[0].total, drivers }
 }
 
+/** Hindsight only: compare role decisions using the original squad and result. */
+export function compareRoles(lineup: Lineup, results: readonly DriverResult[]) {
+  const ids = ROLES.map(role => lineup[role])
+  const actual = scoreSquad(lineup, results)
+  return ids.flatMap(leader => ids.filter(id => id !== leader).map(charger => {
+    const rival = ids.find(id => id !== leader && id !== charger)!
+    const candidate = { leader, charger, rival }
+    const score = scoreSquad(candidate, results)
+    return { lineup: candidate, score, difference: score.total - actual.total,
+      actual: ROLES.every(role => candidate[role] === lineup[role]), key: `${leader}-${charger}-${rival}` }
+  })).sort((a, b) => b.score.total - a.score.total || Number(b.actual) - Number(a.actual) || a.key.localeCompare(b.key))
+}
+
 /** Published tie order: round points, role bonuses, leader points, then cup seed. */
 export function matchWinner(a: string, b: string, scoreA: SquadScore, scoreB: SquadScore, seeds: readonly string[]): string {
   const delta = scoreA.total - scoreB.total || scoreA.bonus - scoreB.bonus || scoreA.leader - scoreB.leader

@@ -57,3 +57,7 @@ Do not turn the current practice mode into public play by merely uploading local
 - Full suite: 256 tests across 22 files. TypeScript passed.
 - Production build passed; existing season data refresh encountered upstream rate limits and successfully retained its cached/fallback data. Fantasy itself makes no upstream calls.
 - Browser checks: selecting a driver updates budget and requires save; a four-round cup awarded a trophy and started cup two; reload kept the saved score, lineup and history; season table and cup history reflected the same results; team name/colour editing persisted; 390px phone layout had no document overflow or broken driver images.
+
+## Decision room
+
+Every race debrief now compares all six permutations of the original three drivers against that race's results. The recorded lineup is marked, alternatives show their totals and point difference, and selecting one exposes its three role bonuses. Base points remain unchanged. The highest score is explicitly hindsight, never a forecast or an edit to saved results. `compareRoles` is a pure scoring helper with tests for uniqueness, ordering and immutable input.

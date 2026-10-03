@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BUDGET, assignDriver, lineupCost, matchWinner, scoreSquad, validateTeam } from '../lib/fantasy/rules'
+import { BUDGET, assignDriver, compareRoles, lineupCost, matchWinner, scoreSquad, validateTeam } from '../lib/fantasy/rules'
 import { COMPUTERS, DEFAULT_SAVE, PRACTICE_DRIVERS, buildCup, currentCupNumber, nextMatch, parseSave, playRound, practiceResults, standings } from '../lib/fantasy/practice'
 import type { DriverResult, Lineup, SquadScore } from '../lib/fantasy/types'
 
@@ -20,6 +20,21 @@ describe('fantasy role scoring', () => {
   })
   it('changes points when the same drivers are assigned different roles', () => {
     expect(scoreSquad(assignDriver(lineup, 'leader', 'ALB'), baseResults).total).not.toBe(scoreSquad(lineup, baseResults).total)
+  })
+  it('compares all six role assignments without changing the squad or its base points', () => {
+    const original = structuredClone(lineup)
+    const comparisons = compareRoles(lineup, baseResults)
+    expect(comparisons).toHaveLength(6)
+    expect(new Set(comparisons.map(c => c.key)).size).toBe(6)
+    expect(comparisons.filter(c => c.actual)).toHaveLength(1)
+    expect(comparisons.find(c => c.actual)?.score.total).toBe(98)
+    comparisons.forEach(c => {
+      expect(Object.values(c.lineup).sort()).toEqual(['ALB', 'GAS', 'NOR'])
+      expect(c.score.total - c.score.bonus).toBe(43)
+      expect(c.difference).toBe(c.score.total - 98)
+    })
+    expect(comparisons.map(c => c.score.total)).toEqual(comparisons.map(c => c.score.total).sort((a, b) => b - a))
+    expect(lineup).toEqual(original)
   })
   it('caps Charger gains and does not reward missing grid, backwards progress or retirement', () => {
     for (const overrides of [{ grid: null }, { grid: 2, finish: 10 }, { status: 'dnf' as const, finish: 8 }]) {

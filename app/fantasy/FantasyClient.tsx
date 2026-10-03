@@ -8,6 +8,8 @@ import DriverMarket, { DriverPortrait } from './DriverMarket'
 import { Championship, Knockout, TeamMark } from './Competitions'
 import FantasyDialog from './FantasyDialog'
 import FantasyRules from './FantasyRules'
+import RoleLab from './RoleLab'
+import Link from 'next/link'
 
 type View = 'garage' | 'championship' | 'cup'
 const VIEWS: { id: View; label: string }[] = [{ id: 'garage', label: 'My garage' }, { id: 'championship', label: 'Championship' }, { id: 'cup', label: 'Knockout cup' }]
@@ -41,7 +43,7 @@ export default function FantasyClient() {
       const stored = parseSave(event.newValue)
       if (!stored) return
       if (timer.current) clearTimeout(timer.current)
-      racingRef.current = false; setRacing(false)
+      racingRef.current = false; setRacing(false); setDebrief(null); setPicker(null)
       setSave(stored); setDraft(stored.team); setNotice('Practice season updated from another tab.')
     }
     window.addEventListener('storage', sync)
@@ -131,14 +133,14 @@ export default function FantasyClient() {
         {view === 'championship' && <Championship save={save} />}
         {view === 'cup' && <Knockout save={save} />}
       </div>
-      <footer className="fantasy-footer"><span>One squad. Two competitions.</span><button onClick={() => setReset(true)} disabled={!ready || racing}>Restart practice season</button></footer>
+      <footer className="fantasy-footer"><Link href="/predictions">Make your weekend calls in Predictions ↗</Link><button onClick={() => setReset(true)} disabled={!ready || racing}>Restart practice season</button></footer>
     </div>
 
     {picker && <DriverMarket role={picker} lineup={draft.lineup} onClose={() => setPicker(null)} onChoose={id => { setDraft({ ...draft, lineup: assignDriver(draft.lineup, picker, id) }); setPicker(null); setNotice('Driver roles updated. Save your squad to confirm.') }} />}
     {identity && <TeamIdentity team={draft} onClose={() => setIdentity(false)} onSave={team => { setDraft(team); setIdentity(false); setNotice('Team identity updated. Save your squad to keep it.') }} />}
     {rules && <FantasyRules onClose={() => setRules(false)} />}
     {reset && <FantasyDialog title="A fresh start?" onClose={() => setReset(false)}><p className="fantasy-dialog-copy">This replaces your local practice scores and cup history. Your team name, colours and saved lineup stay.</p><div className="fantasy-dialog-actions"><button className="fantasy-button fantasy-button--secondary" onClick={() => setReset(false)}>Keep my season</button><button className="fantasy-button" onClick={() => { persist({ ...save, entries: [] }); setDraft(save.team); setReset(false); setDebrief(null); setView('garage'); setNotice('A new practice season is ready.') }}>Restart season</button></div></FantasyDialog>}
-    {debrief !== null && <RaceDebrief save={save} round={debrief} onClose={() => setDebrief(null)} />}
+    {debrief !== null && save.entries[debrief - 1] && <RaceDebrief key={debrief} save={save} round={debrief} onClose={() => setDebrief(null)} />}
   </div>
 }
 
@@ -177,6 +179,7 @@ function RaceDebrief({ save, round, onClose }: { save: PracticeSave; round: numb
       const result = results.find(r => r.driverId === d.driverId)!
       return <div key={d.role}><span className="fantasy-kicker">{ROLE_INFO[d.role].name}</span><h3>{driver.surname}<strong>{d.total}</strong></h3><p className="fantasy-result-line">Qualified P{result.qualifying} / {result.status === 'finished' ? `Finished P${result.finish}` : 'DNF'}</p><dl>{d.lines.map(line => <div key={line.label}><dt>{line.label}</dt><dd>{line.points > 0 ? '+' : ''}{line.points}</dd></div>)}</dl></div>
     })}</div>
+    <RoleLab lineup={entry.lineup} results={results} />
     {isFinal && cup.champion && <p className="fantasy-notice">Cup {cup.number} winner: {teams.find(t => t.id === cup.champion)?.name}. {round < SEASON_ROUNDS ? 'All teams enter a new cup for the next race.' : 'The practice season is complete.'}</p>}
     <div className="fantasy-dialog-actions"><button className="fantasy-button" onClick={onClose}>Back to the garage ↗</button></div>
   </FantasyDialog>

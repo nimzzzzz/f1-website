@@ -16,6 +16,7 @@ const ROUTES: Array<{ label: string; href: string }> = [
   { label: 'Drivers', href: '/drivers' },
   { label: 'Teams', href: '/teams' },
   { label: 'Fantasy', href: '/fantasy' },
+  { label: 'Predictions', href: '/predictions' },
   { label: 'Results', href: '/results' },
   { label: 'Lap Times', href: '/laps' },
   { label: 'Positions', href: '/positions' },

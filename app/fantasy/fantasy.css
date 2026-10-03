@@ -164,10 +164,10 @@
 .fantasy-dialog { --fantasy-accent: #ff6259; --fantasy-dim: #a4a4a7; color: #f5f5f3; background: #121214; border: 1px solid #44444a; padding: 0; width: min(600px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 48px); margin: auto; overflow: hidden; font-family: var(--font-body), sans-serif; }
 .fantasy-dialog--wide { width: min(900px, calc(100vw - 32px)); }
 .fantasy-dialog::backdrop { background: #000b; backdrop-filter: blur(7px); }
-.fantasy-dialog-inner { max-height: calc(100dvh - 50px); padding: 30px; overflow: auto; overscroll-behavior: contain; scrollbar-color: #59595e #171719; }
+.fantasy-dialog .game-dialog-inner { max-height: calc(100dvh - 50px); padding: 30px; overflow: auto; overscroll-behavior: contain; scrollbar-color: #59595e #171719; }
 .fantasy-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .fantasy-dialog header h2 { font: clamp(25px, 3vw, 37px)/1.1 var(--font-display); }
-.fantasy-close { width: 40px; height: 40px; min-width: 40px; font-size: 26px; border: 1px solid #4b4b50; }
+.fantasy-dialog .game-dialog-close { width: 40px; height: 40px; min-width: 40px; font-size: 26px; border: 1px solid #4b4b50; }
 .fantasy-dialog-copy { font-size: 13px; line-height: 1.8; color: #b5b5bb; margin: 14px 0 22px; }
 .fantasy-dialog :is(input:not([type=radio]):not([type=checkbox]), select) { display: block; width: 100%; background: #1d1d21; color: #fff; border: 1px solid #505056; padding: 12px; min-height: 44px; font-size: 14px; border-radius: 0; color-scheme: dark; }
 .fantasy-dialog input::placeholder { color: #aaaab0; }
@@ -317,7 +317,7 @@
   .fantasy-cup-toolbar label { font-size: 10px; }
   .fantasy-cup-toolbar select { display: block; margin: 7px 0 0; max-width: 120px; font-size: 11px; }
   .fantasy-bracket-hint { font-size: 10px; line-height: 1.8; }
-  .fantasy-dialog-inner { padding: 22px 18px; }
+  .fantasy-dialog .game-dialog-inner { padding: 22px 18px; }
   .fantasy-dialog header h2 { font-size: 28px; }
   .fantasy-market-tools { grid-template-columns: 1fr; }
   .fantasy-market-list { grid-template-columns: 1fr; }
@@ -330,4 +330,42 @@
   .fantasy-debrief-drivers h3 { font-size: 32px; }
   .fantasy-dialog-actions { flex-wrap: wrap; }
   .fantasy-dialog-actions .fantasy-button { flex-grow: 1; }
+}
+
+/* A debrief compares the same three drivers, keeping hindsight out of saved scores. */
+.fantasy-footer a { text-decoration: underline; text-underline-offset: 4px; }
+.fantasy-role-lab { padding-top: 30px; margin: 32px 0; border-top: 1px solid #44444a; }
+.fantasy-role-lab-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; }
+.fantasy-role-lab-heading h3 { font: 31px/1.1 var(--font-display); margin-top: 9px; }
+.fantasy-role-lab-heading > div:last-child { text-align: right; }
+.fantasy-role-lab-heading > div:last-child strong { display: block; font: 38px/1 var(--font-display); color: var(--fantasy-accent); }
+.fantasy-role-lab-heading > div:last-child span { display: block; margin-top: 7px; font-size: 9px; color: #c2c2c8; }
+.fantasy-role-lab > p { font-size: 12px; color: #b9b9bf; line-height: 1.8; margin: 18px 0 22px; }
+.fantasy-role-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.fantasy-role-options > button { border: 1px solid #43434a; background: #18181c; padding: 16px; text-align: left; }
+.fantasy-role-options > button[aria-pressed=true] { border-color: var(--fantasy-accent); background: #2a1d1e; }
+.fantasy-role-option-label { display: block; color: #c2c2c8; font: 9px var(--font-mono); margin-bottom: 18px; }
+.fantasy-role-option-drivers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.fantasy-role-option-drivers small { display: block; color: #a8a8b0; font: 8px var(--font-mono); margin-bottom: 5px; }
+.fantasy-role-option-drivers strong { font: 24px var(--font-display); }
+.fantasy-role-option-score { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 15px; padding-top: 13px; border-top: 1px solid #43434a; }
+.fantasy-role-option-score > strong { font: 27px var(--font-display); }
+.fantasy-role-option-score small { font: 8px var(--font-mono); margin-left: 4px; color: #b9b9c1; }
+.fantasy-role-option-score > span { font: 9px var(--font-mono); color: #c2c2c8; }
+.fantasy-role-explanation { border-left: 2px solid var(--fantasy-accent); background: #1b1b20; margin-top: 17px; padding: 20px; }
+.fantasy-role-explanation > strong { display: flex; justify-content: space-between; gap: 20px; font-size: 12px; font-weight: 400; }
+.fantasy-role-explanation > strong span { color: var(--fantasy-accent); font: 12px var(--font-mono); }
+.fantasy-role-explanation > div { margin-top: 18px; }
+.fantasy-role-explanation > div p { display: flex; justify-content: space-between; gap: 20px; color: #c2c2c8; font-size: 11px; margin-top: 9px; }
+.fantasy-role-explanation > div strong { font: 11px var(--font-mono); }
+.fantasy-role-explanation > p { margin-top: 20px; font-size: 10px; color: #acacb5; line-height: 1.8; }
+@media (max-width: 600px) {
+  .fantasy-role-lab-heading { display: block; }
+  .fantasy-role-lab-heading > div:last-child { text-align: left; margin-top: 22px; }
+  .fantasy-role-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fantasy-role-options > button { padding: 11px; }
+  .fantasy-role-option-drivers { gap: 5px; }
+  .fantasy-role-option-drivers strong { font-size: 22px; }
+  .fantasy-role-option-score { display: block; }
+  .fantasy-role-option-score > span { display: block; margin-top: 4px; }
 }
