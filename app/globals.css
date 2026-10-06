@@ -345,3 +345,12 @@ body::after {
   white-space: nowrap;
   border-width: 0;
 }
+
+/* Sideways rails must pass vertical gestures back to the document. A blanket
+   overscroll containment on a zero-height scroll range traps the page wheel. */
+:root body [data-scroll-x] {
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
+}
+
+.game-account-strip{display:flex;align-items:center;gap:22px;flex-wrap:wrap;padding:16px 0;border-top:1px solid #3d3d43;font:10px var(--font-mono);color:#c0c0c8}.game-account-strip>span{color:#92929f;margin-right:auto;letter-spacing:.06em}.game-account-strip a{min-height:32px;display:flex;align-items:center}.game-account-strip a:hover{color:#fff}.game-account-strip a:focus-visible{outline:2px solid #ff6259;outline-offset:4px}@media(max-width:560px){.game-account-strip{gap:8px 20px}.game-account-strip>span{width:100%}}

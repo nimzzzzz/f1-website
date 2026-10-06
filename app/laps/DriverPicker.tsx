@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import type { LapDriver } from '@/lib/laps-story'
+import { lockPageScroll } from '@/lib/scroll-lock'
 
 export default function DriverPicker({ slot, driver, drivers, other, onSelect }: {
   slot: 'A' | 'B'; driver: LapDriver; drivers: LapDriver[]; other?: number;
@@ -47,8 +48,7 @@ export default function DriverPicker({ slot, driver, drivers, other, onSelect }:
 
   useEffect(() => {
     if (!open) return
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const unlock = lockPageScroll()
     // Locking the body also stops the site's Lenis instance. The portalled
     // panel has data-lenis-prevent so its own wheel/touch scrolling stays native.
     const focusFrame = requestAnimationFrame(() => search.current?.focus({ preventScroll: true }))
@@ -69,7 +69,7 @@ export default function DriverPicker({ slot, driver, drivers, other, onSelect }:
     window.visualViewport?.addEventListener('resize', place)
     return () => {
       cancelAnimationFrame(focusFrame)
-      document.body.style.overflow = previous
+      unlock()
       document.removeEventListener('pointerdown', outside)
       document.removeEventListener('keydown', escape)
       window.removeEventListener('resize', place)

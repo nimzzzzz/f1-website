@@ -31,7 +31,7 @@ export default function PitLedger({ visits, metric, window, selected, stints, on
       <label><span className="pit-label">ORDER</span><select value={order} onChange={e => { setOrder(e.target.value); setPage(0) }}><option value="race">Race order</option><option value="quick">{metric === 'stationary' ? 'Quickest stationary' : 'Quickest pit lane'}</option></select></label>
       <div className="pit-ledger-filter-state"><span className="pit-label" role="status">{filtered.length} OF {visits.length} VISITS{window ? ` · LAPS ${window.start}–${window.end}` : ''}</span>{(query || window) && <button className="pit-action" type="button" onClick={() => { setQuery(''); setPage(0); onClearWindow() }}>CLEAR FILTERS<span aria-hidden>×</span></button>}</div>
     </div>
-    {shown.length ? <div className="pit-ledger-scroll" data-lenis-prevent tabIndex={0} role="region" aria-label="All pit visits, scroll horizontally for all columns">
+    {shown.length ? <div className="pit-ledger-scroll" data-scroll-x tabIndex={0} role="region" aria-label="All pit visits, scroll horizontally for all columns">
       <table className="pit-table"><caption className="sr-only">Recorded pit visits. Stationary and total pit-lane times are separate measurements.</caption><thead><tr><th scope="col">LAP</th><th scope="col">DRIVER / VISIT</th><th scope="col">TYRES</th><th scope="col">STATIONARY</th><th scope="col">PIT LANE</th><th scope="col"><span className="sr-only">Inspect visit</span></th></tr></thead>
         <tbody>{shown.map(v => <tr key={v.key} className={selected === v.key ? 'is-selected' : ''}>
           <td className="pit-table-lap">{v.lap === null ? 'N/A' : String(v.lap).padStart(2, '0')}</td>

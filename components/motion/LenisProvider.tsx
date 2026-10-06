@@ -27,11 +27,10 @@ export default function LenisProvider({ children }: { children: ReactNode }) {
     // to within the run-to-run jitter of a lerped scroll (the same build
     // varies 210/220 on the first sample between runs).
     //
-    // It fixes the whole CATEGORY, including a container nobody remembers
-    // to annotate. The explicit data-lenis-prevent attributes on the three
-    // known containers stay anyway: they are deterministic where this is a
-    // heuristic, and this bug has now shipped twice.
-    const lenis = new Lenis({ lerp: 0.11, allowNestedScroll: true })
+    // Native vertical lists and dialogs retain data-lenis-prevent. Horizontal
+    // timelines instead use data-scroll-x so vertical gestures chain to the
+    // page when the panel has no vertical overflow.
+    const lenis = new Lenis({ lerp: 0.11, allowNestedScroll: true, stopInertiaOnNavigate: true })
     setLenis(lenis)
     lenis.on('scroll', ScrollTrigger.update)
 
@@ -64,6 +63,8 @@ export default function LenisProvider({ children }: { children: ReactNode }) {
     const onFocusIn = (e: FocusEvent) => {
       const el = e.target as HTMLElement | null
       if (!el || typeof el.getBoundingClientRect !== 'function') return
+      // Modal/list focus belongs to its native scroller, not the locked page.
+      if (lenis.isStopped || el.closest('[data-lenis-prevent]')) return
       const r = el.getBoundingClientRect()
       const fullyVisible = r.top >= 0 && r.bottom <= window.innerHeight
       if (fullyVisible) return

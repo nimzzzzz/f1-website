@@ -6,6 +6,7 @@ import gsap from 'gsap'
 import { useGSAP } from '@gsap/react'
 import { TransitionLink } from '@/components/motion/TransitionProvider'
 import { useNextRace } from './useNextRace'
+import { lockPageScroll } from '@/lib/scroll-lock'
 
 gsap.registerPlugin(useGSAP)
 
@@ -17,6 +18,7 @@ const ROUTES: Array<{ label: string; href: string }> = [
   { label: 'Teams', href: '/teams' },
   { label: 'Fantasy', href: '/fantasy' },
   { label: 'Predictions', href: '/predictions' },
+  { label: 'My Paddock', href: '/account' },
   { label: 'Results', href: '/results' },
   { label: 'Lap Times', href: '/laps' },
   { label: 'Positions', href: '/positions' },
@@ -47,12 +49,7 @@ export default function MenuOverlay({
 
   // scroll lock while open (Lenis observes body style and stops itself)
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden'
-      return () => {
-        document.body.style.overflow = ''
-      }
-    }
+    if (open) return lockPageScroll()
   }, [open])
 
   // The dialog kept its promise only on paper: role="dialog" and

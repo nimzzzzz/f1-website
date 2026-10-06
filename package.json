@@ -15,10 +15,13 @@
     "measure:js": "node scripts/measure-js.mjs",
     "measure:load": "node scripts/measure-load.mjs",
     "subset-fonts": "node scripts/subset-fonts.mjs",
-    "verify:scroll": "node scripts/verify-nested-scroll.mjs"
+    "verify:scroll": "node scripts/verify-nested-scroll.mjs",
+    "games:admin": "tsx --env-file-if-exists=.env.local scripts/manage-competitions.ts"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.117.2",
     "framer-motion": "^11.3.8",
     "geist": "^1.7.2",
     "gsap": "^3.15.0",
@@ -32,6 +35,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@electric-sql/pglite": "^0.5.8",
     "@types/fontkit": "^2.0.9",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",

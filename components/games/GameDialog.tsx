@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { lockPageScroll } from '@/lib/scroll-lock'
 
 /** Native modal semantics shared by the two independent games. */
 export default function GameDialog({ title, onClose, children, className }: {
@@ -11,10 +12,9 @@ export default function GameDialog({ title, onClose, children, className }: {
   useEffect(() => {
     const dialog = ref.current
     const previous = document.activeElement as HTMLElement | null
-    const overflow = document.body.style.overflow
+    const unlock = lockPageScroll()
     dialog?.showModal()
-    document.body.style.overflow = 'hidden'
-    return () => { dialog?.close(); document.body.style.overflow = overflow; previous?.focus({ preventScroll: true }) }
+    return () => { dialog?.close(); unlock(); previous?.focus({ preventScroll: true }) }
   }, [])
   return createPortal(<dialog ref={ref} className={className} aria-label={title} onCancel={onClose}
     onClick={event => { if (event.target === event.currentTarget) onClose() }}>

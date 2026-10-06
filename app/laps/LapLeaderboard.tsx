@@ -11,7 +11,7 @@ export default function LapLeaderboard({ drivers, selected, onSelect, stints }: 
   const sectorBests = sectors.map((key) => Math.min(...drivers.map((d) => d.best[key] ?? Infinity)))
   return <section className="laps-leaderboard" aria-labelledby="laps-best-title">
     <div className="laps-section-heading"><h2 id="laps-best-title">ONE LAP. EVERY DRIVER.</h2><p>Each driver&apos;s quickest recorded lap. Choose a name to load their best into Duel A.</p></div>
-    <div className="laps-table-wrap" tabIndex={0} role="region" aria-label="Best lap leaderboard, scroll horizontally for sector times" data-lenis-prevent>
+    <div className="laps-table-wrap" tabIndex={0} role="region" aria-label="Best lap leaderboard, scroll horizontally for sector times" data-scroll-x>
       <table className="laps-table laps-best-table">
         <caption className="sr-only">Best recorded lap per driver, fastest first</caption>
         <thead><tr><th scope="col">POS</th><th scope="col">DRIVER</th><th scope="col">BEST LAP</th><th scope="col">GAP</th><th scope="col" className="laps-tyre-col">TYRE AT LAP START</th>{sectors.map((_, i) => <th scope="col" key={i}>S{i + 1}</th>)}</tr></thead>

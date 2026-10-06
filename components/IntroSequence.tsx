@@ -3,6 +3,7 @@
 import { memo, useEffect, useRef, useState, type RefObject } from 'react'
 import { useFocusTrap } from '@/lib/use-focus-trap'
 import { AnimatePresence, motion } from 'framer-motion'
+import { lockPageScroll } from '@/lib/scroll-lock'
 
 // How the page content should animate in once the intro hands off.
 export type RevealMode = 'cascade' | 'instant'
@@ -134,10 +135,7 @@ export default function IntroSequence({ onReveal, onDone }: Props) {
       handoff('instant')
       return
     }
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = ''
-    }
+    return lockPageScroll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

@@ -12,7 +12,7 @@ export default function PitTraffic({ visits, selected, onSelect }: { visits: Pit
   return <section className="pit-traffic" aria-labelledby="pit-traffic-title">
     <div className="pit-section-heading"><h2 id="pit-traffic-title">THE CALL TO BOX.</h2><p>See when the pit lane came alive. Choose a window to explore its visits below.</p></div>
     <div className="pit-traffic-summary"><span className="pit-label">{selected ? `LAPS ${selected.start}–${selected.end} SELECTED` : `BUSIEST WINDOW · LAPS ${busiest.start}–${busiest.end} · ${most} VISITS`}</span>{selected && <button type="button" className="pit-action" onClick={() => onSelect(null)}>SHOW ALL LAPS<span aria-hidden>×</span></button>}</div>
-    <div className="pit-window-scroll" data-lenis-prevent tabIndex={0} role="group" aria-label="Pit activity by lap window, scroll horizontally on small screens">
+    <div className="pit-window-scroll" data-scroll-x tabIndex={0} role="group" aria-label="Pit activity by lap window, scroll horizontally on small screens">
       <div className="pit-windows" style={{ gridTemplateColumns: `repeat(${windows.length}, minmax(48px, 1fr))` }}>
         {windows.map(w => <button key={w.start} type="button" className={`pit-window${w.visits.length === most ? ' is-busiest' : ''}`}
           disabled={!w.visits.length} aria-pressed={selected?.start === w.start}

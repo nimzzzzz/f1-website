@@ -7,9 +7,10 @@ import { CALLS, CALL_INFO, INITIAL_PREDICTIONS, PREDICTION_ROUNDS, PREDICTION_ST
 import PredictionPicker, { PredictionPortrait } from './PredictionPicker'
 import PredictionResults from './PredictionResults'
 import PredictionStandings from './PredictionStandings'
+import PredictionInsights from './PredictionInsights'
 
-type View = 'calls' | 'leaderboard' | 'history'
-const VIEWS: { id: View; name: string }[] = [{ id: 'calls', name: 'My calls' }, { id: 'leaderboard', name: 'Leaderboard' }, { id: 'history', name: 'Past weekends' }]
+type View = 'calls' | 'leaderboard' | 'history' | 'form'
+const VIEWS: { id: View; name: string }[] = [{ id: 'calls', name: 'My calls' }, { id: 'leaderboard', name: 'Leaderboard' }, { id: 'history', name: 'Past weekends' }, { id: 'form', name: 'My form' }]
 
 export default function PredictionsClient() {
   const [save, setSave] = useState<PredictionSave>(INITIAL_PREDICTIONS)
@@ -88,7 +89,7 @@ export default function PredictionsClient() {
   function onTabKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
     event.preventDefault()
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? 2 : (index + (event.key === 'ArrowRight' ? 1 : -1) + 3) % 3
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? VIEWS.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + VIEWS.length) % VIEWS.length
     setView(VIEWS[next].id); document.getElementById(`predictions-tab-${VIEWS[next].id}`)?.focus()
   }
   const boost = (call: Call) => change({ ...ticket, boost: call })
@@ -97,8 +98,9 @@ export default function PredictionsClient() {
     <div className="predictions-topline"><span>LIGHTS OUT / PREDICTIONS</span><button onClick={() => setRules(true)}>The rules ↗</button></div>
     <header className="predictions-hero"><div><p className="predictions-label">For the ones who saw it coming</p><h1>I CALLED <span>IT.</span></h1><p>Pick the podium. Back your instinct. Make the weekend yours.</p></div><div className="predictions-record"><span>Your Predictions record</span><div><p><strong>{total}</strong><span>Season points</span></p><p><strong>{hits}<small>/{completed.length * 6}</small></strong><span>Exact calls</span></p><p><strong>{best}</strong><span>Best weekend</span></p></div></div></header>
     <div className="predictions-workspace">
+      <div className="game-account-strip"><span>READY FOR REAL RIVALS?</span><Link href="/play/predictions">Explore online play ↗</Link><Link href="/account">My paddock / cloud saves ↗</Link></div>
       <div className="predictions-navigation"><div role="tablist" aria-label="Predictions game">{VIEWS.map((v, i) => <button key={v.id} id={`predictions-tab-${v.id}`} role="tab" aria-selected={view === v.id} aria-controls={view === v.id ? `predictions-panel-${v.id}` : undefined} tabIndex={view === v.id ? 0 : -1} onKeyDown={e => onTabKey(e, i)} onClick={() => setView(v.id)}>{v.name}</button>)}</div><span>Practice / {PREDICTION_ROUNDS} weekends</span></div>
-      <p className="predictions-practice-note">Practice mode: simulated results and computer opponents. Saved in this browser. Shared play is not connected yet.</p>
+      <p className="predictions-practice-note">Practice mode: simulated results and computer opponents. Saved on this device. Scores stay separate from online play.</p>
       {storageError && <p role="alert" className="predictions-storage-error">{storageError}</p>}
       <p className="predictions-announcement" role="status">{notice}</p>
       <div role="tabpanel" tabIndex={0} id={`predictions-panel-${view}`} aria-labelledby={`predictions-tab-${view}`}>
@@ -120,13 +122,14 @@ export default function PredictionsClient() {
             <div className="predictions-ticket-bottom">{pending ? <><span className="predictions-seal">SEALED</span><p>Your picks are locked. Reveal the simulated weekend when you are ready.</p><button className="predictions-button" onClick={reveal} disabled={revealing}>{revealing ? 'Revealing the weekend…' : 'Reveal practice results'}<span aria-hidden>↗</span></button></> : <><button className="predictions-button" onClick={seal} disabled={!ready || Boolean(error)}>Seal my picks <span aria-hidden>↗</span></button><p>{error ?? 'Ready to seal. Your calls cannot be edited afterwards.'}</p><span className="predictions-autosave">{ready ? storageError ? 'Session only' : 'Draft saved on this device' : 'Loading your ticket…'}</span></>}</div>
           </aside>
         </div>)}
+        {view === 'form' && <PredictionInsights save={save} />}
         {view === 'leaderboard' && <PredictionStandings save={save} onName={() => { setNameDraft(save.name); setEditName(true) }} />}
         {view === 'history' && <section className="predictions-history"><div className="predictions-section-heading"><p className="predictions-label">Your weekend archive</p><h2>THE RECEIPTS ARE HERE.</h2><p>Every sealed call. Every point explained.</p></div>{completed.length === 0 ? <div className="predictions-history-empty"><span>NO RECEIPTS. YET.</span><p>Seal a ticket and reveal your first practice weekend to start the archive.</p><button className="predictions-button" onClick={() => setView('calls')}>Make your calls ↗</button></div> : <div className="predictions-history-grid">{[...completed].reverse().map(entry => { const score = scoreTicket(entry.ticket, predictionOutcome(entry.round)); return <button key={entry.round} className="predictions-receipt" onClick={() => setResultRound(entry.round)}><span>Weekend {String(entry.round).padStart(2, '0')}</span><strong>{score.total}<small>PTS</small></strong><p>{score.exact} of 6 called exactly</p><div><span>Boost +{score.bonus}</span><span>Open receipt ↗</span></div></button> })}</div>}</section>}
       </div>
       <footer className="predictions-footer"><Link href="/fantasy">Build a team in Fantasy ↗</Link><button onClick={() => setReset(true)} disabled={!ready || revealing}>Restart prediction practice</button></footer>
     </div>
     {picker && !locked && <PredictionPicker call={picker} ticket={ticket} onClose={() => setPicker(null)} onPick={id => { change(setPick(ticket, picker, id)); setNotice(`${pickLabel(id)} selected for ${CALL_INFO[picker].label.toLowerCase()}.`); setPicker(null) }} />}
-    {resultEntry && <PredictionResults entry={resultEntry} onClose={() => setResultRound(null)} />}
+    {resultEntry && <PredictionResults name={save.name} entry={resultEntry} onClose={() => setResultRound(null)} />}
     {rules && <PredictionRules onClose={() => setRules(false)} />}
     {reset && <GameDialog title="Start a fresh prediction season?" onClose={() => setReset(false)} className="predictions-dialog"><p className="predictions-dialog-copy">This replaces your local prediction tickets and scores. Your display name stays. Fantasy progress is separate.</p><div className="predictions-dialog-actions"><button className="predictions-button predictions-button--secondary" onClick={() => setReset(false)}>Keep my season</button><button className="predictions-button" onClick={() => { commit({ ...INITIAL_PREDICTIONS, name: save.name, draft: emptyTicket(), entries: [] }); setReset(false); setResultRound(null); setView('calls'); setNotice('A fresh prediction season is ready.') }}>Restart practice</button></div></GameDialog>}
     {editName && <GameDialog title="Your name on the board" onClose={() => setEditName(false)} className="predictions-dialog"><form className="predictions-name-form" onSubmit={e => { e.preventDefault(); if (nameDraft.trim().length < 2) return; commit({ ...save, name: nameDraft.trim() }); setEditName(false) }}><label>Display name<input required minLength={2} maxLength={24} autoFocus value={nameDraft} onChange={e => setNameDraft(e.target.value)} /></label><button className="predictions-button" disabled={nameDraft.trim().length < 2}>Save display name</button></form></GameDialog>}
@@ -152,6 +155,6 @@ function PredictionRules({ onClose }: { onClose: () => void }) {
     <section><h3>Close still counts</h3><p>A podium driver in the wrong predicted place earns 5 points instead of the exact-position award. Incorrect calls earn 0. Equal largest position gains count for every tied driver; only finishers qualify. Pole means Grand Prix qualifying, not the final starting grid. VSC alone does not count as a full safety car.</p></section>
     <section><h3>One confidence pick</h3><p>Choose one answer to earn double its points. A partial podium award doubles too. A miss stays at 0. A perfect ticket is worth 80 points before the boost, or up to 105 with the winner boosted.</p></section>
     <section><h3>Seal. Reveal. Repeat.</h3><p>Drafts save automatically on this device. Sealing makes that weekend's picks final. Reveal the practice result to score the ticket and open the next weekend. The season has 24 practice weekends. Equal point totals share a leaderboard rank.</p></section>
-    <section><h3>A separate championship</h3><p>Prediction points and history are separate from Fantasy. This first build uses fictional races and 15 computer opponents. There are no real race deadlines or shared accounts yet; browser storage is practice progress only.</p></section>
+    <section><h3>A separate championship</h3><p>Prediction points and history are separate from Fantasy. This practice game uses fictional races and 15 computer opponents. Account backups and real-player competitions have separate pages. Practice scores never enter online standings.</p></section>
   </div></GameDialog>
 }

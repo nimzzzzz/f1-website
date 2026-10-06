@@ -76,3 +76,7 @@ The season compute lives in `lib/season-data-server.ts` and is the one
 place that talks to openf1 at build time. Read the comment blocks there
 before changing caching — the layering is deliberate and was arrived at by
 measurement.
+
+## Accounts and online competitions
+
+Supabase account setup, private leagues, cloud saves, trusted race deadlines and the final-result publishing workflow are documented in [accounts and competitions](docs/accounts-and-competitions.md). Without the service configuration, practice remains available and online play explicitly shows its setup state.

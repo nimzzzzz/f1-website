@@ -33,12 +33,12 @@ export function setPick(ticket: Ticket, call: DriverCall, id: string): Ticket {
   picks[call] = id
   return { ...ticket, picks }
 }
-export function ticketError(ticket: Ticket, complete = true): string | null {
+export function ticketError(ticket: Ticket, complete = true, eligible: readonly string[] = PREDICTION_DRIVERS.map(d => d.id)): string | null {
   if (!ticket?.picks || !Object.prototype.hasOwnProperty.call(ticket.picks, 'safety')) return 'Your ticket could not be read.'
   for (const call of CALLS.filter(c => c !== 'safety') as DriverCall[]) {
     const id = ticket.picks[call]
     if (id === null && !complete) continue
-    if (!PREDICTION_DRIVERS.some(d => d.id === id)) return 'Choose a driver for every call.'
+    if (!eligible.includes(id as string)) return 'Choose a driver for every call.'
   }
   const podium = PODIUM.map(c => ticket.picks[c]).filter(Boolean)
   if (new Set(podium).size !== podium.length) return 'Choose three different drivers for the podium.'
@@ -51,8 +51,8 @@ export function potentialPoints(ticket: Ticket): number {
 }
 const displayDriver = (id: string) => PREDICTION_DRIVERS.find(d => d.id === id)?.name ?? id
 export function pickLabel(value: string | null) { return value === null ? 'Not chosen' : value === 'yes' ? 'Yes' : value === 'no' ? 'No' : displayDriver(value) }
-export function scoreTicket(ticket: Ticket, outcome: Outcome): TicketScore {
-  if (ticketError(ticket)) throw new Error('Cannot score an incomplete or invalid ticket.')
+export function scoreTicket(ticket: Ticket, outcome: Outcome, eligible?: readonly string[]): TicketScore {
+  if (ticketError(ticket, true, eligible)) throw new Error('Cannot score an incomplete or invalid ticket.')
   const actual: Record<Call, string> = { pole: outcome.pole, first: outcome.podium[0], second: outcome.podium[1], third: outcome.podium[2], mover: outcome.movers.join(' / '), safety: outcome.safety ? 'yes' : 'no' }
   const calls = CALLS.map(call => {
     const picked = ticket.picks[call]!

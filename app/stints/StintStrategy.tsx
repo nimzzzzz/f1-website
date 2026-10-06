@@ -61,7 +61,7 @@ export default function StintStrategy({ drivers, stints }: { drivers: StrategyDr
     <section className="st-board" aria-labelledby="st-board-title">
       <h2 id="st-board-title" className="ws-heading">THE STRATEGY WALL.</h2><p className="ws-copy">Every stint on the same lap scale. Select a coloured run to inspect it above.</p>
       <div className="st-board-tools"><label className="ws-field"><span className="ws-label">FIND A DRIVER OR TEAM</span><input type="search" value={query} placeholder="Name, team or car number" onChange={e => setQuery(e.target.value)} /></label><label className="ws-field"><span className="ws-label">ORDER</span><select value={order} onChange={e => setOrder(e.target.value)}><option value="name">Driver name</option><option value="runs">Most recorded stints</option></select></label><p className="ws-label" role="status">{filtered.length} OF {drivers.length} DRIVERS</p></div>
-      <div className="ws-scroll" data-lenis-prevent tabIndex={0} role="region" aria-label="Driver stint timeline, scroll horizontally on small screens">
+      <div className="ws-scroll" data-scroll-x tabIndex={0} role="region" aria-label="Driver stint timeline, scroll horizontally on small screens">
         <div className="st-timeline">
           <div className="st-axis"><span className="ws-label">DRIVER</span><div>{[...new Set([0,.25,.5,.75,1].map(p => Math.round(1+(maxLap-1)*p)))].map(tick => <span key={tick} style={{ left: `${(tick-.5)/maxLap*100}%` }}>{tick}</span>)}</div><span className="ws-label">AT L{lap}</span></div>
           {filtered.map(d => {

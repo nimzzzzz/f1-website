@@ -9,10 +9,11 @@ import { Championship, Knockout, TeamMark } from './Competitions'
 import FantasyDialog from './FantasyDialog'
 import FantasyRules from './FantasyRules'
 import RoleLab from './RoleLab'
+import FantasyCareer, { DuelBreakdown } from './FantasyCareer'
 import Link from 'next/link'
 
-type View = 'garage' | 'championship' | 'cup'
-const VIEWS: { id: View; label: string }[] = [{ id: 'garage', label: 'My garage' }, { id: 'championship', label: 'Championship' }, { id: 'cup', label: 'Knockout cup' }]
+type View = 'garage' | 'championship' | 'cup' | 'career'
+const VIEWS: { id: View; label: string }[] = [{ id: 'garage', label: 'My garage' }, { id: 'championship', label: 'Championship' }, { id: 'cup', label: 'Knockout cup' }, { id: 'career', label: 'My season' }]
 
 export default function FantasyClient() {
   const [save, setSave] = useState<PracticeSave>(DEFAULT_SAVE)
@@ -98,8 +99,9 @@ export default function FantasyClient() {
     </header>
 
     <div className="fantasy-workspace">
+      <div className="game-account-strip"><span>READY FOR REAL RIVALS?</span><Link href="/play/fantasy">Explore online play ↗</Link><Link href="/account">My paddock / cloud saves ↗</Link></div>
       <div className="fantasy-tabs" role="tablist" aria-label="Fantasy competitions">{VIEWS.map((v, i) => <button key={v.id} id={`fantasy-tab-${v.id}`} role="tab" aria-selected={view === v.id} aria-controls={view === v.id ? `fantasy-panel-${v.id}` : undefined} tabIndex={view === v.id ? 0 : -1} onKeyDown={e => tabKey(e, i)} onClick={() => setView(v.id)}>{v.label}{v.id === 'cup' && <span aria-hidden>{String(cupNumber).padStart(2, '0')}</span>}</button>)}</div>
-      <div className="fantasy-practice-note"><span>Practice season</span><p>Simulated races and opponents. Progress stays in this browser. Shared competitions are not open yet.</p></div>
+      <div className="fantasy-practice-note"><span>Practice season</span><p>Simulated races and opponents. Saved on this device. Practice scores stay separate from online play.</p></div>
       {storageError && <p role="alert" className="fantasy-storage-error">{storageError}</p>}
       <p className="fantasy-announcement" role="status" aria-live="polite">{notice}</p>
 
@@ -132,6 +134,7 @@ export default function FantasyClient() {
         </>}
         {view === 'championship' && <Championship save={save} />}
         {view === 'cup' && <Knockout save={save} />}
+        {view === 'career' && <FantasyCareer save={save} onReview={setDebrief} />}
       </div>
       <footer className="fantasy-footer"><Link href="/predictions">Make your weekend calls in Predictions ↗</Link><button onClick={() => setReset(true)} disabled={!ready || racing}>Restart practice season</button></footer>
     </div>
@@ -173,12 +176,13 @@ function RaceDebrief({ save, round, onClose }: { save: PracticeSave; round: numb
   return <FantasyDialog title={`Race ${String(round).padStart(2, '0')} debrief`} onClose={onClose} wide>
     <p className="fantasy-dialog-copy">Simulated practice results. These are not real Grand Prix results.</p>
     <div className="fantasy-debrief-score"><div><span>Your weekend</span><strong>{score.total}<small>PTS</small></strong></div><div><span>From role bonuses</span><strong>+{score.bonus}</strong></div></div>
-    {match && <div className="fantasy-debrief-verdict"><strong>{tied ? 'MATCH DRAWN' : won ? playedMatch && isFinal ? 'CUP WINNER' : 'MATCH WON' : 'MATCH LOST'}</strong><p>{save.team.name} {score.total} : {opposition?.total} {match.opponent.name}{match.consolation ? ' (consolation)' : ''}.{playedMatch?.tiebreak ? ' Decided on the published tiebreak rules.' : ''}</p><p>{playedMatch && !won ? 'Your championship continues. A fresh cup starts after the final.' : playedMatch && won && !isFinal ? 'You advance to the next round.' : 'Every point stays in your season total.'}</p></div>}
+    {match && <div className={`fantasy-debrief-verdict${won && playedMatch ? ' is-advancing' : ''}`}><strong>{tied ? 'MATCH DRAWN' : won ? playedMatch && isFinal ? 'CUP WINNER' : 'MATCH WON' : 'MATCH LOST'}</strong><p>{save.team.name} {score.total} : {opposition?.total} {match.opponent.name}{match.consolation ? ' (consolation)' : ''}.{playedMatch?.tiebreak ? ' Decided on the published tiebreak rules.' : ''}</p><p>{playedMatch && !won ? 'Your championship continues. A fresh cup starts after the final.' : playedMatch && won && !isFinal ? 'You advance to the next round.' : 'Every point stays in your season total.'}</p></div>}
     <div className="fantasy-debrief-drivers">{score.drivers.map(d => {
       const driver = PRACTICE_DRIVERS.find(p => p.id === d.driverId)!
       const result = results.find(r => r.driverId === d.driverId)!
       return <div key={d.role}><span className="fantasy-kicker">{ROLE_INFO[d.role].name}</span><h3>{driver.surname}<strong>{d.total}</strong></h3><p className="fantasy-result-line">Qualified P{result.qualifying} / {result.status === 'finished' ? `Finished P${result.finish}` : 'DNF'}</p><dl>{d.lines.map(line => <div key={line.label}><dt>{line.label}</dt><dd>{line.points > 0 ? '+' : ''}{line.points}</dd></div>)}</dl></div>
     })}</div>
+    <DuelBreakdown save={save} round={round} />
     <RoleLab lineup={entry.lineup} results={results} />
     {isFinal && cup.champion && <p className="fantasy-notice">Cup {cup.number} winner: {teams.find(t => t.id === cup.champion)?.name}. {round < SEASON_ROUNDS ? 'All teams enter a new cup for the next race.' : 'The practice season is complete.'}</p>}
     <div className="fantasy-dialog-actions"><button className="fantasy-button" onClick={onClose}>Back to the garage ↗</button></div>

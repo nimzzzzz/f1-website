@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Session } from '@/lib/openf1'
+import { lockPageScroll } from '@/lib/scroll-lock'
 
 interface Props {
   sessions: Session[]
@@ -224,11 +225,7 @@ export default function SessionPicker({ sessions, selectedKey, onSelect, label }
   // virtual scroll on overflow:hidden, so this covers smooth scrolling too.
   useEffect(() => {
     if (!open) return
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = prev
-    }
+    return lockPageScroll()
   }, [open])
 
   // Focus the current round ONCE, when the panel opens. Keyed on a ref

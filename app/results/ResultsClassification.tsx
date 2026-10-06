@@ -21,7 +21,7 @@ export default function ResultsClassification({ rows, kind, extras, published, s
     <section className="results-classification" aria-labelledby="the-field">
       <div className="results-classification-heading"><h2 id="the-field">THE CLASSIFICATION</h2><span className="results-caption">{published ? 'PUBLISHED RESULTS' : 'LATEST TIMING ORDER'}</span></div>
       <p className="results-note">{qualifying ? 'Every stage. Every thousandth.' : race ? 'Select a driver to explore their race.' : 'Best laps and running completed.'}{!published && ' Final results are not yet available.'}</p>
-      <div className="results-table-scroll" role="region" aria-label="Session classification" tabIndex={0} data-lenis-prevent>
+      <div className="results-table-scroll" role="region" aria-label="Session classification" tabIndex={0} data-scroll-x>
         <table className={`results-table results-table--${kind}`}>
           <caption className="sr-only">{kind === 'race' ? 'Race' : kind === 'qualifying' ? 'Qualifying' : 'Practice'} classification, ordered by position</caption>
           <thead><tr><th scope="col">POS</th><th scope="col">DRIVER</th>
