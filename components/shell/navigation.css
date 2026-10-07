@@ -1,0 +1,40 @@
+/* Existing shell layers: header 160, menu 150. The dialog owns native scrolling. */
+.site-menu{position:fixed;inset:0;z-index:150;background:#090909;color:var(--text);padding-top:64px;visibility:hidden;opacity:0;pointer-events:none;transition:opacity .2s}
+.site-menu.is-open{visibility:visible;opacity:1;pointer-events:auto}
+.site-menu-scroll{height:100%;overflow-y:auto;overscroll-behavior:contain;padding:32px clamp(24px,4.4vw,80px) 0;display:flex;flex-direction:column}
+.site-menu-intro{display:flex;align-items:baseline;justify-content:space-between;gap:24px;margin-bottom:35px}
+.site-menu-intro p{font:clamp(32px,3.7vw,58px)/1 var(--font-display);letter-spacing:.01em}
+.site-menu-intro>span{font:10px var(--font-mono);color:var(--text-dim);letter-spacing:.1em;text-transform:uppercase}
+.site-menu-groups{display:grid;grid-template-columns:1fr 1.05fr 1fr;gap:clamp(30px,5vw,90px);padding-bottom:30px;flex:1}
+.site-menu-group{min-width:0;transform:translateY(14px);opacity:0;transition:transform .5s cubic-bezier(.2,.7,.2,1),opacity .4s}
+.is-open .site-menu-group{transform:none;opacity:1;transition-delay:calc(var(--group-index)*70ms + 50ms)}
+.site-menu-group-title{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid #424242;padding-top:18px;gap:12px}
+.site-menu-group-title h2{font:12px var(--font-mono);letter-spacing:.08em;text-transform:uppercase}
+.site-menu-group-title>span{font:10px var(--font-mono);color:var(--text-dim)}
+.site-menu-description{font-size:12px;color:var(--text-dim);margin:10px 0 22px;line-height:1.6}
+.site-menu-link{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:0 12px;min-height:44px;padding:4px 0;color:var(--text);transition:color .2s}
+.site-menu-link-name{font:clamp(30px,3vw,48px)/1.13 var(--font-display);letter-spacing:.015em;transition:transform .25s}
+.site-menu-arrow{font:19px var(--font-mono);opacity:0;transform:translate(-6px,6px);transition:opacity .2s,transform .25s}
+.site-menu-link:hover,.site-menu-link[aria-current=page]{color:var(--accent-text)}
+.site-menu-link:hover .site-menu-link-name{transform:translateX(6px)}
+.site-menu-link:hover .site-menu-arrow,.site-menu-link:focus-visible .site-menu-arrow,.site-menu-link[aria-current=page] .site-menu-arrow{opacity:1;transform:none}
+.site-menu-link:focus-visible,.site-menu-footer a:focus-visible,.header-paddock:focus-visible{outline:2px solid var(--accent-text);outline-offset:5px}
+.site-menu-weekend .site-menu-link-name{font-size:clamp(27px,2.55vw,39px)}
+.site-menu-play .site-menu-group-title{border-color:var(--accent)}
+.site-menu-play .site-menu-group-title h2{color:var(--accent-text)}
+.site-menu-play .site-menu-link{padding:22px 0;border-bottom:1px solid var(--line)}
+.site-menu-play .site-menu-arrow{opacity:1;transform:none;color:var(--accent-text)}
+.site-menu-game-detail{grid-column:1/-1;font-size:12px;line-height:1.7;color:var(--text-dim);margin-top:10px;max-width:230px}
+.site-menu-play-note{font:10px/1.7 var(--font-mono);color:var(--text-dim);margin-top:30px;max-width:210px}
+.site-menu-footer{display:flex;align-items:center;justify-content:space-between;gap:24px;border-top:1px solid var(--line);padding:20px 0;font:9px/1.5 var(--font-mono);letter-spacing:.08em;color:var(--text-dim)}
+.site-menu-footer a:hover{color:var(--text)}
+.header-actions{display:flex;align-items:center;gap:24px}
+.header-paddock{position:relative;display:flex;align-items:center;justify-content:center;gap:18px;min-height:38px;padding:0 15px;border:1px solid #555;background:#171717;font:10px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;overflow:hidden;isolation:isolate;transition:border-color .2s,color .2s}
+.header-paddock:before{content:'';position:absolute;inset:0;background:var(--accent);z-index:-1;transform:translateX(-102%);transition:transform .35s cubic-bezier(.2,.7,.2,1)}
+.header-paddock>span:last-child{color:var(--accent-text);font-size:15px;transition:color .2s,transform .2s}
+.header-paddock:hover{border-color:var(--accent);color:white}.header-paddock:hover:before{transform:none}.header-paddock:hover>span:last-child{color:white;transform:translate(2px,-2px)}
+@media(max-width:1100px){.header-race-ticker{display:none!important}}
+@media(max-width:767px){.site-menu-scroll{padding:24px 24px 0}.site-menu-intro{margin-bottom:24px}.site-menu-intro>span{display:none}.site-menu-groups{grid-template-columns:1fr;gap:30px}.site-menu-group-title{padding-top:14px}.site-menu-description{margin:8px 0 13px}.site-menu-season ul,.site-menu-weekend ul{display:grid;grid-template-columns:1fr 1fr;column-gap:24px}.site-menu-link-name,.site-menu-weekend .site-menu-link-name{font-size:28px}.site-menu-play ul{display:grid;grid-template-columns:1fr 1fr;gap:24px}.site-menu-play .site-menu-link{padding:8px 0 20px}.site-menu-game-detail{font-size:11px}.site-menu-play-note{display:none}.site-menu-footer>span:nth-child(2){display:none}.header-actions{gap:12px}.header-paddock{padding:0 10px;gap:10px;min-height:36px;font-size:9px}}
+@media(max-width:360px){.header-actions{gap:5px}.header-paddock>span:last-child{display:none}.site-menu-scroll{padding-inline:20px}.site-menu-link-name,.site-menu-weekend .site-menu-link-name{font-size:25px}}
+@media(max-width:767px){.site-menu-season .site-menu-link,.site-menu-weekend .site-menu-link{grid-template-columns:1fr}.site-menu-season .site-menu-arrow,.site-menu-weekend .site-menu-arrow{display:none}}
+@media(prefers-reduced-motion:reduce){.site-menu,.site-menu-group,.site-menu-link,.site-menu-link-name,.site-menu-arrow,.header-paddock,.header-paddock:before,.header-paddock>span:last-child{transition:none;transform:none}}

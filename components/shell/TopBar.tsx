@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { TransitionLink } from '@/components/motion/TransitionProvider'
 import { useNextRace, shortRaceName } from './useNextRace'
+import './navigation.css'
 
 function pad(n: number) {
   return String(n).padStart(2, '0')
@@ -40,6 +42,17 @@ export default function TopBar({
 }) {
   const race = useNextRace()
   const [now, setNow] = useState(() => Date.now())
+  const pathname = usePathname()
+  const [signedIn, setSignedIn] = useState(false)
+
+  useEffect(() => {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) return
+    const controller = new AbortController()
+    fetch('/api/account/profile', { signal: controller.signal, cache: 'no-store' })
+      .then(response => { if (!controller.signal.aborted) setSignedIn(response.ok) })
+      .catch(() => { /* Keep navigation available if the account service is offline. */ })
+    return () => controller.abort()
+  }, [pathname])
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000)
@@ -61,7 +74,7 @@ export default function TopBar({
 
         {/* live next-race ticker */}
         <div
-          className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-2 text-[var(--text-dim)] md:flex"
+          className="header-race-ticker absolute left-1/2 hidden -translate-x-1/2 items-center gap-2 text-[var(--text-dim)] md:flex"
           style={TICKER_STYLE}
         >
           {race ? (
@@ -86,11 +99,17 @@ export default function TopBar({
           )}
         </div>
 
+        <div className="header-actions">
+        <TransitionLink href={signedIn ? '/account' : '/login'} onNavigate={menuOpen ? onToggleMenu : undefined}
+          className="header-paddock" aria-current={pathname === (signedIn ? '/account' : '/login') ? 'page' : undefined}>
+          <span>{signedIn ? 'My paddock' : 'Sign in'}</span><span aria-hidden>↗</span>
+        </TransitionLink>
         <button
           ref={triggerRef}
           type="button"
           onClick={onToggleMenu}
           aria-expanded={menuOpen}
+          aria-controls="site-menu"
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
           className="tap-44 group flex items-center gap-3 py-2 pl-3"
         >
@@ -113,6 +132,7 @@ export default function TopBar({
             />
           </span>
         </button>
+        </div>
       </div>
     </header>
   )
