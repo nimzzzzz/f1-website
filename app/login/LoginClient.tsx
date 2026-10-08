@@ -1,7 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import RacingFilm from './RacingFilm'
 
 export default function LoginClient({ connected, next }: { connected: boolean; next: string }) {
   const [email, setEmail] = useState(''), [code, setCode] = useState('')
@@ -22,23 +21,56 @@ export default function LoginClient({ connected, next }: { connected: boolean; n
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Connection interrupted. Please try again.') }
     finally { setBusy(false) }
   }
-  return <div className="signin-stage">
-    <RacingFilm />
-    <div className="signin-brand" aria-hidden="true"><span>LIGHTS</span><span>OUT.</span></div>
-    <section className="signin-panel" aria-labelledby="signin-title">
-      <div className="signin-content">
-        <p className="signin-eyebrow">THE PADDOCK</p>
-        <h1 id="signin-title">{step === 'email' ? 'SIGN IN.' : 'CHECK YOUR EMAIL.'}</h1>
-        <p className="signin-intro">{step === 'email' ? 'Your Fantasy team. Your predictions. All in one place.' : `We sent a six-digit code to ${email}.`}</p>
-        <form onSubmit={event => { event.preventDefault(); void submit(step === 'email' ? 'send' : 'verify') }}>
-          {step === 'email' ? <label htmlFor="paddock-email">Email address<input id="paddock-email" type="email" autoComplete="email" required maxLength={254} value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" disabled={!connected || busy} /></label> : <label htmlFor="paddock-code">Access code<input ref={codeInput} id="paddock-code" className="signin-code" inputMode="numeric" pattern="[0-9]{6}" autoComplete="one-time-code" maxLength={6} required value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} disabled={busy} /></label>}
-          <button className="signin-submit" disabled={!connected || busy}>{busy ? 'Just a moment…' : step === 'email' ? 'Continue with email' : 'Sign in'}<span aria-hidden>↗</span></button>
-          <p role="status" className="signin-feedback">{message}</p>
+  return (
+    <section className="account-panel" aria-labelledby="account-title">
+      <div className="account-form-content">
+        <p className="account-label">Your account</p>
+        <h1 id="account-title">{step === 'email' ? 'Sign in to Lights Out.' : 'Check your email.'}</h1>
+        <p className="account-intro">
+          {step === 'email'
+            ? 'Sign in to save your Fantasy team and race predictions.'
+            : `Enter the six-digit code we sent to ${email}.`}
+        </p>
+
+        <form onSubmit={event => { event.preventDefault(); void submit(step === 'email' ? 'send' : 'verify') }} aria-busy={busy}>
+          {step === 'email' ? (
+            <div className="account-field">
+              <label htmlFor="paddock-email">Email address</label>
+              <input id="paddock-email" name="email" type="email" autoComplete="email" required maxLength={254}
+                value={email} onChange={event => setEmail(event.target.value)} placeholder="you@example.com"
+                disabled={!connected || busy} aria-describedby={!connected ? 'account-availability' : 'account-email-help'} />
+            </div>
+          ) : (
+            <div className="account-field">
+              <label htmlFor="paddock-code">Verification code</label>
+              <input ref={codeInput} id="paddock-code" name="code" className="account-code" inputMode="numeric"
+                pattern="[0-9]{6}" autoComplete="one-time-code" maxLength={6} required value={code}
+                onChange={event => setCode(event.target.value.replace(/\D/g, ''))} disabled={busy} />
+            </div>
+          )}
+          <button className="account-submit" disabled={!connected || busy}>
+            <span>{busy ? 'Please wait…' : step === 'email' ? 'Continue with email' : 'Verify and sign in'}</span>
+            <span aria-hidden="true">→</span>
+          </button>
+          <p role="status" className="account-feedback">{message}</p>
         </form>
-        {!connected && <p className="signin-unavailable">Sign-in is opening soon. You can play both practice games below.</p>}
-        {step === 'code' ? <div className="signin-code-actions"><button disabled={busy || cooldown > 0} onClick={() => submit('send')}>{cooldown ? `Resend in ${cooldown}s` : 'Resend code'}</button><button disabled={busy} onClick={() => { setStep('email'); setCode(''); setMessage('') }}>Change email</button></div> : <p className="signin-note">No password. New here? Your first code creates your account. Your email stays private.</p>}
-        <div className="signin-practice"><p>Explore the games</p><div><Link href="/fantasy">Fantasy <span aria-hidden>↗</span></Link><Link href="/predictions">Predictions <span aria-hidden>↗</span></Link></div></div>
+
+        {!connected && <p id="account-availability" className="account-availability">Account sign-in is coming soon. Both practice games are open.</p>}
+        {step === 'code' ? (
+          <div className="account-code-actions">
+            <button disabled={busy || cooldown > 0} onClick={() => submit('send')}>{cooldown ? `Resend in ${cooldown}s` : 'Resend code'}</button>
+            <button disabled={busy} onClick={() => { setStep('email'); setCode(''); setMessage('') }}>Change email</button>
+          </div>
+        ) : <p id="account-email-help" className="account-help">We’ll email you a sign-in code. No password needed.<br />New here? Your first code creates your account.<br />Your email stays private.</p>}
+      </div>
+
+      <div className="account-explore">
+        <p>Try a practice game</p>
+        <div className="account-games">
+          <Link href="/fantasy"><span>Fantasy</span><span aria-hidden="true">↗</span></Link>
+          <Link href="/predictions"><span>Predictions</span><span aria-hidden="true">↗</span></Link>
+        </div>
       </div>
     </section>
-  </div>
+  )
 }
